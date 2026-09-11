@@ -1,0 +1,43 @@
+from functools import lru_cache
+from typing import Literal
+
+from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_OPENAI_DEFAULT = "gpt-4o-mini"
+_ANTHROPIC_DEFAULT = "claude-haiku-4-5"
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    llm_provider: Literal["openai", "anthropic"] = "openai"
+    llm_model: str = _OPENAI_DEFAULT
+    app_env: str = "development"
+    log_level: str = "DEBUG"
+
+    @model_validator(mode="after")
+    def validate_provider_key(self) -> "Settings":
+        if self.llm_provider == "openai" and not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+        if self.llm_provider == "anthropic" and not self.anthropic_api_key:
+            raise ValueError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
+        return self
+
+    def effective_model(self) -> str:
+        """Return the model to use, applying per-provider defaults when needed."""
+        if self.llm_provider == "anthropic" and self.llm_model == _OPENAI_DEFAULT:
+            return _ANTHROPIC_DEFAULT
+        return self.llm_model
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

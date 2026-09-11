@@ -2,7 +2,9 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from anthropic import APITimeoutError as AnthropicTimeout, AuthenticationError as AnthropicAuthError
 from fastapi import HTTPException
+from openai import APITimeoutError as OpenAITimeout, AuthenticationError as OpenAIAuthError
 
 from app.config import Settings
 from app.context.examples import ESTIMATION_EXAMPLES
@@ -139,3 +141,61 @@ async def test_generate_estimation_raises_502_on_empty_response(mocker):
     with pytest.raises(HTTPException) as exc_info:
         await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
     assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_generate_estimation_raises_502_on_openai_auth_error(mocker):
+    mocker.patch("app.services.llm_service.get_settings", return_value=_openai_settings())
+    import httpx
+    req = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    resp = httpx.Response(401, request=req)
+    exc = OpenAIAuthError("invalid key", response=resp, body={})
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=exc)
+    mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=mock_client)
+    with pytest.raises(HTTPException) as exc_info:
+        await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
+    assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_generate_estimation_raises_504_on_openai_timeout(mocker):
+    mocker.patch("app.services.llm_service.get_settings", return_value=_openai_settings())
+    import httpx
+    req = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    exc = OpenAITimeout(request=req)
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=exc)
+    mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=mock_client)
+    with pytest.raises(HTTPException) as exc_info:
+        await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
+    assert exc_info.value.status_code == 504
+
+
+@pytest.mark.asyncio
+async def test_generate_estimation_raises_502_on_anthropic_auth_error(mocker):
+    mocker.patch("app.services.llm_service.get_settings", return_value=_anthropic_settings())
+    import httpx
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    resp = httpx.Response(401, request=req)
+    exc = AnthropicAuthError("invalid key", response=resp, body={})
+    mock_client = MagicMock()
+    mock_client.messages.create = AsyncMock(side_effect=exc)
+    mocker.patch("app.services.llm_service.AsyncAnthropic", return_value=mock_client)
+    with pytest.raises(HTTPException) as exc_info:
+        await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
+    assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_generate_estimation_raises_504_on_anthropic_timeout(mocker):
+    mocker.patch("app.services.llm_service.get_settings", return_value=_anthropic_settings())
+    import httpx
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    exc = AnthropicTimeout(request=req)
+    mock_client = MagicMock()
+    mock_client.messages.create = AsyncMock(side_effect=exc)
+    mocker.patch("app.services.llm_service.AsyncAnthropic", return_value=mock_client)
+    with pytest.raises(HTTPException) as exc_info:
+        await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
+    assert exc_info.value.status_code == 504

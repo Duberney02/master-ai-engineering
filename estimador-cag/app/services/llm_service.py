@@ -66,14 +66,11 @@ environment setup, deployment, observability, and basic project management.
 ```
 ## Estimación: [nombre inferido del proyecto]
 
-### Resumen del alcance
-[2-3 oraciones describiendo qué se construirá]
+### Supuestos
+[Lista de supuestos que hiciste para completar la estimación]
 
 ### Requisitos identificados
 [Lista de requisitos explícitamente mencionados en la reunión]
-
-### Supuestos
-[Lista de supuestos que hiciste para completar la estimación]
 
 ### Desglose de tareas
 

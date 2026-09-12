@@ -1,38 +1,13 @@
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
 
+from app.schemas.estimation import EstimationRequest, EstimationResponse, UsageInfo
 from app.services.llm_service import LLMEstimationResult, generate_estimation
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-class EstimationRequest(BaseModel):
-    transcription: str = Field(
-        min_length=20,
-        max_length=50_000,
-        description="Transcripción de la reunión con el cliente.",
-    )
-
-
-class UsageInfo(BaseModel):
-    input_tokens: int
-    output_tokens: int
-    total_tokens: int
-
-
-class EstimationResponse(BaseModel):
-    estimation: str
-    model: str
-    provider: str
-    usage: UsageInfo
-    estimated_cost_usd: float | None
-    latency_ms: int
-    generated_at: datetime
 
 
 @router.post("/estimate", response_model=EstimationResponse)

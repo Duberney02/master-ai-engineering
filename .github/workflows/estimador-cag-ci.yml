@@ -1,0 +1,36 @@
+name: estimador-cag CI
+
+# Solo corre cuando algo cambia dentro de estimador-cag/, porque este
+# repositorio es un monorepo con varios proyectos independientes.
+on:
+  push:
+    branches: [master]
+    paths: ["estimador-cag/**"]
+  pull_request:
+    paths: ["estimador-cag/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: estimador-cag
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run tests
+        # Incluye:
+        # - test_project_structure.py  -> valida estructura de carpetas/módulos
+        # - test_main.py                -> smoke test: /health, /docs, /openapi.json
+        # - el resto de la suite         -> config, router, llm_service, examples
+        run: uv run pytest -v

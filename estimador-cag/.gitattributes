@@ -1,0 +1,5 @@
+# Los archivos que se ejecutan dentro de contenedores Linux deben conservar finales LF.
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+docker-compose*.yml text eol=lf
+*.sh text eol=lf

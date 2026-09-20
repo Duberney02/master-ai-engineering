@@ -29,8 +29,52 @@ jobs:
         run: uv sync --group dev
 
       - name: Run tests
-        # Incluye:
-        # - test_project_structure.py  -> valida estructura de carpetas/módulos
-        # - test_main.py                -> smoke test: /health, /docs, /openapi.json
-        # - el resto de la suite         -> config, router, llm_service, examples
+        # Suite completa (sin llamadas reales a OpenAI/Anthropic: los SDK están simulados):
+        # - test_project_structure.py -> estructura de carpetas/módulos y archivos de Docker
+        # - test_main.py               -> smoke test: /health, /docs, /openapi.json
+        # - test_router.py             -> opciones del endpoint, metadatos y evaluación
+        # - test_generation_flow.py    -> preprocesamiento (limpieza y dos fases), uso por fase
+        # - test_examples.py / test_prompt_options.py -> catálogo, selección y formatos CAG
+        # - test_evaluation.py         -> evaluación estructural y discrepancias numéricas
+        # - test_api_errors.py / test_llm_service.py / test_config.py -> errores y configuración
         run: uv run pytest -v
+
+  docker:
+    # Verifica que la imagen se construye, arranca como usuario sin privilegios
+    # y que su health check pasa a "healthy".
+    runs-on: ubuntu-latest
+    needs: test
+    defaults:
+      run:
+        working-directory: estimador-cag
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Compose file
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+
+      - name: Build image
+        run: docker build --tag estimador-cag:ci .
+
+      - name: Image runs as a non-root user
+        run: |
+          uid="$(docker run --rm --entrypoint id estimador-cag:ci -u)"
+          echo "uid=$uid"
+          test "$uid" != "0"
+
+      - name: Container becomes healthy
+        run: |
+          docker run -d --name estimador-ci -e LLM_PROVIDER=openai -e OPENAI_API_KEY=sk-ci-dummy \
+            estimador-cag:ci
+          for i in $(seq 1 30); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' estimador-ci)"
+            echo "health=$status"
+            [ "$status" = "healthy" ] && exit 0
+            sleep 2
+          done
+          docker logs estimador-ci
+          exit 1

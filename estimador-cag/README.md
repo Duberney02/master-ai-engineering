@@ -102,6 +102,31 @@ uv run uvicorn app.main:app --reload
 
 La API queda disponible en `http://localhost:8000`.
 
+## Interfaz conversacional (Streamlit)
+
+Chat web para probar el estimador sin curl/Postman/Swagger: pega una
+transcripción, obtén la estimación en streaming y sigue la conversación.
+
+```bash
+uv run streamlit run streamlit_app.py
+```
+
+Se abre en `http://localhost:8501`. La respuesta se muestra token a token
+(`st.write_stream`), funciona con el proveedor configurado (OpenAI o
+Anthropic) y reutiliza exactamente la misma lógica que el endpoint —
+`build_system_prompt()` y `generate_estimation_stream()` de
+`app/services/llm_service.py` — así que el comportamiento se mantiene
+sincronizado con `/api/v1/estimate`.
+
+La API key se resuelve igual que en la API (`.env` vía `get_settings()`) o,
+como alternativa, desde `st.secrets` (`.streamlit/secrets.toml`, no se
+versiona) con las claves `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`; nunca se
+escribe en el código.
+
+El `st.sidebar` muestra, de solo lectura: el system prompt activo, los
+ejemplos históricos del catálogo CAG que alimentan el prompt, y las métricas
+de la última llamada (modelo, tokens de entrada/salida, latencia).
+
 ## Ejecución con Docker
 
 El `.env` **nunca** entra en la imagen (está en `.dockerignore`): las claves se

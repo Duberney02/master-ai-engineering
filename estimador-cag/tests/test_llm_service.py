@@ -16,15 +16,16 @@ def test_prompt_contains_role():
     assert "Senior Software Estimation Architect" in prompt
 
 
-def test_prompt_contains_all_example_summaries():
+def test_prompt_contains_default_example_summaries():
+    # Por defecto se inyectan los mismos 2 ejemplos que antes de existir num_examples.
     prompt = build_system_prompt()
-    for ex in ESTIMATION_EXAMPLES:
+    for ex in ESTIMATION_EXAMPLES[:2]:
         assert ex["meeting_summary"][:60] in prompt
 
 
-def test_prompt_contains_all_example_estimations():
+def test_prompt_contains_default_example_estimations():
     prompt = build_system_prompt()
-    for ex in ESTIMATION_EXAMPLES:
+    for ex in ESTIMATION_EXAMPLES[:2]:
         assert ex["estimation"][:60] in prompt
 
 

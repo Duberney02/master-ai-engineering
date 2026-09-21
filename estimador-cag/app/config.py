@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     llm_model: str = _OPENAI_DEFAULT
     app_env: str = "development"
     log_level: str = "DEBUG"
+    # Lista separada por comas de modelos que las solicitudes pueden pedir con el
+    # campo `model`. Vacía = sin restricción (solo se valida el formato del nombre).
+    allowed_models: str = ""
 
     @model_validator(mode="after")
     def validate_provider_key(self) -> "Settings":
@@ -30,6 +33,9 @@ class Settings(BaseSettings):
         if self.llm_provider == "anthropic" and not self.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
         return self
+
+    def allowed_models_list(self) -> list[str]:
+        return [m.strip() for m in self.allowed_models.split(",") if m.strip()]
 
     def effective_model(self) -> str:
         """Return the model to use, applying per-provider defaults when needed."""

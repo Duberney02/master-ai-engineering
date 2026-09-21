@@ -1,0 +1,705 @@
+{
+  "info": {
+    "name": "Estimador CAG",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "model_override",
+      "value": "gpt-4o-mini"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Health",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));",
+              "pm.test('healthy',()=>pm.expect(pm.response.json().status).to.eql('healthy'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      }
+    },
+    {
+      "name": "02 Estimate - defaults",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));",
+              "const j=pm.response.json();",
+              "pm.test('una fase',()=>pm.expect(j.usage.phases.length).to.eql(1));",
+              "pm.test('sin requisitos extraidos',()=>pm.expect(j.extracted_requirements).to.eql(null));",
+              "pm.test('trae evaluation',()=>pm.expect(j.evaluation).to.be.an('object'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "03 Estimate - inline_cleaning",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));",
+              "const j=pm.response.json();",
+              "pm.test('preprocessing',()=>pm.expect(j.preprocessing).to.eql('inline_cleaning'));",
+              "pm.test('una fase',()=>pm.expect(j.usage.phases.length).to.eql(1));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"preprocessing\": \"inline_cleaning\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "04 Estimate - two_phase",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));",
+              "const j=pm.response.json();",
+              "pm.test('dos fases',()=>pm.expect(j.usage.phases.map(p=>p.phase)).to.eql(['preprocessing','estimation']));",
+              "pm.test('requisitos extraidos',()=>pm.expect(j.extracted_requirements).to.be.a('string').and.not.empty);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"preprocessing\": \"two_phase\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "05 Estimate - ejemplos JSON (3)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"example_format\": \"json\",\n  \"num_examples\": 3\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "06 Estimate - ejemplos narrativa (5)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"example_format\": \"narrative\",\n  \"num_examples\": 5\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "07 Estimate - sin ejemplos",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"use_examples\": false\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "08 Estimate - model + max_tokens",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"model\": \"{{model_override}}\",\n  \"max_tokens\": 3000\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "09 Estimate - truncada (max_tokens=200)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));",
+              "const j=pm.response.json();",
+              "pm.test('finish_reason de truncamiento',()=>pm.expect(['length','max_tokens']).to.include(j.finish_reason));",
+              "pm.test('evaluation.truncated',()=>pm.expect(j.evaluation.truncated).to.eql(true));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"max_tokens\": 200\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "10 Estimate - evaluate=false",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));",
+              "pm.test('sin evaluation',()=>pm.expect(pm.response.json().evaluation).to.eql(null));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"evaluate\": false\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "11 Validacion - preprocessing invalido",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('422',()=>pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"preprocessing\": \"magia\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "12 Validacion - num_examples=6",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('422',()=>pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"num_examples\": 6\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "13 Validacion - max_tokens=0",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('422',()=>pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"max_tokens\": 0\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "14 Validacion - model con caracteres invalidos",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('422',()=>pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"model\": \"gpt 4o; drop\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "15 Validacion - transcripcion corta",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('422',()=>pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Corto\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "16 Error controlado - modelo inexistente",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('400 sin filtrar detalles internos',()=>{pm.response.to.have.status(400);pm.expect(pm.response.text()).to.not.include('sk-');});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"model\": \"modelo-que-no-existe\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

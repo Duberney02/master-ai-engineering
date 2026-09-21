@@ -1,0 +1,36 @@
+# Control de versiones y editor
+.git
+.gitignore
+.gitattributes
+.idea
+.vscode
+
+# Secretos y configuración local: nunca deben entrar en la imagen
+.env
+.env.*
+!.env.example
+
+# Entornos y cachés de Python
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+*.egg-info
+dist
+build
+
+# No necesarios en tiempo de ejecución
+tests
+docs
+postman
+README.md
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore

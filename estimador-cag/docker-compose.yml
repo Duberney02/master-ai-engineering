@@ -1,0 +1,35 @@
+# Docker Compose para DESARROLLO.
+#
+#   cp .env.example .env      # y completa la API key del proveedor elegido
+#   docker compose up --build
+#
+# El código de app/ se monta como volumen de solo lectura y uvicorn corre con
+# --reload: los cambios en el host se reflejan sin reconstruir la imagen.
+# Para producción usa la imagen del Dockerfile tal cual (sin volumen ni --reload).
+
+services:
+  estimador-cag:
+    build:
+      context: .
+      target: runtime
+    image: estimador-cag:dev
+    container_name: estimador-cag
+    ports:
+      - "8000:8000"
+    # Las claves y ajustes viven en .env (ignorado por git y por la imagen).
+    env_file:
+      - .env
+    environment:
+      # En Docker Desktop (Windows/macOS) los eventos del sistema de archivos no
+      # siempre llegan al contenedor: el sondeo hace fiable el --reload.
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./app:/app/app:ro
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3

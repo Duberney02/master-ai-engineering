@@ -3,8 +3,9 @@
 #   cp .env.example .env      # y completa la API key del proveedor elegido
 #   docker compose up --build
 #
-# El código de app/ se monta como volumen de solo lectura y uvicorn corre con
-# --reload: los cambios en el host se reflejan sin reconstruir la imagen.
+# Levanta dos servicios: la API (puerto 8000) y el chat de Streamlit
+# (puerto 8501). El código montado como volumen de solo lectura y --reload
+# hacen que los cambios en el host se reflejen sin reconstruir la imagen.
 # Para producción usa la imagen del Dockerfile tal cual (sin volumen ni --reload).
 
 services:
@@ -29,6 +30,32 @@ services:
     init: true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  estimador-cag-chat:
+    build:
+      context: .
+      target: runtime
+    image: estimador-cag:dev
+    container_name: estimador-cag-chat
+    ports:
+      - "8501:8501"
+    # Interfaz de chat: llama a la lógica del estimador directamente (no pasa
+    # por la API), así que solo necesita la API key del proveedor vía .env.
+    env_file:
+      - .env
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./app:/app/app:ro
+      - ./streamlit_app.py:/app/streamlit_app.py:ro
+    command: ["streamlit", "run", "streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       start_period: 15s

@@ -136,14 +136,17 @@ inyectan al arrancar el contenedor.
 
 ```bash
 cp .env.example .env        # completa la API key del proveedor elegido
-docker compose up --build   # http://localhost:8000
-docker compose ps           # STATUS pasa a "healthy" cuando /health responde
+docker compose up --build   # API: http://localhost:8000  ·  Chat: http://localhost:8501
+docker compose ps           # STATUS pasa a "healthy" cuando /health y /_stcore/health responden
 docker compose down
 ```
 
-`app/` se monta como volumen de solo lectura y uvicorn corre con `--reload`,
-así que los cambios de código se aplican sin reconstruir. Si cambian las
-dependencias (`pyproject.toml`/`uv.lock`), vuelve a ejecutar `up --build`.
+Levanta dos servicios a partir de la misma imagen: `estimador-cag` (la API, con
+`uvicorn --reload`) y `estimador-cag-chat` (el chat de Streamlit). Ambos montan
+`app/` como volumen de solo lectura, así que los cambios de código se aplican
+sin reconstruir; si cambian las dependencias (`pyproject.toml`/`uv.lock`),
+vuelve a ejecutar `up --build`. El chat no depende de la API: llama a la
+lógica del estimador directamente y solo necesita la API key del `.env`.
 
 ### Imagen para ejecución sin Compose
 

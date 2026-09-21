@@ -46,10 +46,11 @@ WORKDIR /app
 # Solo el entorno virtual ya construido y el código de la aplicación.
 COPY --from=builder /app/.venv /app/.venv
 COPY app/ ./app/
+COPY streamlit_app.py ./streamlit_app.py
 
 USER app
 
-EXPOSE 8000
+EXPOSE 8000 8501
 
 # Sonda sin curl (no existe en -slim): falla si /health no responde 2xx en 3 s.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

@@ -4,16 +4,30 @@ import httpx
 import pytest
 from anthropic import (
     APITimeoutError as AnthropicTimeout,
+)
+from anthropic import (
     AuthenticationError as AnthropicAuthError,
+)
+from anthropic import (
     BadRequestError as AnthropicBadRequest,
+)
+from anthropic import (
     RateLimitError as AnthropicRateLimit,
 )
 from fastapi.testclient import TestClient
 from openai import (
     APITimeoutError as OpenAITimeout,
+)
+from openai import (
     AuthenticationError as OpenAIAuthError,
+)
+from openai import (
     BadRequestError as OpenAIBadRequest,
+)
+from openai import (
     NotFoundError as OpenAINotFound,
+)
+from openai import (
     RateLimitError as OpenAIRateLimit,
 )
 
@@ -21,9 +35,11 @@ from app.context.examples import ESTIMATION_EXAMPLES
 from tests._fakes import (
     LONG_TRANSCRIPTION,
     anthropic_response,
+    anthropic_sdk,
+    make_app,
+    make_resources,
     openai_response,
-    patch_anthropic,
-    patch_openai,
+    openai_sdk,
 )
 
 SECRET = "sk-super-secret-key-123"
@@ -35,15 +51,51 @@ def _http_error(cls, status: int, url: str):
     return cls("mensaje interno " + SECRET, response=httpx.Response(status, request=request), body={})
 
 
-def _client(monkeypatch, provider: str) -> TestClient:
-    monkeypatch.setenv("LLM_PROVIDER", provider)
-    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", SECRET)
-    from app.config import get_settings
-    from app.main import app
+class _Env:
+    """App real (settings desde variables de entorno) con adaptadores reales sobre SDK simulados."""
 
-    get_settings.cache_clear()
-    return TestClient(app)
+    def __init__(self, monkeypatch):
+        self.monkeypatch = monkeypatch
+        self.providers = {}
+
+    def client(self, provider: str) -> TestClient:
+        self.monkeypatch.setenv("LLM_PROVIDER", provider)
+        self.monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+        self.monkeypatch.setenv("ANTHROPIC_API_KEY", SECRET)
+        self.monkeypatch.setenv("CACHE_ENABLED", "false")
+        # Sin reintentos: cada caso comprueba el mapeo de un único error.
+        self.monkeypatch.setenv("LLM_MAX_RETRIES", "0")
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+        resources = make_resources(get_settings(), dict(self.providers))
+        client = TestClient(make_app(resources))
+        client.__enter__()
+        self._client = client
+        return client
+
+    def close(self):
+        if getattr(self, "_client", None) is not None:
+            self._client.__exit__(None, None, None)
+
+
+@pytest.fixture
+def env(monkeypatch):
+    e = _Env(monkeypatch)
+    yield e
+    e.close()
+
+
+def patch_openai(env, *outcomes):
+    adapter, create = openai_sdk(*outcomes)
+    env.providers["openai"] = adapter
+    return create
+
+
+def patch_anthropic(env, *outcomes):
+    adapter, create = anthropic_sdk(*outcomes)
+    env.providers["anthropic"] = adapter
+    return create
 
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
@@ -67,9 +119,9 @@ ANTHROPIC_CASES = [
 
 
 @pytest.mark.parametrize("exc, status", OPENAI_CASES, ids=lambda x: type(x).__name__ if isinstance(x, Exception) else x)
-def test_openai_errors_map_to_safe_http_responses(monkeypatch, mocker, exc, status):
-    patch_openai(mocker, exc)
-    resp = _client(monkeypatch, "openai").post(
+def test_openai_errors_map_to_safe_http_responses(env, exc, status):
+    patch_openai(env, exc)
+    resp = env.client("openai").post(
         "/api/v1/estimate", json={"transcription": LONG_TRANSCRIPTION}
     )
     assert resp.status_code == status
@@ -78,18 +130,18 @@ def test_openai_errors_map_to_safe_http_responses(monkeypatch, mocker, exc, stat
 
 
 @pytest.mark.parametrize("exc, status", ANTHROPIC_CASES, ids=lambda x: type(x).__name__ if isinstance(x, Exception) else x)
-def test_anthropic_errors_map_to_safe_http_responses(monkeypatch, mocker, exc, status):
-    patch_anthropic(mocker, exc)
-    resp = _client(monkeypatch, "anthropic").post(
+def test_anthropic_errors_map_to_safe_http_responses(env, exc, status):
+    patch_anthropic(env, exc)
+    resp = env.client("anthropic").post(
         "/api/v1/estimate", json={"transcription": LONG_TRANSCRIPTION}
     )
     assert resp.status_code == status
     assert SECRET not in resp.text and "internal" not in resp.text.lower()
 
 
-def test_two_phase_failure_in_first_phase_is_controlled(monkeypatch, mocker):
-    create = patch_openai(mocker, RuntimeError(INTERNAL))
-    resp = _client(monkeypatch, "openai").post(
+def test_two_phase_failure_in_first_phase_is_controlled(env, monkeypatch):
+    create = patch_openai(env, RuntimeError(INTERNAL))
+    resp = env.client("openai").post(
         "/api/v1/estimate",
         json={"transcription": LONG_TRANSCRIPTION, "preprocessing": "two_phase"},
     )
@@ -98,31 +150,31 @@ def test_two_phase_failure_in_first_phase_is_controlled(monkeypatch, mocker):
     assert create.await_count == 1
 
 
-def test_empty_provider_response_is_a_controlled_502(monkeypatch, mocker):
-    patch_openai(mocker, openai_response("  "))
-    resp = _client(monkeypatch, "openai").post(
+def test_empty_provider_response_is_a_controlled_502(env, monkeypatch):
+    patch_openai(env, openai_response("  "))
+    resp = env.client("openai").post(
         "/api/v1/estimate", json={"transcription": LONG_TRANSCRIPTION}
     )
     assert resp.status_code == 502
 
 
-def test_disallowed_model_returns_422_and_never_calls_the_provider(monkeypatch, mocker):
+def test_disallowed_model_returns_422_and_never_calls_the_provider(env, monkeypatch):
     monkeypatch.setenv("ALLOWED_MODELS", "gpt-4o-mini")
-    create = patch_openai(mocker, openai_response("x"))
-    resp = _client(monkeypatch, "openai").post(
+    create = patch_openai(env, openai_response("x"))
+    resp = env.client("openai").post(
         "/api/v1/estimate", json={"transcription": LONG_TRANSCRIPTION, "model": "gpt-5-pro"}
     )
     assert resp.status_code == 422
     create.assert_not_awaited()
 
 
-def test_end_to_end_success_exposes_metadata_and_no_key(monkeypatch, mocker):
+def test_end_to_end_success_exposes_metadata_and_no_key(env, monkeypatch):
     create = patch_anthropic(
-        mocker,
+        env,
         anthropic_response("req", input_tokens=10, output_tokens=5),
         anthropic_response(ESTIMATION_EXAMPLES[1]["estimation"], input_tokens=900, output_tokens=700),
     )
-    resp = _client(monkeypatch, "anthropic").post(
+    resp = env.client("anthropic").post(
         "/api/v1/estimate",
         json={"transcription": LONG_TRANSCRIPTION, "preprocessing": "two_phase", "max_tokens": 2000},
     )

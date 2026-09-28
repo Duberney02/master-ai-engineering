@@ -1,5 +1,5 @@
 from app.context.examples import ESTIMATION_EXAMPLES, ESTIMATION_EXAMPLES_CATALOG
-from app.services.llm_service import EXTRACTION_SYSTEM_PROMPT, build_system_prompt
+from app.services.prompts import EXTRACTION_SYSTEM_PROMPT, build_system_prompt
 
 
 def test_default_prompt_includes_exactly_two_examples_in_markdown():

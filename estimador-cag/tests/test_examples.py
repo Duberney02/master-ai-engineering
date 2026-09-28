@@ -106,7 +106,7 @@ def test_json_format_is_valid_and_consistent_with_the_data():
     assert out.startswith("```json") and out.endswith("```")
     payload = json.loads(out.removeprefix("```json\n").removesuffix("\n```"))
     assert len(payload) == 4
-    for item, ex in zip(payload, ESTIMATION_EXAMPLES_CATALOG):
+    for item, ex in zip(payload, ESTIMATION_EXAMPLES_CATALOG[:4], strict=True):
         assert item["proyecto"] == ex.title
         tareas = item["desglose_de_tareas"]
         assert sum(t["horas"] for t in tareas) == item["resumen"]["total_horas"] == ex.total_hours

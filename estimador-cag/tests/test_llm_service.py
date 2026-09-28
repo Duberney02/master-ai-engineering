@@ -1,23 +1,35 @@
+"""Prompts y adaptadores reales de OpenAI/Anthropic sobre SDK simulados."""
+
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
-from anthropic import APITimeoutError as AnthropicTimeout, AuthenticationError as AnthropicAuthError
-from fastapi import HTTPException
-from openai import APITimeoutError as OpenAITimeout, AuthenticationError as OpenAIAuthError
+from anthropic import APITimeoutError as AnthropicTimeout
+from anthropic import AuthenticationError as AnthropicAuthError
+from openai import APITimeoutError as OpenAITimeout
+from openai import AuthenticationError as OpenAIAuthError
 
-from app.config import Settings
 from app.context.examples import ESTIMATION_EXAMPLES
-from app.services.llm_service import LLMEstimationResult, build_system_prompt, generate_estimation
+from app.llm.errors import LLMAuthError, LLMEmptyResponseError, LLMTimeoutError
+from app.services.estimation_service import EstimationResult
+from app.services.prompts import build_system_prompt
+from tests._fakes import (
+    LONG_TRANSCRIPTION,
+    anthropic_response,
+    anthropic_sdk,
+    anthropic_settings,
+    make_resources,
+    openai_response,
+    openai_sdk,
+    openai_settings,
+)
 
 
 def test_prompt_contains_role():
-    prompt = build_system_prompt()
-    assert "Senior Software Estimation Architect" in prompt
+    assert "Senior Software Estimation Architect" in build_system_prompt()
 
 
 def test_prompt_contains_default_example_summaries():
-    # Por defecto se inyectan los mismos 2 ejemplos que antes de existir num_examples.
     prompt = build_system_prompt()
     for ex in ESTIMATION_EXAMPLES[:2]:
         assert ex["meeting_summary"][:60] in prompt
@@ -30,173 +42,97 @@ def test_prompt_contains_default_example_estimations():
 
 
 def test_prompt_contains_output_format_markers():
-    # The output template uses Spanish headers (output language is Spanish)
     prompt = build_system_prompt()
-    assert "Estimación:" in prompt
-    assert "Supuestos" in prompt
-    assert "Riesgos" in prompt
-    assert "Preguntas abiertas" in prompt
+    for marker in ("Estimación:", "Supuestos", "Riesgos", "Preguntas abiertas"):
+        assert marker in prompt
 
 
 def test_prompt_instructs_assumptions_over_invention():
-    # Instructions are in English
-    prompt = build_system_prompt()
-    lower = prompt.lower()
-    assert "assumption" in lower
+    assert "assumption" in build_system_prompt().lower()
 
 
 def test_prompt_is_substantial():
-    prompt = build_system_prompt()
-    assert isinstance(prompt, str)
-    assert len(prompt) > 800
+    assert len(build_system_prompt()) > 800
 
 
-# ---------------------------------------------------------------------------
-# Task 5: async dispatch tests
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- dispatch
 
-def _openai_settings() -> Settings:
-    return Settings(
-        llm_provider="openai",
-        openai_api_key="sk-test",
-        llm_model="gpt-4o-mini",
-        _env_file=None,
+
+def _service(settings, **providers):
+    return make_resources(settings, providers).service
+
+
+async def test_generate_estimation_openai():
+    adapter, _ = openai_sdk(
+        openai_response("## Estimación: Test\nContenido", prompt_tokens=120, completion_tokens=80)
     )
+    result = await _service(openai_settings(), openai=adapter).generate(LONG_TRANSCRIPTION)
 
-
-def _anthropic_settings() -> Settings:
-    return Settings(
-        llm_provider="anthropic",
-        anthropic_api_key="sk-ant-test",
-        llm_model="gpt-4o-mini",  # OpenAI default — must be substituted to claude-haiku-4-5
-        _env_file=None,
-    )
-
-
-@pytest.mark.asyncio
-async def test_generate_estimation_openai(mocker):
-    mocker.patch("app.services.llm_service.get_settings", return_value=_openai_settings())
-
-    usage = MagicMock(prompt_tokens=120, completion_tokens=80, total_tokens=200)
-    choice = MagicMock()
-    choice.message.content = "## Estimación: Test\nContenido"
-    mock_response = MagicMock(choices=[choice], usage=usage, model="gpt-4o-mini")
-
-    mock_client = MagicMock()
-    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-    mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=mock_client)
-
-    result = await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
-
-    assert isinstance(result, LLMEstimationResult)
-    assert result.provider == "openai"
-    assert result.model == "gpt-4o-mini"
+    assert isinstance(result, EstimationResult)
+    est = result.estimation_phase
+    assert est.provider == "openai"
+    assert est.model == "gpt-4o-mini"
     assert result.estimation == "## Estimación: Test\nContenido"
-    assert result.input_tokens == 120
-    assert result.output_tokens == 80
-    assert result.total_tokens == 200
-    assert result.estimated_cost_usd is None
+    assert (est.input_tokens, est.output_tokens, est.total_tokens) == (120, 80, 200)
+    assert est.original_cost_usd == pytest.approx((120 * 0.15 + 80 * 0.60) / 1e6)
     assert isinstance(result.generated_at, datetime)
     assert result.latency_ms >= 0
 
 
-@pytest.mark.asyncio
-async def test_generate_estimation_anthropic_substitutes_default_model(mocker):
-    mocker.patch("app.services.llm_service.get_settings", return_value=_anthropic_settings())
-
-    usage = MagicMock(input_tokens=150, output_tokens=90)
-    content_block = MagicMock()
-    content_block.text = "## Estimación: Test Anthropic\nContenido"
-    mock_response = MagicMock(content=[content_block], usage=usage, model="claude-haiku-4-5")
-
-    mock_client = MagicMock()
-    mock_client.messages.create = AsyncMock(return_value=mock_response)
-    mocker.patch("app.services.llm_service.AsyncAnthropic", return_value=mock_client)
-
-    result = await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
-
-    assert result.provider == "anthropic"
-    assert result.model == "claude-haiku-4-5"
-    assert result.estimation == "## Estimación: Test Anthropic\nContenido"
-    assert result.input_tokens == 150
-    assert result.output_tokens == 90
-    assert result.total_tokens == 240
-    assert result.estimated_cost_usd is None
-
-
-@pytest.mark.asyncio
-async def test_generate_estimation_raises_502_on_empty_response(mocker):
-    mocker.patch("app.services.llm_service.get_settings", return_value=_openai_settings())
-
-    choice = MagicMock()
-    choice.message.content = "   "  # whitespace only — counts as empty
-    mock_response = MagicMock(
-        choices=[choice],
-        usage=MagicMock(prompt_tokens=10, completion_tokens=0, total_tokens=10),
-        model="gpt-4o-mini",
+async def test_generate_estimation_anthropic_substitutes_default_model():
+    adapter, create = anthropic_sdk(
+        anthropic_response("## Estimación: Test Anthropic\nContenido", input_tokens=150, output_tokens=90)
     )
-    mock_client = MagicMock()
-    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-    mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=mock_client)
+    settings = anthropic_settings(llm_model="gpt-4o-mini")  # default OpenAI → claude-haiku-4-5
+    result = await _service(settings, anthropic=adapter).generate(LONG_TRANSCRIPTION)
 
-    with pytest.raises(HTTPException) as exc_info:
-        await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
-    assert exc_info.value.status_code == 502
+    assert create.call_args.kwargs["model"] == "claude-haiku-4-5"
+    est = result.estimation_phase
+    assert (est.provider, est.model) == ("anthropic", "claude-haiku-4-5")
+    assert est.total_tokens == 240
 
 
-@pytest.mark.asyncio
-async def test_generate_estimation_raises_502_on_openai_auth_error(mocker):
-    mocker.patch("app.services.llm_service.get_settings", return_value=_openai_settings())
-    import httpx
+async def test_empty_response_raises_controlled_error():
+    adapter, _ = openai_sdk(openai_response("   "))
+    with pytest.raises(LLMEmptyResponseError):
+        await _service(openai_settings(), openai=adapter).generate(LONG_TRANSCRIPTION)
+
+
+def _openai_auth():
     req = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
-    resp = httpx.Response(401, request=req)
-    exc = OpenAIAuthError("invalid key", response=resp, body={})
-    mock_client = MagicMock()
-    mock_client.chat.completions.create = AsyncMock(side_effect=exc)
-    mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=mock_client)
-    with pytest.raises(HTTPException) as exc_info:
-        await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
-    assert exc_info.value.status_code == 502
+    return OpenAIAuthError("invalid key", response=httpx.Response(401, request=req), body={})
 
 
-@pytest.mark.asyncio
-async def test_generate_estimation_raises_504_on_openai_timeout(mocker):
-    mocker.patch("app.services.llm_service.get_settings", return_value=_openai_settings())
-    import httpx
+def _anthropic_auth():
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    return AnthropicAuthError("invalid key", response=httpx.Response(401, request=req), body={})
+
+
+async def test_openai_auth_error_is_translated():
+    adapter, _ = openai_sdk(_openai_auth())
+    with pytest.raises(LLMAuthError):
+        await _service(openai_settings(), openai=adapter).generate(LONG_TRANSCRIPTION)
+
+
+async def test_openai_timeout_is_translated_and_retried_within_the_limit():
     req = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
-    exc = OpenAITimeout(request=req)
-    mock_client = MagicMock()
-    mock_client.chat.completions.create = AsyncMock(side_effect=exc)
-    mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=mock_client)
-    with pytest.raises(HTTPException) as exc_info:
-        await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
-    assert exc_info.value.status_code == 504
+    adapter, create = openai_sdk(OpenAITimeout(request=req), OpenAITimeout(request=req))
+    with pytest.raises(LLMTimeoutError):
+        await _service(openai_settings(llm_max_retries=1), openai=adapter).generate(LONG_TRANSCRIPTION)
+    assert create.await_count == 2  # 1 intento + 1 reintento
 
 
-@pytest.mark.asyncio
-async def test_generate_estimation_raises_502_on_anthropic_auth_error(mocker):
-    mocker.patch("app.services.llm_service.get_settings", return_value=_anthropic_settings())
-    import httpx
+async def test_anthropic_auth_error_is_translated_and_not_retried():
+    adapter, create = anthropic_sdk(_anthropic_auth())
+    with pytest.raises(LLMAuthError):
+        await _service(anthropic_settings(), anthropic=adapter).generate(LONG_TRANSCRIPTION)
+    assert create.await_count == 1
+
+
+async def test_anthropic_timeout_is_translated():
     req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-    resp = httpx.Response(401, request=req)
-    exc = AnthropicAuthError("invalid key", response=resp, body={})
-    mock_client = MagicMock()
-    mock_client.messages.create = AsyncMock(side_effect=exc)
-    mocker.patch("app.services.llm_service.AsyncAnthropic", return_value=mock_client)
-    with pytest.raises(HTTPException) as exc_info:
-        await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
-    assert exc_info.value.status_code == 502
-
-
-@pytest.mark.asyncio
-async def test_generate_estimation_raises_504_on_anthropic_timeout(mocker):
-    mocker.patch("app.services.llm_service.get_settings", return_value=_anthropic_settings())
-    import httpx
-    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-    exc = AnthropicTimeout(request=req)
-    mock_client = MagicMock()
-    mock_client.messages.create = AsyncMock(side_effect=exc)
-    mocker.patch("app.services.llm_service.AsyncAnthropic", return_value=mock_client)
-    with pytest.raises(HTTPException) as exc_info:
-        await generate_estimation("Transcripción suficientemente larga para ser válida en el test")
-    assert exc_info.value.status_code == 504
+    adapter, _ = anthropic_sdk(AnthropicTimeout(request=req))
+    with pytest.raises(LLMTimeoutError):
+        await _service(anthropic_settings(llm_max_retries=0), anthropic=adapter).generate(
+            LONG_TRANSCRIPTION
+        )

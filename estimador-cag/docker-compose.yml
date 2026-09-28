@@ -3,24 +3,29 @@
 #   cp .env.example .env      # y completa la API key del proveedor elegido
 #   docker compose up --build
 #
-# Levanta dos servicios: la API (puerto 8000) y el chat de Streamlit
-# (puerto 8501). El código montado como volumen de solo lectura y --reload
-# hacen que los cambios en el host se reflejen sin reconstruir la imagen.
-# Para producción usa la imagen del Dockerfile tal cual (sin volumen ni --reload).
+# Servicios:
+#   api    FastAPI (puerto 8000). Único servicio con credenciales (.env) y acceso a Redis.
+#   chat   Streamlit (puerto 8501). Solo recibe ESTIMATOR_API_BASE_URL y habla con la
+#          API por HTTP usando el nombre del servicio (http://api:8000).
+#   redis  Caché compartida. NO se publica en el host; solo es accesible en la red interna.
+#
+# El código se monta como volumen de solo lectura y --reload aplica los cambios sin
+# reconstruir. Para producción usa las imágenes del Dockerfile tal cual.
 
 services:
-  estimador-cag:
+  api:
     build:
       context: .
-      target: runtime
-    image: estimador-cag:dev
-    container_name: estimador-cag
+      target: api
+    image: estimador-cag-api:dev
+    container_name: estimador-cag-api
     ports:
       - "8000:8000"
     # Las claves y ajustes viven en .env (ignorado por git y por la imagen).
     env_file:
       - .env
     environment:
+      REDIS_URL: redis://redis:6379/0
       # En Docker Desktop (Windows/macOS) los eventos del sistema de archivos no
       # siempre llegan al contenedor: el sondeo hace fiable el --reload.
       WATCHFILES_FORCE_POLLING: "true"
@@ -28,6 +33,11 @@ services:
       - ./app:/app/app:ro
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     init: true
+    depends_on:
+      # `service_started` y no `service_healthy`: la API arranca y funciona sin caché
+      # si Redis no está disponible (modo degradado).
+      redis:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 30s
@@ -35,28 +45,57 @@ services:
       start_period: 15s
       retries: 3
 
-  estimador-cag-chat:
+  chat:
     build:
       context: .
-      target: runtime
-    image: estimador-cag:dev
+      target: ui
+    image: estimador-cag-ui:dev
     container_name: estimador-cag-chat
     ports:
       - "8501:8501"
-    # Interfaz de chat: llama a la lógica del estimador directamente (no pasa
-    # por la API), así que solo necesita la API key del proveedor vía .env.
-    env_file:
-      - .env
+    # Sin env_file: el cliente no necesita credenciales ni acceso a Redis.
     environment:
+      ESTIMATOR_API_BASE_URL: http://api:8000
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
-      - ./app:/app/app:ro
       - ./streamlit_app.py:/app/streamlit_app.py:ro
-    command: ["streamlit", "run", "streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
+      - ./estimator_client:/app/estimator_client:ro
     init: true
+    depends_on:
+      api:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       start_period: 15s
       retries: 3
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: estimador-cag-redis
+    # Caché pura: límite de memoria con expulsión LRU y persistencia AOF en un volumen
+    # para que la caché sobreviva a reinicios (`docker compose down -v` la borra).
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --save
+      - ""
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 5
+
+volumes:
+  redis-data:

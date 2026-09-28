@@ -18,7 +18,8 @@ carpeta.
 master-ai-engineering/
 ├── README.md                     ← este archivo (índice del repo)
 ├── estimador-cag/                ← proyecto 1: API de estimación de software con CAG
-│   ├── app/                      ← código FastAPI (routers, services, schemas, config)
+│   ├── app/                      ← servidor FastAPI (routers, services, wrapper LLM, caché)
+│   ├── estimator_client/         ← cliente HTTP/SSE usado por la interfaz Streamlit
 │   ├── tests/                    ← suite de pytest
 │   ├── docs/superpowers/         ← spec y plan de diseño del proyecto
 │   └── README.md                 ← documentación completa del proyecto
@@ -30,7 +31,7 @@ master-ai-engineering/
 
 | Proyecto | Descripción | Stack |
 |---|---|---|
-| [`estimador-cag/`](./estimador-cag/README.md) | API FastAPI que genera estimaciones iniciales de proyectos de software a partir de transcripciones de reuniones con clientes, usando CAG (Context-Augmented Generation): los ejemplos históricos se inyectan directamente en el prompt del LLM, sin embeddings ni vector store. Soporta OpenAI y Anthropic como proveedores. | Python 3.11, FastAPI, Pydantic, uv, OpenAI SDK, Anthropic SDK |
+| [`estimador-cag/`](./estimador-cag/README.md) | API FastAPI que genera estimaciones iniciales de proyectos de software a partir de transcripciones de reuniones con clientes, usando CAG (Context-Augmented Generation): los ejemplos históricos se inyectan directamente en el prompt del LLM, sin embeddings ni vector store. Soporta OpenAI y Anthropic (con fallback), streaming SSE, caché Redis e interfaz Streamlit desacoplada que consume la API por HTTP. | Python 3.11, FastAPI, Pydantic, uv, OpenAI SDK, Anthropic SDK, Redis, Streamlit, Docker Compose |
 
 A medida que se agreguen nuevos proyectos del máster (RAG, agentes,
 evaluación, etc.), se listarán aquí con un enlace a su propio README.
@@ -61,7 +62,7 @@ diseño también se archivan en `docs/superpowers/` (por ejemplo,
 
 ```bash
 cd <nombre-del-proyecto>       # p. ej. estimador-cag
-uv sync --group dev            # instala dependencias
+uv sync --all-extras           # instala dependencias (servidor + cliente + dev)
 cp .env.example .env           # configura variables/API keys
 uv run uvicorn app.main:app --reload   # o el comando de arranque del proyecto
 ```

@@ -1,74 +1,84 @@
-import pytest
+"""Streaming con los adaptadores reales (SDK simulados) a través del servicio."""
 
-from app.services.llm_service import StreamMetrics, generate_estimation_stream
+import httpx
+import pytest
+from openai import APIConnectionError
+
+from app.llm.errors import LLMStreamInterruptedError
+from app.services.estimation_service import ContentDelta, EstimationCompleted
 from tests._fakes import (
     LONG_TRANSCRIPTION,
-    anthropic_final_message,
+    anthropic_response,
     anthropic_settings,
+    anthropic_stream_sdk,
+    make_resources,
     openai_settings,
     openai_stream_chunks,
-    patch_anthropic_stream,
-    patch_openai_stream,
-    patch_settings,
+    openai_stream_sdk,
 )
 
 
-@pytest.mark.asyncio
-async def test_stream_openai_yields_deltas_in_order(mocker):
-    patch_settings(mocker, openai_settings())
-    patch_openai_stream(mocker, openai_stream_chunks(["Hola ", "mundo"]))
+async def _collect(service):
+    deltas, final = [], None
+    async for event in service.stream(LONG_TRANSCRIPTION):
+        if isinstance(event, ContentDelta):
+            deltas.append(event.text)
+        elif isinstance(event, EstimationCompleted):
+            final = event.result
+    return deltas, final
 
-    metrics = StreamMetrics()
-    chunks = [c async for c in generate_estimation_stream(LONG_TRANSCRIPTION, metrics)]
 
-    assert chunks == ["Hola ", "mundo"]
-
-
-@pytest.mark.asyncio
-async def test_stream_openai_populates_metrics(mocker):
-    patch_settings(mocker, openai_settings())
-    patch_openai_stream(
-        mocker,
-        openai_stream_chunks(["Hola"], model="gpt-4o-mini", prompt_tokens=120, completion_tokens=30),
+async def test_stream_openai_yields_deltas_in_order_and_real_metadata():
+    adapter, create, _ = openai_stream_sdk(
+        openai_stream_chunks(["Hola ", "mundo"], model="gpt-4o-mini-2024-07-18",
+                             prompt_tokens=120, completion_tokens=30)
     )
+    service = make_resources(openai_settings(), {"openai": adapter}).service
+    deltas, final = await _collect(service)
 
-    metrics = StreamMetrics()
-    async for _ in generate_estimation_stream(LONG_TRANSCRIPTION, metrics):
-        pass
-
-    assert metrics.model == "gpt-4o-mini"
-    assert metrics.input_tokens == 120
-    assert metrics.output_tokens == 30
-    assert metrics.latency_ms >= 0
-
-
-@pytest.mark.asyncio
-async def test_stream_anthropic_yields_deltas_and_metrics(mocker):
-    patch_settings(mocker, anthropic_settings())
-    final = anthropic_final_message(
-        "Hola mundo", model="claude-haiku-4-5", input_tokens=150, output_tokens=40
-    )
-    patch_anthropic_stream(mocker, ["Hola ", "mundo"], final)
-
-    metrics = StreamMetrics()
-    chunks = [c async for c in generate_estimation_stream(LONG_TRANSCRIPTION, metrics)]
-
-    assert chunks == ["Hola ", "mundo"]
-    assert metrics.model == "claude-haiku-4-5"
-    assert metrics.input_tokens == 150
-    assert metrics.output_tokens == 40
-
-
-@pytest.mark.asyncio
-async def test_stream_uses_shared_system_prompt(mocker):
-    patch_settings(mocker, openai_settings())
-    create = patch_openai_stream(mocker, openai_stream_chunks(["ok"]))
-
-    metrics = StreamMetrics()
-    async for _ in generate_estimation_stream(LONG_TRANSCRIPTION, metrics):
-        pass
-
+    assert deltas == ["Hola ", "mundo"]
+    est = final.estimation_phase
+    assert est.model == "gpt-4o-mini-2024-07-18"  # el que respondió, no el solicitado
+    assert est.requested_model == "gpt-4o-mini"
+    assert (est.input_tokens, est.output_tokens) == (120, 30)
+    assert est.finish_reason == "stop"  # confirmado por el proveedor
+    assert est.original_cost_usd is not None  # instantánea fechada con tarifa conocida
     kwargs = create.call_args.kwargs
-    assert kwargs["stream"] is True
-    assert kwargs["messages"][0]["role"] == "system"
+    assert kwargs["stream"] is True and kwargs["stream_options"] == {"include_usage": True}
     assert "Senior Software Estimation Architect" in kwargs["messages"][0]["content"]
+
+
+async def test_stream_without_usage_reports_unknown_tokens_and_cost_not_zero():
+    adapter, _, _ = openai_stream_sdk(
+        openai_stream_chunks(["Hola"], include_usage=False, finish_reason=None)
+    )
+    service = make_resources(openai_settings(), {"openai": adapter}).service
+    _, final = await _collect(service)
+    est = final.estimation_phase
+    assert est.input_tokens is None and est.output_tokens is None and est.total_tokens is None
+    assert est.original_cost_usd is None and est.incurred_cost_usd is None
+    assert est.finish_reason == "unknown"
+
+
+async def test_stream_anthropic_yields_deltas_and_metrics():
+    final_message = anthropic_response("Hola mundo", model="claude-haiku-4-5",
+                                       input_tokens=150, output_tokens=40)
+    adapter, _ = anthropic_stream_sdk(["Hola ", "mundo"], final_message)
+    service = make_resources(anthropic_settings(), {"anthropic": adapter}).service
+    deltas, final = await _collect(service)
+    assert deltas == ["Hola ", "mundo"]
+    est = final.estimation_phase
+    assert (est.model, est.input_tokens, est.output_tokens, est.finish_reason) == (
+        "claude-haiku-4-5", 150, 40, "end_turn",
+    )
+
+
+async def test_provider_failure_after_content_interrupts_without_retry():
+    error = APIConnectionError(request=httpx.Request("POST", "https://api.openai.com"))
+    chunks = openai_stream_chunks(["Parcial"])[:1]  # sin fin ni uso
+    adapter, create, stream = openai_stream_sdk(chunks, error=error)
+    service = make_resources(openai_settings(llm_max_retries=3), {"openai": adapter}).service
+    with pytest.raises(LLMStreamInterruptedError):
+        await _collect(service)
+    assert create.await_count == 1  # no se reintenta tras emitir contenido
+    assert stream.closed  # el stream del SDK se cierra

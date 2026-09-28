@@ -27,7 +27,8 @@ def test_anthropic_requires_key():
 def test_openai_valid():
     s = _openai()
     assert s.llm_provider == "openai"
-    assert s.openai_api_key == "sk-test"
+    assert s.openai_api_key.get_secret_value() == "sk-test"
+    assert "sk-test" not in repr(s)  # SecretStr: no aparece en logs/repr
 
 
 def test_anthropic_valid():

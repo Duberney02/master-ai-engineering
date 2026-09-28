@@ -26,17 +26,24 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: uv sync --group dev
+        # Servidor (extra api) + cliente (extra ui) + herramientas de desarrollo.
+        run: uv sync --all-extras --group dev
+
+      - name: Lint
+        run: uv run ruff check .
 
       - name: Run tests
-        # Suite completa (sin llamadas reales a OpenAI/Anthropic: los SDK están simulados):
-        # - test_project_structure.py -> estructura de carpetas/módulos y archivos de Docker
-        # - test_main.py               -> smoke test: /health, /docs, /openapi.json
-        # - test_router.py             -> opciones del endpoint, metadatos y evaluación
-        # - test_generation_flow.py    -> preprocesamiento (limpieza y dos fases), uso por fase
-        # - test_examples.py / test_prompt_options.py -> catálogo, selección y formatos CAG
-        # - test_evaluation.py         -> evaluación estructural y discrepancias numéricas
-        # - test_api_errors.py / test_llm_service.py / test_config.py -> errores y configuración
+        # Suite completa sin llamadas reales a proveedores ni a Redis (dobles de prueba):
+        # - test_project_structure.py -> estructura, Docker y separación cliente/servidor en Compose
+        # - test_main.py / test_router.py / test_api_errors.py -> endpoint normal y errores saneados
+        # - test_sse_api.py             -> contrato SSE, validación previa, errores y desconexión
+        # - test_llm_client.py          -> wrapper: reintentos, fallback, timeout, caché, deduplicación
+        # - test_cache.py               -> claves, TTL, Redis caído/lento y entradas corruptas
+        # - test_costs_metrics.py       -> costes, tokens y estado de caché en una y dos fases
+        # - test_routing_config.py      -> política de modelos y validación de configuración
+        # - test_client.py / test_streamlit_app.py -> cliente HTTP/SSE e interfaz sin backend
+        # - test_async_nonblocking.py   -> el event loop no se bloquea
+        # - test_generation_flow.py / test_examples.py / test_prompt_options.py / test_evaluation.py
         run: uv run pytest -v
 
   docker:
@@ -57,16 +64,27 @@ jobs:
           cp .env.example .env
           docker compose config --quiet
 
-      - name: Build image
-        run: docker build --tag estimador-cag:ci .
-
-      - name: Image runs as a non-root user
+      - name: Build images
         run: |
-          uid="$(docker run --rm --entrypoint id estimador-cag:ci -u)"
-          echo "uid=$uid"
-          test "$uid" != "0"
+          docker build --target api --tag estimador-cag:ci .
+          docker build --target ui --tag estimador-cag-ui:ci .
 
-      - name: Container becomes healthy
+      - name: Images run as a non-root user
+        run: |
+          for image in estimador-cag:ci estimador-cag-ui:ci; do
+            uid="$(docker run --rm --entrypoint id "$image" -u)"
+            echo "$image uid=$uid"
+            test "$uid" != "0"
+          done
+
+      - name: UI image contains no backend, provider SDKs or Redis client
+        run: |
+          docker run --rm --entrypoint python estimador-cag-ui:ci -c "
+          import importlib.util as u, os, sys
+          bad = [m for m in ('app', 'openai', 'anthropic', 'redis', 'fastapi') if u.find_spec(m)]
+          sys.exit(f'unexpected modules: {bad}' if bad else 0)"
+
+      - name: API container becomes healthy (without Redis, degraded mode)
         run: |
           docker run -d --name estimador-ci -e LLM_PROVIDER=openai -e OPENAI_API_KEY=sk-ci-dummy \
             estimador-cag:ci

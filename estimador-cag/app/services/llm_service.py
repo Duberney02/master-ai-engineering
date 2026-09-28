@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -57,6 +58,16 @@ class PhaseResult:
     output_tokens: int
     total_tokens: int
     latency_ms: int
+
+
+@dataclass
+class StreamMetrics:
+    """Metadatos poblados progresivamente durante un streaming; leer solo tras agotarlo."""
+
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    latency_ms: int = 0
 
 
 @dataclass
@@ -325,6 +336,39 @@ async def generate_estimation(
     return result
 
 
+async def generate_estimation_stream(
+    transcription: str,
+    metrics: StreamMetrics,
+    options: GenerationOptions | None = None,
+) -> AsyncIterator[str]:
+    """Streaming de la fase de estimación (sin `two_phase`). Puebla `metrics` en `metrics`
+    una vez agotado el generador: un generador async no puede `return` un valor (PEP 525)."""
+    options = options or GenerationOptions()
+    settings = get_settings()
+    model = _resolve_model(settings, options)
+    system_prompt = build_system_prompt(
+        example_format=options.example_format,
+        num_examples=options.num_examples,
+        use_examples=options.use_examples,
+        inline_cleaning=options.preprocessing == "inline_cleaning",
+    )
+    user_message = _estimation_user_message(transcription, None)
+
+    start = time.monotonic()
+    if settings.llm_provider == "openai":
+        stream = _stream_openai(system_prompt, user_message, settings, model, options.max_tokens, metrics)
+    elif settings.llm_provider == "anthropic":
+        stream = _stream_anthropic(
+            system_prompt, user_message, settings, model, options.max_tokens, metrics
+        )
+    else:
+        raise HTTPException(status_code=500, detail="Unsupported LLM provider")
+
+    async for chunk in stream:
+        yield chunk
+    metrics.latency_ms = int((time.monotonic() - start) * 1000)
+
+
 def _phase_result(phase: Phase, completion: _Completion) -> PhaseResult:
     return PhaseResult(
         phase=phase,
@@ -469,3 +513,67 @@ async def _call_anthropic(
         input_tokens=response.usage.input_tokens,
         output_tokens=response.usage.output_tokens,
     )
+
+
+async def _stream_openai(
+    system_prompt: str,
+    user_message: str,
+    settings: Settings,
+    model: str,
+    max_tokens: int | None,
+    metrics: StreamMetrics,
+) -> AsyncIterator[str]:
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    kwargs: dict = {}
+    if max_tokens is not None:
+        kwargs["max_completion_tokens"] = max_tokens
+    try:
+        stream = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.3,
+            stream=True,
+            stream_options={"include_usage": True},
+            **kwargs,
+        )
+    except Exception as exc:
+        _raise_provider_http_error("OpenAI", exc, _OPENAI_ERRORS)
+
+    async for chunk in stream:
+        metrics.model = chunk.model or metrics.model
+        if chunk.choices:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+        if chunk.usage:
+            metrics.input_tokens = chunk.usage.prompt_tokens
+            metrics.output_tokens = chunk.usage.completion_tokens
+
+
+async def _stream_anthropic(
+    system_prompt: str,
+    user_message: str,
+    settings: Settings,
+    model: str,
+    max_tokens: int | None,
+    metrics: StreamMetrics,
+) -> AsyncIterator[str]:
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    try:
+        async with client.messages.stream(
+            model=model,
+            max_tokens=max_tokens or _ANTHROPIC_DEFAULT_MAX_TOKENS,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text
+            final = await stream.get_final_message()
+            metrics.model = final.model
+            metrics.input_tokens = final.usage.input_tokens
+            metrics.output_tokens = final.usage.output_tokens
+    except Exception as exc:
+        _raise_provider_http_error("Anthropic", exc, _ANTHROPIC_ERRORS)

@@ -12,7 +12,7 @@ form.onsubmit=async e=>{
  result.textContent='';document.querySelector('#error').textContent='';document.querySelector('#metrics').textContent='';
  document.querySelector('#status').textContent='Generando…';let done=false;
  try{
-  const response=await fetch('/api/v1/estimate/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({transcription:document.querySelector('#transcription').value})});
+  const response=await fetch('/api/v1/transcription/estimate/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({transcription:document.querySelector('#transcription').value})});
   if(!response.ok)throw Error(`Solicitud rechazada (HTTP ${response.status})`);
   const reader=response.body.getReader(), decoder=new TextDecoder();let buffer='';
   try{while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});

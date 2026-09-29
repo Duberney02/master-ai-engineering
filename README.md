@@ -20,10 +20,10 @@ master-ai-engineering/
 ├── estimador-cag/                ← proyecto 1: API de estimación de software con CAG
 │   ├── app/                      ← código FastAPI (routers, services, schemas, config)
 │   ├── tests/                    ← suite de pytest
-│   ├── docs/superpowers/         ← spec y plan de diseño del proyecto
+│   ├── docs/                    ← documentación e historial de diseño
 │   └── README.md                 ← documentación completa del proyecto
-└── .superpowers/sdd/              ← historial del flujo Spec-Driven Development
-    └── <fecha>-<proyecto>/        ← briefs, paquetes de revisión y progreso por tarea
+├── openspec/                     ← especificaciones y cambios SDD actuales
+└── .agents/skills/               ← integración OpenSpec para Codex
 ```
 
 ## Proyectos
@@ -43,12 +43,10 @@ requisitos, luego un plan técnico, después se descompone en tareas
 pequeñas y trazables, se implementan una a una con revisión, y finalmente
 se verifica el resultado contra la especificación original.
 
-El historial de ese proceso (specs, planes, briefs de tarea, paquetes de
-revisión y bitácora de progreso) queda registrado en
-[`.superpowers/sdd/`](./.superpowers/sdd/), organizado por fecha y nombre
-de proyecto. Dentro de cada proyecto, la especificación y el plan de
-diseño también se archivan en `docs/superpowers/` (por ejemplo,
-[`estimador-cag/docs/superpowers/`](./estimador-cag/docs/superpowers/)).
+El flujo actual usa **OpenSpec 1.13.2**: propuesta → especificaciones y diseño →
+tareas → implementación y verificación. Consulta [la guía de OpenSpec](./openspec/README.md)
+para instalar el CLI, invocar los skills de Codex y validar cambios. El historial
+anterior se conserva como referencia; no forma parte del flujo actual.
 
 ## Requisitos generales
 

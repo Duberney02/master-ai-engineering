@@ -1,10 +1,15 @@
-import logging
+from __future__ import annotations
+
+import inspect
+import structlog
 import time
+from contextlib import aclosing
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from anthropic import (
+    APIConnectionError as AnthropicConnectionError,
     APITimeoutError as AnthropicTimeout,
     AsyncAnthropic,
     AuthenticationError as AnthropicAuthError,
@@ -14,6 +19,7 @@ from anthropic import (
 )
 from fastapi import HTTPException
 from openai import (
+    APIConnectionError as OpenAIConnectionError,
     APITimeoutError as OpenAITimeout,
     AsyncOpenAI,
     AuthenticationError as OpenAIAuthError,
@@ -25,8 +31,9 @@ from openai import (
 from app.config import Settings, get_settings
 from app.context.examples import ExampleFormat, format_examples, select_examples
 from app.schemas.estimation import DEFAULT_NUM_EXAMPLES, Phase, PreprocessingMode
+from app.services.llm_wrapper import Completion as _Completion, LLMWrapper, ProviderFailure, total_cost
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Límite de tokens de salida de Anthropic cuando la solicitud no indica uno
 # (comportamiento previo). En OpenAI, sin límite explícito se usa el del proveedor.
@@ -45,6 +52,10 @@ class GenerationOptions:
     use_examples: bool = True
     model: str | None = None
     max_tokens: int | None = None
+    thinking_budget: int | None = None
+    include_project_costs: bool = False
+    developer_rate_eur: float = 62.5
+    designer_rate_eur: float = 50.0
 
 
 @dataclass
@@ -58,6 +69,11 @@ class PhaseResult:
     output_tokens: int
     total_tokens: int
     latency_ms: int
+    provider: str = ""
+    cache_hit: bool = False
+    estimated_cost_usd: float | None = None
+    request_cost_usd: float | None = None
+    usage_available: bool = True
 
 
 @dataclass
@@ -68,6 +84,7 @@ class StreamMetrics:
     input_tokens: int = 0
     output_tokens: int = 0
     latency_ms: int = 0
+    result: LLMEstimationResult | None = None
 
 
 @dataclass
@@ -85,18 +102,8 @@ class LLMEstimationResult:
     preprocessing: PreprocessingMode = "none"
     extracted_requirements: str | None = None
     phases: list[PhaseResult] = field(default_factory=list)
-
-
-@dataclass
-class _Completion:
-    """Respuesta normalizada de un proveedor, independiente del SDK."""
-
-    text: str
-    model: str
-    finish_reason: str
-    input_tokens: int
-    output_tokens: int
-    latency_ms: int = 0
+    cache_hit: bool = False
+    request_cost_usd: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -254,12 +261,61 @@ def _estimation_user_message(transcription: str, extracted_requirements: str | N
 
 
 def _resolve_model(settings: Settings, options: GenerationOptions) -> str:
+    if options.thinking_budget is not None:
+        if not 1024 <= options.thinking_budget <= 15000:
+            raise HTTPException(422, "thinking_budget must be between 1024 and 15000")
+        if settings.llm_provider != "anthropic":
+            raise HTTPException(422, "thinking_budget requires Anthropic")
+        if options.model is None and settings.fallback_provider == "openai":
+            raise HTTPException(422, "thinking_budget is incompatible with OpenAI fallback")
     if options.model is None:
         return settings.effective_model()
     allowed = settings.allowed_models_list()
     if allowed and options.model not in allowed:
         raise HTTPException(status_code=422, detail="Requested model is not allowed")
     return options.model
+
+
+def validate_options(options: GenerationOptions) -> None:
+    _resolve_model(get_settings(), options)
+
+
+def _prompt(options: GenerationOptions) -> str:
+    prompt = build_system_prompt(
+        example_format=options.example_format, num_examples=options.num_examples,
+        use_examples=options.use_examples, inline_cleaning=options.preprocessing == "inline_cleaning",
+    )
+    if options.include_project_costs:
+        prompt += f"""
+## Project budget (additional mandatory section)
+Keep the existing Spanish output and hours breakdown unchanged. After all existing sections,
+append a section '### Presupuesto económico' with exactly this additional table:
+| Rol | Horas | Tarifa EUR/h | Coste EUR |
+|---|---:|---:|---:|
+Use only the roles Desarrollo and Diseño. Desarrollo rate: {options.developer_rate_eur:g} EUR/h.
+Diseño rate: {options.designer_rate_eur:g} EUR/h. Include only needed roles. Allocate the total
+estimated hours across these rows. Cost per row = hours * rate. Use plain decimal numbers
+(no ranges or thousands separators) in this budget table. Finish with 'Total presupuesto: X EUR'.
+State that this indicative budget excludes taxes and third-party services.
+"""
+    return prompt
+
+
+def _result(completion, phases, options, extracted, start) -> LLMEstimationResult:
+    input_tokens = sum(p.input_tokens for p in phases)
+    output_tokens = sum(p.output_tokens for p in phases)
+    return LLMEstimationResult(
+        estimation=completion.text, model=completion.model, provider=completion.provider,
+        input_tokens=input_tokens, output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        estimated_cost_usd=total_cost([p.estimated_cost_usd for p in phases]),
+        request_cost_usd=total_cost([p.request_cost_usd for p in phases]),
+        cache_hit=all(p.cache_hit for p in phases),
+        generated_at=datetime.now(tz=timezone.utc),
+        latency_ms=int((time.monotonic() - start) * 1000),
+        finish_reason=completion.finish_reason, preprocessing=options.preprocessing,
+        extracted_requirements=extracted, phases=phases,
+    )
 
 
 async def generate_estimation(
@@ -271,16 +327,15 @@ async def generate_estimation(
     start = time.monotonic()
 
     logger.info(
-        "Generating estimation provider=%s model=%s preprocessing=%s example_format=%s "
-        "num_examples=%d use_examples=%s max_tokens=%s transcription_chars=%d",
-        settings.llm_provider,
-        model,
-        options.preprocessing,
-        options.example_format,
-        options.num_examples,
-        options.use_examples,
-        options.max_tokens,
-        len(transcription),
+        "estimation_started",
+        provider=settings.llm_provider,
+        model=model,
+        preprocessing=options.preprocessing,
+        example_format=options.example_format,
+        num_examples=options.num_examples,
+        use_examples=options.use_examples,
+        max_tokens=options.max_tokens,
+        transcription_chars=len(transcription),
     )
 
     phases: list[PhaseResult] = []
@@ -288,50 +343,32 @@ async def generate_estimation(
 
     if options.preprocessing == "two_phase":
         extraction = await _complete(
-            settings, EXTRACTION_SYSTEM_PROMPT, transcription, model, EXTRACTION_MAX_TOKENS
+            settings, EXTRACTION_SYSTEM_PROMPT, transcription, model, EXTRACTION_MAX_TOKENS,
+            allow_fallback=options.model is None,
         )
         extracted = extraction.text
         phases.append(_phase_result("preprocessing", extraction))
 
-    system_prompt = build_system_prompt(
-        example_format=options.example_format,
-        num_examples=options.num_examples,
-        use_examples=options.use_examples,
-        inline_cleaning=options.preprocessing == "inline_cleaning",
-    )
+    system_prompt = _prompt(options)
     completion = await _complete(
         settings,
         system_prompt,
         _estimation_user_message(transcription, extracted),
         model,
         options.max_tokens,
+        thinking_budget=options.thinking_budget,
+        allow_fallback=options.model is None,
     )
     phases.append(_phase_result("estimation", completion))
 
-    input_tokens = sum(p.input_tokens for p in phases)
-    output_tokens = sum(p.output_tokens for p in phases)
-    result = LLMEstimationResult(
-        estimation=completion.text,
-        model=completion.model,
-        provider=settings.llm_provider,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        total_tokens=input_tokens + output_tokens,
-        estimated_cost_usd=None,
-        generated_at=datetime.now(tz=timezone.utc),
-        latency_ms=int((time.monotonic() - start) * 1000),
-        finish_reason=completion.finish_reason,
-        preprocessing=options.preprocessing,
-        extracted_requirements=extracted,
-        phases=phases,
-    )
+    result = _result(completion, phases, options, extracted, start)
     logger.info(
-        "Estimation complete provider=%s model=%s finish_reason=%s tokens=%d latency_ms=%d",
-        result.provider,
-        result.model,
-        result.finish_reason,
-        result.total_tokens,
-        result.latency_ms,
+        "estimation_completed",
+        provider=result.provider,
+        model=result.model,
+        finish_reason=result.finish_reason,
+        total_tokens=result.total_tokens,
+        latency_ms=result.latency_ms,
     )
     return result
 
@@ -341,32 +378,45 @@ async def generate_estimation_stream(
     metrics: StreamMetrics,
     options: GenerationOptions | None = None,
 ) -> AsyncIterator[str]:
-    """Streaming de la fase de estimación (sin `two_phase`). Puebla `metrics` en `metrics`
-    una vez agotado el generador: un generador async no puede `return` un valor (PEP 525)."""
+    """Misma orquestación y metadatos que la respuesta normal; emite solo la estimación."""
     options = options or GenerationOptions()
     settings = get_settings()
     model = _resolve_model(settings, options)
-    system_prompt = build_system_prompt(
-        example_format=options.example_format,
-        num_examples=options.num_examples,
-        use_examples=options.use_examples,
-        inline_cleaning=options.preprocessing == "inline_cleaning",
-    )
-    user_message = _estimation_user_message(transcription, None)
-
     start = time.monotonic()
-    if settings.llm_provider == "openai":
-        stream = _stream_openai(system_prompt, user_message, settings, model, options.max_tokens, metrics)
-    elif settings.llm_provider == "anthropic":
-        stream = _stream_anthropic(
-            system_prompt, user_message, settings, model, options.max_tokens, metrics
+    phases: list[PhaseResult] = []
+    extracted = None
+    if options.preprocessing == "two_phase":
+        extraction = await _complete(
+            settings, EXTRACTION_SYSTEM_PROMPT, transcription, model, EXTRACTION_MAX_TOKENS,
+            allow_fallback=options.model is None,
         )
-    else:
-        raise HTTPException(status_code=500, detail="Unsupported LLM provider")
+        extracted = extraction.text
+        phases.append(_phase_result("preprocessing", extraction))
+    system_prompt = _prompt(options)
+    user_message = _estimation_user_message(transcription, extracted)
+    completion = _Completion(usage_available=False)
 
-    async for chunk in stream:
-        yield chunk
-    metrics.latency_ms = int((time.monotonic() - start) * 1000)
+    def call(provider, target_model, attempt):
+        selected = settings.model_copy(update={"llm_provider": provider})
+        if provider == "openai":
+            return _stream_openai(system_prompt, user_message, selected, target_model,
+                                  options.max_tokens, attempt)
+        return _stream_anthropic(system_prompt, user_message, selected, target_model,
+                                options.max_tokens, attempt, options.thinking_budget)
+
+    stream = LLMWrapper(settings).stream(
+        system_prompt, user_message, model, options.max_tokens, options.thinking_budget,
+        options.model is None, completion, call,
+    )
+    async with aclosing(stream):
+        async for chunk in stream:
+            yield chunk
+    phases.append(_phase_result("estimation", completion))
+    metrics.result = _result(completion, phases, options, extracted, start)
+    metrics.model = completion.model
+    metrics.input_tokens = metrics.result.input_tokens
+    metrics.output_tokens = metrics.result.output_tokens
+    metrics.latency_ms = metrics.result.latency_ms
 
 
 def _phase_result(phase: Phase, completion: _Completion) -> PhaseResult:
@@ -378,6 +428,11 @@ def _phase_result(phase: Phase, completion: _Completion) -> PhaseResult:
         output_tokens=completion.output_tokens,
         total_tokens=completion.input_tokens + completion.output_tokens,
         latency_ms=completion.latency_ms,
+        provider=completion.provider,
+        cache_hit=completion.cache_hit,
+        estimated_cost_usd=completion.estimated_cost_usd,
+        request_cost_usd=completion.request_cost_usd,
+        usage_available=completion.usage_available,
     )
 
 
@@ -387,16 +442,18 @@ async def _complete(
     user_message: str,
     model: str,
     max_tokens: int | None,
+    thinking_budget: int | None = None,
+    allow_fallback: bool = True,
 ) -> _Completion:
-    start = time.monotonic()
-    if settings.llm_provider == "openai":
-        completion = await _call_openai(system_prompt, user_message, settings, model, max_tokens)
-    elif settings.llm_provider == "anthropic":
-        completion = await _call_anthropic(system_prompt, user_message, settings, model, max_tokens)
-    else:
-        raise HTTPException(status_code=500, detail="Unsupported LLM provider")
-    completion.latency_ms = int((time.monotonic() - start) * 1000)
-    return completion
+    async def call(provider, target_model):
+        selected = settings.model_copy(update={"llm_provider": provider})
+        if provider == "openai":
+            return await _call_openai(system_prompt, user_message, selected, target_model, max_tokens)
+        return await _call_anthropic(system_prompt, user_message, selected, target_model,
+                                     max_tokens, thinking_budget)
+    return await LLMWrapper(settings).complete(
+        system_prompt, user_message, model, max_tokens, thinking_budget, allow_fallback, call,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -412,21 +469,41 @@ def _raise_provider_http_error(provider: str, exc: Exception, errors: dict) -> N
     """Traduce una excepción del SDK a HTTPException sin exponer su mensaje (puede
     contener datos internos) ni la API key. Solo se registra el tipo de la excepción."""
     if isinstance(exc, errors["auth"]):
-        logger.error("%s authentication failed", provider)
-        raise HTTPException(status_code=502, detail="LLM authentication failed") from None
+        logger.error("llm_authentication_failed", provider=provider)
+        raise ProviderFailure(502, "LLM authentication failed") from None
     if isinstance(exc, errors["timeout"]):
-        logger.error("%s request timed out", provider)
-        raise HTTPException(status_code=504, detail="LLM request timed out") from None
+        logger.error("llm_timeout", provider=provider)
+        raise ProviderFailure(504, "LLM request timed out", retryable=True) from None
     if isinstance(exc, errors["rate_limit"]):
-        logger.error("%s rate limit reached", provider)
-        raise HTTPException(status_code=429, detail="LLM provider rate limit reached") from None
+        logger.error("llm_rate_limited", provider=provider)
+        raise ProviderFailure(429, "LLM provider rate limit reached", retryable=True) from None
     if isinstance(exc, errors["invalid"]):
-        logger.error("%s rejected the request: %s", provider, type(exc).__name__)
+        logger.error("llm_request_rejected", provider=provider, error_type=type(exc).__name__)
         raise HTTPException(
             status_code=400, detail="LLM provider rejected the request (check model and options)"
         ) from None
-    logger.error("%s call failed: %s", provider, type(exc).__name__)
-    raise HTTPException(status_code=502, detail="LLM provider error") from None
+    logger.error("llm_call_failed", provider=provider, error_type=type(exc).__name__)
+    transient = isinstance(exc, (OpenAIConnectionError, AnthropicConnectionError)) or (
+        isinstance(getattr(exc, "status_code", None), int) and exc.status_code >= 500
+    )
+    raise ProviderFailure(502, "LLM provider error", retryable=transient) from None
+
+
+async def _close(resource) -> None:
+    """SDK clients and streams own connections; also accepts minimal test doubles."""
+    close = getattr(resource, "close", None)
+    if close is not None:
+        result = close()
+        if inspect.isawaitable(result):
+            await result
+
+
+def _anthropic_options(max_tokens, thinking_budget):
+    limit = max_tokens or _ANTHROPIC_DEFAULT_MAX_TOKENS
+    if thinking_budget is None:
+        return {"max_tokens": limit}
+    return {"max_tokens": max(limit, thinking_budget + 1024),
+            "thinking": {"type": "enabled", "budget_tokens": thinking_budget}}
 
 
 _OPENAI_ERRORS = {
@@ -450,7 +527,8 @@ async def _call_openai(
     model: str,
     max_tokens: int | None,
 ) -> _Completion:
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.llm_timeout,
+                         max_retries=settings.llm_retries)
     kwargs: dict = {}
     if max_tokens is not None:
         kwargs["max_completion_tokens"] = max_tokens
@@ -466,6 +544,8 @@ async def _call_openai(
         )
     except Exception as exc:
         _raise_provider_http_error("OpenAI", exc, _OPENAI_ERRORS)
+    finally:
+        await _close(client)
 
     choice = response.choices[0] if response.choices else None
     text = ((choice.message.content if choice else None) or "").strip()
@@ -488,17 +568,21 @@ async def _call_anthropic(
     settings: Settings,
     model: str,
     max_tokens: int | None,
+    thinking_budget: int | None = None,
 ) -> _Completion:
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=settings.llm_timeout,
+                            max_retries=settings.llm_retries)
     try:
         response = await client.messages.create(
             model=model,
-            max_tokens=max_tokens or _ANTHROPIC_DEFAULT_MAX_TOKENS,
+            **_anthropic_options(max_tokens, thinking_budget),
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         )
     except Exception as exc:
         _raise_provider_http_error("Anthropic", exc, _ANTHROPIC_ERRORS)
+    finally:
+        await _close(client)
 
     # El contenido puede mezclar bloques (p. ej. de razonamiento): solo cuentan los de texto.
     blocks = [b.text for b in response.content or [] if isinstance(getattr(b, "text", None), str)]
@@ -521,9 +605,11 @@ async def _stream_openai(
     settings: Settings,
     model: str,
     max_tokens: int | None,
-    metrics: StreamMetrics,
+    metrics: _Completion,
 ) -> AsyncIterator[str]:
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.llm_timeout,
+                         max_retries=settings.llm_retries)
+    stream = None
     kwargs: dict = {}
     if max_tokens is not None:
         kwargs["max_completion_tokens"] = max_tokens
@@ -539,18 +625,27 @@ async def _stream_openai(
             stream_options={"include_usage": True},
             **kwargs,
         )
+        async for chunk in stream:
+            metrics.model = chunk.model or metrics.model
+            if chunk.choices:
+                choice = chunk.choices[0]
+                reason = getattr(choice, "finish_reason", None)
+                if reason:
+                    metrics.finish_reason = _finish_reason(reason)
+                delta = choice.delta.content
+                if delta:
+                    yield delta
+            if chunk.usage:
+                metrics.input_tokens = chunk.usage.prompt_tokens
+                metrics.output_tokens = chunk.usage.completion_tokens
+                metrics.usage_available = True
     except Exception as exc:
         _raise_provider_http_error("OpenAI", exc, _OPENAI_ERRORS)
-
-    async for chunk in stream:
-        metrics.model = chunk.model or metrics.model
-        if chunk.choices:
-            delta = chunk.choices[0].delta.content
-            if delta:
-                yield delta
-        if chunk.usage:
-            metrics.input_tokens = chunk.usage.prompt_tokens
-            metrics.output_tokens = chunk.usage.completion_tokens
+    finally:
+        try:
+            await _close(stream)
+        finally:
+            await _close(client)
 
 
 async def _stream_anthropic(
@@ -559,13 +654,15 @@ async def _stream_anthropic(
     settings: Settings,
     model: str,
     max_tokens: int | None,
-    metrics: StreamMetrics,
+    metrics: _Completion,
+    thinking_budget: int | None = None,
 ) -> AsyncIterator[str]:
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=settings.llm_timeout,
+                            max_retries=settings.llm_retries)
     try:
         async with client.messages.stream(
             model=model,
-            max_tokens=max_tokens or _ANTHROPIC_DEFAULT_MAX_TOKENS,
+            **_anthropic_options(max_tokens, thinking_budget),
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         ) as stream:
@@ -575,5 +672,9 @@ async def _stream_anthropic(
             metrics.model = final.model
             metrics.input_tokens = final.usage.input_tokens
             metrics.output_tokens = final.usage.output_tokens
+            metrics.finish_reason = _finish_reason(final.stop_reason)
+            metrics.usage_available = True
     except Exception as exc:
         _raise_provider_http_error("Anthropic", exc, _ANTHROPIC_ERRORS)
+    finally:
+        await _close(client)

@@ -1,15 +1,25 @@
 name: estimador-cag CI
 
-# Solo corre cuando algo cambia dentro de estimador-cag/, porque este
-# repositorio es un monorepo con varios proyectos independientes.
+# Valida la aplicación y las especificaciones que gobiernan sus cambios.
 on:
   push:
     branches: [master]
-    paths: ["estimador-cag/**"]
+    paths: ["estimador-cag/**", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
   pull_request:
-    paths: ["estimador-cag/**"]
+    paths: ["estimador-cag/**", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
 
 jobs:
+  specs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm install -g @fission-ai/openspec@1.13.2
+      - run: openspec validate --all --strict
+        env:
+          OPENSPEC_TELEMETRY: "0"
   test:
     runs-on: ubuntu-latest
     defaults:
@@ -26,7 +36,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: uv sync --group dev
+        run: uv sync --locked --group dev
 
       - name: Run tests
         # Suite completa (sin llamadas reales a OpenAI/Anthropic: los SDK están simulados):

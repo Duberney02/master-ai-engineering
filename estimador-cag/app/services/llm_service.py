@@ -419,6 +419,36 @@ async def generate_estimation_stream(
     metrics.latency_ms = metrics.result.latency_ms
 
 
+async def generate_from_prompts(system_prompt: str, user_message: str) -> _Completion:
+    """Estimación estructurada: recibe los mensajes system/user ya renderizados desde las
+    plantillas y aplica la misma política de proveedor (caché, reintentos, fallback, costes)."""
+    settings = get_settings()
+    return await _complete(
+        settings, system_prompt, user_message, settings.effective_model(), max_tokens=None,
+    )
+
+
+async def generate_from_prompts_stream(
+    system_prompt: str, user_message: str, result: _Completion
+) -> AsyncIterator[str]:
+    """Versión en streaming de `generate_from_prompts`. `result` se completa (modelo,
+    tokens, costes, caché) solo cuando el stream termina con éxito."""
+    settings = get_settings()
+
+    def call(provider, target_model, attempt):
+        selected = settings.model_copy(update={"llm_provider": provider})
+        if provider == "openai":
+            return _stream_openai(system_prompt, user_message, selected, target_model, None, attempt)
+        return _stream_anthropic(system_prompt, user_message, selected, target_model, None, attempt)
+
+    stream = LLMWrapper(settings).stream(
+        system_prompt, user_message, settings.effective_model(), None, None, True, result, call,
+    )
+    async with aclosing(stream):
+        async for chunk in stream:
+            yield chunk
+
+
 def _phase_result(phase: Phase, completion: _Completion) -> PhaseResult:
     return PhaseResult(
         phase=phase,

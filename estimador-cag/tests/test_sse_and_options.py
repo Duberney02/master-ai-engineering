@@ -22,14 +22,14 @@ from tests._fakes import (
 
 def client():
     app = FastAPI()
-    app.include_router(router, prefix="/api/v1")
+    app.include_router(router, prefix="/api/v1/transcription")
     return TestClient(app)
 
 
 def test_sse_tokens_metadata_done_and_multiline(mocker):
     patch_settings(mocker, openai_settings())
     patch_openai_stream(mocker, openai_stream_chunks(["## Estimación\n\n", "Texto"] ))
-    response = client().post("/api/v1/estimate/stream", json={"transcription": LONG_TRANSCRIPTION})
+    response = client().post("/api/v1/transcription/estimate/stream", json={"transcription": LONG_TRANSCRIPTION})
     events = list(parse_sse(response.text.splitlines()))
     assert response.headers["content-type"].startswith("text/event-stream")
     assert [name for name, _ in events] == ["token", "token", "metadata", "done"]
@@ -47,7 +47,7 @@ def test_sse_error_sanitized_and_never_done(mocker):
         yield openai_stream_chunks(["partial"])[0]
         raise RuntimeError("private secret")
     call.return_value = broken()
-    response = client().post("/api/v1/estimate/stream", json={"transcription": LONG_TRANSCRIPTION})
+    response = client().post("/api/v1/transcription/estimate/stream", json={"transcription": LONG_TRANSCRIPTION})
     events = list(parse_sse(response.text.splitlines()))
     assert [name for name, _ in events] == ["token", "error"]
     assert "private secret" not in response.text
@@ -62,7 +62,7 @@ def test_sse_error_sanitized_and_never_done(mocker):
 def test_stream_validation_before_provider(mocker, payload):
     patch_settings(mocker, openai_settings(allowed_models="gpt-4o-mini"))
     call = patch_openai_stream(mocker, [])
-    response = client().post("/api/v1/estimate/stream", json=payload)
+    response = client().post("/api/v1/transcription/estimate/stream", json=payload)
     assert response.status_code == 422
     call.assert_not_awaited()
 
@@ -73,7 +73,7 @@ def test_two_phase_stream_reports_extraction_and_evaluation(mocker):
     from tests._fakes import _AsyncIterFromList
     call.side_effect = [openai_response("Requisitos", finish_reason="length"),
                         _AsyncIterFromList(openai_stream_chunks(["Estimación"]))]
-    response = client().post("/api/v1/estimate/stream", json={"transcription": LONG_TRANSCRIPTION, "preprocessing": "two_phase"})
+    response = client().post("/api/v1/transcription/estimate/stream", json={"transcription": LONG_TRANSCRIPTION, "preprocessing": "two_phase"})
     events = list(parse_sse(response.text.splitlines()))
     meta = events[-2][1]
     assert meta["extracted_requirements"] == "Requisitos"

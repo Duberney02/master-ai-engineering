@@ -1,9 +1,19 @@
 """Utilidades sin dependencia de Streamlit que soportan `streamlit_app.py`."""
 
 import asyncio
+import re
 from collections.abc import AsyncIterator, Iterator, Mapping, MutableMapping
 
 _SECRET_ENV_KEYS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+_EXAMPLE = re.compile(
+    r"^### Ejemplo \d+: (?P<title>.+?)\n.*?<project_description>\n(?P<description>.*?)\n</project_description>",
+    re.S | re.M,
+)
+
+
+def few_shot_examples(system_prompt: str) -> list[tuple[str, str]]:
+    """(título, descripción) de cada ejemplo few-shot incluido en un prompt de sistema renderizado."""
+    return [(m["title"], m["description"]) for m in _EXAMPLE.finditer(system_prompt)]
 
 
 def sync_secrets_to_env(secrets: Mapping[str, str], environ: MutableMapping[str, str]) -> None:

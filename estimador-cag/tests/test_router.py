@@ -207,6 +207,8 @@ def test_response_exposes_finish_reason_phases_and_extracted_requirements(rich_c
     assert pre == {
         "phase": "preprocessing", "model": "gpt-4o-mini", "finish_reason": "stop",
         "input_tokens": 300, "output_tokens": 40, "total_tokens": 340, "latency_ms": 400,
+        "provider": "", "cache_hit": False, "estimated_cost_usd": None,
+        "request_cost_usd": None, "usage_available": True,
     }
     assert est["phase"] == "estimation" and est["total_tokens"] == 2900
 

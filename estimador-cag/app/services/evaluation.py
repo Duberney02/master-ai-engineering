@@ -88,6 +88,7 @@ def evaluate_estimation(
     text: str,
     finish_reason: str,
     preprocessing_finish_reason: str | None = None,
+    project_rates: dict[str, float] | None = None,
 ) -> EstimationEvaluation:
     """Evalúa la estructura y la coherencia numérica de una estimación."""
     issues: list[str] = []
@@ -186,7 +187,16 @@ def evaluate_estimation(
     ]
     score = round(sum(checks) / len(checks), 3)
 
+    project_match, project_total = None, None
+    if project_rates is not None:
+        project_match, project_total = _evaluate_project_costs(text, project_rates, declared_total)
+        if not project_match:
+            issues.append("Presupuesto económico ausente o inconsistente: revisa roles, horas, tarifas y total")
+        score = round((sum(checks) + int(project_match)) / (len(checks) + 1), 3)
+
     return EstimationEvaluation(
+        project_cost_match=project_match,
+        declared_project_cost_eur=project_total,
         sections=sections,
         sections_in_order=sections_in_order,
         has_breakdown_table=has_table,
@@ -205,3 +215,43 @@ def evaluate_estimation(
         score=score,
         issues=issues,
     )
+
+
+def _evaluate_project_costs(text: str, rates: dict[str, float], total_hours: float | None):
+    """Separate exact budget table; never confuse it with the original hours table."""
+    from decimal import Decimal, InvalidOperation
+
+    header = re.search(r"^\|\s*Rol\s*\|\s*Horas\s*\|\s*Tarifa EUR/h\s*\|\s*Coste EUR\s*\|\s*$",
+                       text, re.M | re.I)
+    declared = re.search(r"Total presupuesto\s*:\s*(\d+(?:[.,]\d+)?)\s*EUR", text, re.I)
+    amount = Decimal(declared.group(1).replace(",", ".")) if declared else None
+    if not header or amount is None or total_hours is None:
+        return False, float(amount) if amount is not None else None
+    cost_sum = Decimal(0)
+    hour_sum = Decimal(0)
+    seen = set()
+    valid = True
+    for line in text[header.end():].lstrip("\r\n").splitlines():
+        if not line.strip().startswith("|"):
+            break
+        if _SEPARATOR_RE.match(line.strip()):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) != 4 or cells[0] not in rates or cells[0] in seen:
+            valid = False
+            continue
+        seen.add(cells[0])
+        try:
+            hours, rate, cost = (Decimal(c.replace(",", ".")) for c in cells[1:])
+            if not all(x.is_finite() and x >= 0 for x in (hours, rate, cost)):
+                valid = False
+                continue
+            valid &= abs(rate - Decimal(str(rates[cells[0]]))) <= Decimal("0.001")
+            valid &= abs(hours * rate - cost) <= Decimal("0.01")
+            hour_sum += hours
+            cost_sum += cost
+        except InvalidOperation:
+            valid = False
+    valid &= bool(seen) and abs(cost_sum - amount) <= Decimal("0.01")
+    valid &= abs(hour_sum - Decimal(str(total_hours))) <= Decimal("0.01")
+    return bool(valid), float(amount)

@@ -71,6 +71,10 @@ class EstimationRequest(BaseModel):
         default=True,
         description="Incluir la evaluación estructural de la estimación en la respuesta.",
     )
+    thinking_budget: int | None = Field(default=None, ge=1024, le=15000)
+    include_project_costs: bool = False
+    developer_rate_eur: float = Field(default=62.5, gt=0, le=10000, allow_inf_nan=False)
+    designer_rate_eur: float = Field(default=50, gt=0, le=10000, allow_inf_nan=False)
 
 
 class PhaseUsage(BaseModel):
@@ -81,6 +85,11 @@ class PhaseUsage(BaseModel):
     output_tokens: int
     total_tokens: int
     latency_ms: int
+    provider: str = ""
+    cache_hit: bool = False
+    estimated_cost_usd: float | None = None
+    request_cost_usd: float | None = None
+    usage_available: bool = True
 
 
 class UsageInfo(BaseModel):
@@ -98,6 +107,8 @@ class EstimationEvaluation(BaseModel):
     sections: dict[str, bool] = Field(
         description="Encabezados obligatorios presentes (título y secciones ###)."
     )
+    project_cost_match: bool | None = None
+    declared_project_cost_eur: float | None = None
     sections_in_order: bool
     has_breakdown_table: bool
     table_rows: int
@@ -125,6 +136,8 @@ class EstimationResponse(BaseModel):
     finish_reason: str
     usage: UsageInfo
     estimated_cost_usd: float | None
+    request_cost_usd: float | None = None
+    cache_hit: bool = False
     latency_ms: int
     generated_at: datetime
     preprocessing: PreprocessingMode = "none"

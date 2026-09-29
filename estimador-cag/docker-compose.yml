@@ -3,8 +3,8 @@
 #   cp .env.example .env      # y completa la API key del proveedor elegido
 #   docker compose up --build
 #
-# Levanta dos servicios: la API (puerto 8000) y el chat de Streamlit
-# (puerto 8501). El código montado como volumen de solo lectura y --reload
+# Levanta API (8000), chat HTTP (8501) y Redis sin puerto publicado.
+# El código montado como volumen de solo lectura y --reload
 # hacen que los cambios en el host se reflejen sin reconstruir la imagen.
 # Para producción usa la imagen del Dockerfile tal cual (sin volumen ni --reload).
 
@@ -21,9 +21,13 @@ services:
     env_file:
       - .env
     environment:
+      REDIS_URL: redis://redis:6379/0
       # En Docker Desktop (Windows/macOS) los eventos del sistema de archivos no
       # siempre llegan al contenedor: el sondeo hace fiable el --reload.
       WATCHFILES_FORCE_POLLING: "true"
+    depends_on:
+      redis:
+        condition: service_healthy
     volumes:
       - ./app:/app/app:ro
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
@@ -43,12 +47,13 @@ services:
     container_name: estimador-cag-chat
     ports:
       - "8501:8501"
-    # Interfaz de chat: llama a la lógica del estimador directamente (no pasa
-    # por la API), así que solo necesita la API key del proveedor vía .env.
-    env_file:
-      - .env
+    # El chat consume HTTP y no recibe las claves de .env.
     environment:
       WATCHFILES_FORCE_POLLING: "true"
+      ESTIMATOR_API_BASE_URL: http://estimador-cag:8000
+    depends_on:
+      estimador-cag:
+        condition: service_healthy
     volumes:
       - ./app:/app/app:ro
       - ./streamlit_app.py:/app/streamlit_app.py:ro
@@ -60,3 +65,18 @@ services:
       timeout: 5s
       start_period: 15s
       retries: 3
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  redis_data:

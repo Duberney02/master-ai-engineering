@@ -108,6 +108,13 @@ def openai_stream_chunks(
     chunks.append(
         SimpleNamespace(
             model=model,
+            choices=[SimpleNamespace(delta=SimpleNamespace(content=None), finish_reason="stop")],
+            usage=None,
+        )
+    )
+    chunks.append(
+        SimpleNamespace(
+            model=model,
             choices=[],
             usage=SimpleNamespace(
                 prompt_tokens=prompt_tokens,

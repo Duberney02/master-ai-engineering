@@ -58,3 +58,16 @@ def test_get_settings_is_cached(monkeypatch):
     s1 = get_settings()
     s2 = get_settings()
     assert s1 is s2
+
+
+@pytest.mark.parametrize("options", [
+    {"fallback_provider": "anthropic"},
+    {"fallback_model": "claude"},
+    {"fallback_provider": "anthropic", "fallback_model": "claude", "anthropic_api_key": None},
+    {"llm_timeout": 0}, {"llm_retries": -1}, {"cache_ttl": 0},
+    {"model_prices": {"model": {"input": -1, "output": 2}}},
+    {"model_prices": {"model": {"input": float("inf"), "output": 2}}},
+])
+def test_invalid_resilience_settings(options):
+    with pytest.raises(ValidationError):
+        _openai(**options)

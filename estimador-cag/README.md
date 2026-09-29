@@ -111,21 +111,19 @@ transcripción, obtén la estimación en streaming y sigue la conversación.
 uv run streamlit run streamlit_app.py
 ```
 
-Se abre en `http://localhost:8501`. La respuesta se muestra token a token
-(`st.write_stream`), funciona con el proveedor configurado (OpenAI o
-Anthropic) y reutiliza exactamente la misma lógica que el endpoint —
-`build_system_prompt()` y `generate_estimation_stream()` de
-`app/services/llm_service.py` — así que el comportamiento se mantiene
-sincronizado con `/api/v1/estimate`.
-
-La API key se resuelve igual que en la API (`.env` vía `get_settings()`) o,
-como alternativa, desde `st.secrets` (`.streamlit/secrets.toml`, no se
-versiona) con las claves `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`; nunca se
-escribe en el código.
+Se abre en `http://localhost:8501`. Arranca también la API en otra terminal.
+El chat consume `/api/v1/estimate/stream` por HTTP y no necesita claves LLM.
+Configura `ESTIMATOR_API_BASE_URL` (por defecto `http://localhost:8000`) en
+el entorno, `.env` o `st.secrets`; el entorno tiene prioridad. Las claves de
+proveedores se configuran únicamente en el backend.
 
 El `st.sidebar` muestra, de solo lectura: el system prompt activo, los
 ejemplos históricos del catálogo CAG que alimentan el prompt, y las métricas
-de la última llamada (modelo, tokens de entrada/salida, latencia).
+de la última llamada (modelo, tokens de entrada/salida, latencia, caché y coste).
+La plantilla del panel corresponde a esta versión del cliente; si el backend
+remoto cambia su prompt hay que actualizar el cliente para reflejarlo.
+«Borrar historial» limpia mensajes y métricas. Cada transcripción se estima
+independientemente: el historial visible no se envía al modelo.
 
 ## Ejecución con Docker
 
@@ -141,12 +139,15 @@ docker compose ps           # STATUS pasa a "healthy" cuando /health y /_stcore/
 docker compose down
 ```
 
-Levanta dos servicios a partir de la misma imagen: `estimador-cag` (la API, con
-`uvicorn --reload`) y `estimador-cag-chat` (el chat de Streamlit). Ambos montan
+Levanta `estimador-cag` (API), `estimador-cag-chat` (chat HTTP) y Redis con
+volumen y límite de 128 MB. Redis no publica su puerto. API y chat montan
 `app/` como volumen de solo lectura, así que los cambios de código se aplican
 sin reconstruir; si cambian las dependencias (`pyproject.toml`/`uv.lock`),
-vuelve a ejecutar `up --build`. El chat no depende de la API: llama a la
-lógica del estimador directamente y solo necesita la API key del `.env`.
+vuelve a ejecutar `up --build`. El chat espera la API saludable; solo la API
+recibe el `.env` con claves. Redis tiene TTL y evicción LRU.
+
+Consulta [resiliencia, caché y contrato SSE](docs/resilience-and-streaming.md)
+para configurar fallback, precios, razonamiento y presupuesto económico.
 
 ### Imagen para ejecución sin Compose
 

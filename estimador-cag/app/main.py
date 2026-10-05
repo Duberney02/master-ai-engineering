@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
-from app.routers import estimations
+from app.routers import estimations, project_estimations
 from app.logging_config import configure_logging
 
 logger = structlog.get_logger(__name__)
@@ -29,15 +29,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Software Estimation CAG API",
     description=(
-        "Genera estimaciones de proyectos de software a partir de transcripciones "
-        "de reuniones con clientes, inyectando ejemplos históricos directamente en "
-        "el contexto del LLM (Context-Augmented Generation)."
+        "Genera estimaciones de proyectos de software. `/api/v1/estimate` parte de una "
+        "solicitud estructurada y prompts versionados; `/api/v1/transcription/*` parte de "
+        "transcripciones de reuniones con ejemplos históricos en el contexto del LLM "
+        "(Context-Augmented Generation)."
     ),
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
-app.include_router(estimations.router, prefix="/api/v1", tags=["estimations"])
+app.include_router(project_estimations.router, prefix="/api/v1", tags=["estimations"])
+app.include_router(estimations.router, prefix="/api/v1/transcription", tags=["transcription"])
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 

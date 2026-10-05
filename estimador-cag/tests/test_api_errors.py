@@ -70,7 +70,7 @@ ANTHROPIC_CASES = [
 def test_openai_errors_map_to_safe_http_responses(monkeypatch, mocker, exc, status):
     patch_openai(mocker, exc)
     resp = _client(monkeypatch, "openai").post(
-        "/api/v1/estimate", json={"transcription": LONG_TRANSCRIPTION}
+        "/api/v1/transcription/estimate", json={"transcription": LONG_TRANSCRIPTION}
     )
     assert resp.status_code == status
     assert SECRET not in resp.text and "internal" not in resp.text.lower()
@@ -81,7 +81,7 @@ def test_openai_errors_map_to_safe_http_responses(monkeypatch, mocker, exc, stat
 def test_anthropic_errors_map_to_safe_http_responses(monkeypatch, mocker, exc, status):
     patch_anthropic(mocker, exc)
     resp = _client(monkeypatch, "anthropic").post(
-        "/api/v1/estimate", json={"transcription": LONG_TRANSCRIPTION}
+        "/api/v1/transcription/estimate", json={"transcription": LONG_TRANSCRIPTION}
     )
     assert resp.status_code == status
     assert SECRET not in resp.text and "internal" not in resp.text.lower()
@@ -90,7 +90,7 @@ def test_anthropic_errors_map_to_safe_http_responses(monkeypatch, mocker, exc, s
 def test_two_phase_failure_in_first_phase_is_controlled(monkeypatch, mocker):
     create = patch_openai(mocker, RuntimeError(INTERNAL))
     resp = _client(monkeypatch, "openai").post(
-        "/api/v1/estimate",
+        "/api/v1/transcription/estimate",
         json={"transcription": LONG_TRANSCRIPTION, "preprocessing": "two_phase"},
     )
     assert resp.status_code == 502
@@ -101,7 +101,7 @@ def test_two_phase_failure_in_first_phase_is_controlled(monkeypatch, mocker):
 def test_empty_provider_response_is_a_controlled_502(monkeypatch, mocker):
     patch_openai(mocker, openai_response("  "))
     resp = _client(monkeypatch, "openai").post(
-        "/api/v1/estimate", json={"transcription": LONG_TRANSCRIPTION}
+        "/api/v1/transcription/estimate", json={"transcription": LONG_TRANSCRIPTION}
     )
     assert resp.status_code == 502
 
@@ -110,7 +110,7 @@ def test_disallowed_model_returns_422_and_never_calls_the_provider(monkeypatch, 
     monkeypatch.setenv("ALLOWED_MODELS", "gpt-4o-mini")
     create = patch_openai(mocker, openai_response("x"))
     resp = _client(monkeypatch, "openai").post(
-        "/api/v1/estimate", json={"transcription": LONG_TRANSCRIPTION, "model": "gpt-5-pro"}
+        "/api/v1/transcription/estimate", json={"transcription": LONG_TRANSCRIPTION, "model": "gpt-5-pro"}
     )
     assert resp.status_code == 422
     create.assert_not_awaited()
@@ -123,7 +123,7 @@ def test_end_to_end_success_exposes_metadata_and_no_key(monkeypatch, mocker):
         anthropic_response(ESTIMATION_EXAMPLES[1]["estimation"], input_tokens=900, output_tokens=700),
     )
     resp = _client(monkeypatch, "anthropic").post(
-        "/api/v1/estimate",
+        "/api/v1/transcription/estimate",
         json={"transcription": LONG_TRANSCRIPTION, "preprocessing": "two_phase", "max_tokens": 2000},
     )
     assert resp.status_code == 200

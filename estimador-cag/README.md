@@ -1,8 +1,14 @@
 # Software Estimation CAG API
 
-FastAPI backend que genera estimaciones iniciales de proyectos de software
-a partir de transcripciones de reuniones con clientes, utilizando CAG
-(Context-Augmented Generation) con OpenAI o Anthropic.
+FastAPI backend que genera estimaciones iniciales de proyectos de software con
+OpenAI o Anthropic. Ofrece dos flujos:
+
+- **Estimación estructurada** (`POST /api/v1/estimate`): una descripción breve más
+  tipo de proyecto, nivel de detalle y formato de salida. El prompt se renderiza
+  desde plantillas Jinja2 versionadas (`app/prompts/estimation/<versión>/`).
+- **Estimación desde transcripción** (`POST /api/v1/transcription/estimate` y
+  `/stream`): parte de una reunión con el cliente y usa CAG (Context-Augmented
+  Generation) con ejemplos históricos.
 
 ## ¿Qué es CAG en este proyecto?
 
@@ -12,11 +18,32 @@ El modelo recibe toda la información de contexto en una sola llamada.
 
 ## Arquitectura
 
+### Estimación estructurada
+
 ```
-POST /api/v1/estimate
+POST /api/v1/estimate?prompt_version=v1
        │
        ▼
-EstimationRequest (Pydantic: transcripción + opciones validadas)
+EstimationRequest (app.schemas: description, project_type, detail_level,
+                   output_format, reference_projects?)
+       │
+       ▼
+render_estimation_prompt(request, version)   ← app/prompts/estimation/<versión>/*.j2
+       │   → (system, user) + log "prompt_rendered" (versión y hash)
+       ▼
+generate_from_prompts(system, user)   ← mismo wrapper: caché, reintentos, fallback, costes
+       │   → mensajes system y user separados
+       ▼
+EstimationResponse {text, prompt_version}
+```
+
+### Estimación desde transcripción
+
+```
+POST /api/v1/transcription/estimate
+       │
+       ▼
+EstimationRequest (app.schemas.estimation: transcripción + opciones validadas)
        │
        ▼
 generate_estimation(transcription, GenerationOptions)
@@ -40,9 +67,16 @@ estimador-cag/
 │   ├── main.py              — FastAPI app, /health, lifespan, Swagger
 │   ├── config.py            — BaseSettings + lru_cache + validación por proveedor
 │   ├── routers/
-│   │   └── estimations.py  — POST /api/v1/estimate
+│   │   ├── project_estimations.py — POST /api/v1/estimate (contrato estructurado)
+│   │   └── estimations.py  — POST /api/v1/transcription/estimate[/stream]
 │   ├── schemas/
-│   │   └── estimation.py   — contratos Pydantic (solicitud, uso por fase, evaluación)
+│   │   ├── project_estimation.py — contrato estructurado (compartido con Streamlit)
+│   │   └── estimation.py   — contratos del flujo de transcripción
+│   ├── prompts/
+│   │   ├── loader.py       — render_estimation_prompt(request, version) -> (system, user)
+│   │   └── estimation/
+│   │       ├── v1/         — system.j2, user.j2, examples.j2
+│   │       └── v2/         — variación de tono y ejemplos
 │   ├── services/
 │   │   ├── llm_service.py  — prompts, preprocesamiento, dispatch OpenAI/Anthropic
 │   │   └── evaluation.py   — evaluación estructural de la estimación
@@ -102,28 +136,40 @@ uv run uvicorn app.main:app --reload
 
 La API queda disponible en `http://localhost:8000`.
 
-## Interfaz conversacional (Streamlit)
+## Interfaz web (Streamlit)
 
-Chat web para probar el estimador sin curl/Postman/Swagger: pega una
-transcripción, obtén la estimación en streaming y sigue la conversación.
+Formulario para probar la estimación estructurada sin curl/Postman/Swagger:
+descripción, tipo de proyecto, nivel de detalle, formato de salida y versión
+del prompt.
 
 ```bash
 uv run streamlit run streamlit_app.py
 ```
 
 Se abre en `http://localhost:8501`. Arranca también la API en otra terminal.
-El chat consume `/api/v1/estimate/stream` por HTTP y no necesita claves LLM.
+El formulario construye el mismo `EstimationRequest` que valida la API (lo
+importa de `app.schemas`), lo envía a `POST /api/v1/estimate/stream` y muestra
+la estimación en streaming dentro de un historial. No necesita claves LLM.
 Configura `ESTIMATOR_API_BASE_URL` (por defecto `http://localhost:8000`) en
 el entorno, `.env` o `st.secrets`; el entorno tiene prioridad. Las claves de
 proveedores se configuran únicamente en el backend.
 
-El `st.sidebar` muestra, de solo lectura: el system prompt activo, los
-ejemplos históricos del catálogo CAG que alimentan el prompt, y las métricas
-de la última llamada (modelo, tokens de entrada/salida, latencia, caché y coste).
-La plantilla del panel corresponde a esta versión del cliente; si el backend
-remoto cambia su prompt hay que actualizar el cliente para reflejarlo.
-«Borrar historial» limpia mensajes y métricas. Cada transcripción se estima
-independientemente: el historial visible no se envía al modelo.
+El `st.sidebar` muestra, de solo lectura:
+
+- el system prompt renderizado con las plantillas de la última solicitud (o una
+  vista previa con los valores por defecto antes de la primera);
+- los ejemplos few-shot que incluye ese prompt;
+- las métricas de la última llamada: modelo, versión del prompt, tokens de
+  entrada y salida, latencia, coste y si la respuesta vino de caché.
+
+El prompt se renderiza con las plantillas de esta versión del cliente. Si la API
+remota tiene otras plantillas, el panel no las refleja. «Borrar historial» limpia
+los mensajes y las métricas. Cada solicitud se estima por separado: el historial
+visible no se envía al modelo.
+
+Los errores de validación (por ejemplo, una descripción de menos de 20
+caracteres) se muestran sin llamar a la API. Los errores de red, HTTP o del
+stream se muestran como mensajes genéricos y nunca se guardan como estimaciones.
 
 ## Ejecución con Docker
 
@@ -175,10 +221,57 @@ Características de la imagen:
 curl http://localhost:8000/health
 ```
 
-### Generar estimación
+### Estimación estructurada
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/estimate" \
+curl -X POST "http://localhost:8000/api/v1/estimate?prompt_version=v1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Marketplace de servicios profesionales con perfiles de freelancers, pagos con comisión, mensajería interna y valoraciones.",
+    "project_type": "web_saas",
+    "detail_level": "detailed",
+    "output_format": "phases_table",
+    "reference_projects": [
+      {"name": "Portal de reservas", "description": "Agenda, pagos y avisos", "actual_hours": 520}
+    ]
+  }'
+```
+
+Respuesta: `{"text": "…", "prompt_version": "v1"}`.
+
+**Streaming**: `POST /api/v1/estimate/stream` acepta el mismo cuerpo y el mismo
+`?prompt_version`. Emite eventos SSE `token` (`{"text": …}`), luego `metadata`
+(`prompt_version`, `model`, `provider`, `finish_reason`, `usage`, `latency_ms`,
+`cache_hit`, `estimated_cost_usd`, `request_cost_usd`) y `done`. Ante un fallo emite
+`error` saneado sin `done`. Las entradas o versiones inválidas dan `422` antes del stream.
+
+```bash
+curl -N "http://localhost:8000/api/v1/estimate/stream?prompt_version=v2" \
+  -H "Content-Type: application/json" \
+  -d '{"description": "Portal interno para reservar salas de reuniones en la oficina.", "project_type": "internal_tool", "detail_level": "summary", "output_format": "phases_table"}'
+```
+
+| Campo | Valores |
+|---|---|
+| `description` | 20–2000 caracteres |
+| `project_type` | `mobile_app`, `web_saas`, `internal_tool`, `data_pipeline` |
+| `detail_level` | `summary`, `medium`, `detailed` (este último pide asunciones por fase) |
+| `output_format` | `phases_table` (con `confidence_pct`), `line_items`, `narrative` |
+| `reference_projects` | opcional, hasta 5 `{name, description, actual_hours}` |
+| `?prompt_version` | query param; `v1` por defecto. Una versión inexistente → `422` |
+
+**Versionado de prompts**: cada versión es un directorio en `app/prompts/estimation/`
+con `system.j2` (rol, reglas y bloques condicionales por formato y detalle, que
+incluye `examples.j2`), `user.j2` (envuelve la descripción en `<project_description>`
+y recorre `reference_projects`) y `examples.j2` (ejemplos few-shot en el formato
+pedido). Crear `v3/` basta para exponer `?prompt_version=v3`. `v2` usa un tono de
+consultor de preventa y otros ejemplos. Cada render emite el evento `prompt_rendered`
+con la versión y el SHA-256 del prompt, sin incluir el texto.
+
+### Estimación desde transcripción
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/transcription/estimate" \
   -H "Content-Type: application/json" \
   -d '{
     "transcription": "El cliente solicita desarrollar un marketplace de servicios profesionales. Los freelancers podrán publicar perfiles y los clientes contratar servicios. Se requiere sistema de pagos con comisión, mensajería interna, valoraciones y un panel de administración. Stack preferido: React, Node.js, PostgreSQL. Plazo deseado: 5 meses."
@@ -222,7 +315,7 @@ formato de **salida** que se pide al modelo siempre es el Markdown en español.
 Ejemplo combinando opciones:
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/estimate" \
+curl -X POST "http://localhost:8000/api/v1/transcription/estimate" \
   -H "Content-Type: application/json" \
   -d '{
     "transcription": "…",
@@ -312,8 +405,10 @@ Documentación interactiva en `http://localhost:8000/docs`.
 uv run pytest -v
 ```
 
-La suite no llama a los proveedores reales (los SDK se simulan) y cubre las opciones del
-endpoint, ambos modos de preprocesamiento, selección y formatos de ejemplos (incluida la
+La suite no llama a los proveedores reales (los SDK se simulan). `tests/prompts/` prueba las
+plantillas en milisegundos (descripción literal, formato, detalle, referencias, versiones
+y log del render). El resto cubre el contrato estructurado, las opciones del
+endpoint de transcripción, ambos modos de preprocesamiento, selección y formatos de ejemplos (incluida la
 coherencia de totales), la evaluación, los metadatos de respuesta y el mapeo de errores.
 El workflow de CI (`.github/workflows/estimador-cag-ci.yml`) ejecuta la suite completa y
 además construye la imagen Docker y comprueba que arranca sin root y queda `healthy`.

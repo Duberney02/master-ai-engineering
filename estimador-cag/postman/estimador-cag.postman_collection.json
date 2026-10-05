@@ -68,13 +68,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -114,13 +115,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -160,13 +162,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -203,13 +206,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -246,13 +250,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -289,13 +294,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -332,13 +338,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -378,13 +385,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -422,13 +430,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -465,13 +474,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -508,13 +518,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -551,13 +562,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -594,13 +606,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -637,13 +650,14 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/api/v1/estimate",
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
             "v1",
+            "transcription",
             "estimate"
           ]
         },
@@ -680,6 +694,53 @@
           }
         ],
         "url": {
+          "raw": "{{base_url}}/api/v1/transcription/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "transcription",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"model\": \"modelo-que-no-existe\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "17 Estructurada - v1 tabla de fases",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));",
+              "const j=pm.response.json();",
+              "pm.test('prompt v1',()=>pm.expect(j.prompt_version).to.eql('v1'));",
+              "pm.test('texto',()=>pm.expect(j.text).to.be.a('string').and.not.empty);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
           "raw": "{{base_url}}/api/v1/estimate",
           "host": [
             "{{base_url}}"
@@ -692,7 +753,149 @@
         },
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"transcription\": \"Reunión con Panadería La Espiga. Quieren una tienda en línea para vender pan y pasteles con entrega a domicilio. Necesitan catálogo con fotos, carrito, pago con tarjeta (Wompi), zonas de entrega con costo por barrio, panel para que el dueño gestione pedidos y productos, y avisos por WhatsApp al cliente cuando el pedido sale. Ah, y hablamos del clima, del fútbol... pero lo importante: quieren salir en 3 meses, presupuesto ajustado. Stack: no tienen preferencia, pero el sobrino del dueño sabe algo de WordPress. Al final dijeron que mejor no WordPress.\",\n  \"model\": \"modelo-que-no-existe\"\n}",
+          "raw": "{\n  \"description\": \"Aplicación web para que una panadería venda pan y pasteles con entrega a domicilio: catálogo con fotos, carrito, pago con tarjeta, zonas de entrega por barrio y panel de pedidos.\",\n  \"project_type\": \"web_saas\",\n  \"detail_level\": \"medium\",\n  \"output_format\": \"phases_table\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "18 Estructurada - v2 narrativa con referencias",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200',()=>pm.response.to.have.status(200));",
+              "pm.test('prompt v2',()=>pm.expect(pm.response.json().prompt_version).to.eql('v2'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate?prompt_version=v2",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ],
+          "query": [
+            {
+              "key": "prompt_version",
+              "value": "v2"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"description\": \"Aplicación web para que una panadería venda pan y pasteles con entrega a domicilio: catálogo con fotos, carrito, pago con tarjeta, zonas de entrega por barrio y panel de pedidos.\",\n  \"project_type\": \"web_saas\",\n  \"detail_level\": \"detailed\",\n  \"output_format\": \"narrative\",\n  \"reference_projects\": [\n    {\n      \"name\": \"Tienda online de floristería\",\n      \"description\": \"Catálogo, pagos y repartos por zonas\",\n      \"actual_hours\": 420\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "19 Estructurada - descripcion corta (422)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('422',()=>pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"description\": \"Corta\",\n  \"project_type\": \"web_saas\",\n  \"detail_level\": \"medium\",\n  \"output_format\": \"phases_table\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "20 Estructurada - prompt_version inexistente (422)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('422',()=>pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/estimate?prompt_version=v9",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "estimate"
+          ],
+          "query": [
+            {
+              "key": "prompt_version",
+              "value": "v9"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"description\": \"Aplicación web para que una panadería venda pan y pasteles con entrega a domicilio: catálogo con fotos, carrito, pago con tarjeta, zonas de entrega por barrio y panel de pedidos.\",\n  \"project_type\": \"web_saas\",\n  \"detail_level\": \"medium\",\n  \"output_format\": \"phases_table\"\n}",
           "options": {
             "raw": {
               "language": "json"

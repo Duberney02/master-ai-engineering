@@ -1,10 +1,6 @@
-# http-streaming Specification
+# Spec Delta
 
-## Purpose
-
-Permitir que Streamlit y otros clientes consuman estimaciones progresivas a través de un contrato HTTP común.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Contrato SSE
 El sistema SHALL exponer POST /api/v1/transcription/estimate/stream con la validación de entrada del flujo de transcripción, eventos token con texto JSON, metadata con consumo/modelo/caché/costes y done únicamente tras éxito. Los fallos SHALL producir error saneado sin done. SHALL soportar las opciones de generación, incluida extracción en dos fases antes de emitir texto, y evaluar el resultado completo cuando se solicita.

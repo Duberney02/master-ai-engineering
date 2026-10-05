@@ -1,0 +1,143 @@
+{#
+  Ejemplos few-shot: los datos se definen una vez y se muestran en el mismo
+  formato (output_format) y nivel de detalle (detail_level) que se pide al modelo.
+#}
+{% set examples = [
+  {
+    "title": "App de reservas para una cadena de gimnasios",
+    "project_type": "mobile_app",
+    "description": "Aplicación iOS y Android para que los socios reserven clases, reciban recordatorios y consulten su historial. El personal gestiona horarios desde un panel web.",
+    "phases": [
+      {"name": "Descubrimiento y diseño UX", "min": 50, "max": 70, "confidence": 75,
+       "tasks": [{"name": "Talleres de requisitos", "hours": 16}, {"name": "Wireframes y prototipo navegable", "hours": 30}, {"name": "Sistema de diseño", "hours": 14}],
+       "assumptions": ["El cliente aporta su guía de marca", "Solo dos roles: socio y personal de recepción"]},
+      {"name": "Backend y API", "min": 110, "max": 150, "confidence": 60,
+       "tasks": [{"name": "Modelo de datos y API de reservas", "hours": 60}, {"name": "Autenticación y perfiles", "hours": 30}, {"name": "Panel web de horarios", "hours": 40}],
+       "assumptions": ["Hasta 15 centros gestionados desde el panel", "Sin integración con el control de accesos"]},
+      {"name": "App iOS y Android", "min": 180, "max": 240, "confidence": 55,
+       "tasks": [{"name": "Reserva y calendario de clases", "hours": 100}, {"name": "Notificaciones push", "hours": 30}, {"name": "Perfil e historial", "hours": 50}, {"name": "Modo sin conexión básico", "hours": 30}],
+       "assumptions": ["Un único código base multiplataforma", "Soporte para las dos últimas versiones de cada sistema"]},
+      {"name": "QA, despliegue y publicación", "min": 60, "max": 80, "confidence": 70,
+       "tasks": [{"name": "Pruebas funcionales y de regresión", "hours": 40}, {"name": "CI/CD y entornos", "hours": 18}, {"name": "Publicación en tiendas", "hours": 12}],
+       "assumptions": ["Las cuentas de desarrollador ya existen"]}
+    ],
+    "risks": ["Rechazo en la revisión de las tiendas", "Cambios en las reglas de reserva durante el desarrollo", "Picos de carga al abrir nuevas clases"],
+    "questions": ["¿Habrá pagos dentro de la app?", "¿Debe integrarse con los tornos de acceso?"]
+  },
+  {
+    "title": "Portal SaaS de facturación para despachos contables",
+    "project_type": "web_saas",
+    "description": "Plataforma web multi-despacho para emitir facturas a sus clientes, enviarlas por correo y obtener informes trimestrales. Cada despacho paga una suscripción mensual.",
+    "phases": [
+      {"name": "Descubrimiento y arquitectura", "min": 40, "max": 60, "confidence": 70,
+       "tasks": [{"name": "Análisis de la normativa de facturación", "hours": 20}, {"name": "Arquitectura multi-tenant", "hours": 30}],
+       "assumptions": ["Solo facturación española"]},
+      {"name": "Núcleo de facturación", "min": 200, "max": 280, "confidence": 55,
+       "tasks": [{"name": "Clientes, series y facturas", "hours": 110}, {"name": "PDF y envío por correo", "hours": 50}, {"name": "Informes trimestrales", "hours": 80}],
+       "assumptions": ["Plantillas de factura fijas", "Sin integración contable directa"]},
+      {"name": "Suscripciones y cuentas", "min": 70, "max": 100, "confidence": 65,
+       "tasks": [{"name": "Alta de despachos y usuarios", "hours": 35}, {"name": "Pasarela de suscripciones", "hours": 50}],
+       "assumptions": ["Pasarela de pago de terceros ya elegida"]},
+      {"name": "QA, seguridad y despliegue", "min": 80, "max": 110, "confidence": 65,
+       "tasks": [{"name": "Pruebas automatizadas", "hours": 50}, {"name": "Revisión de seguridad y RGPD", "hours": 25}, {"name": "Infraestructura y despliegue", "hours": 20}],
+       "assumptions": ["Despliegue en una nube pública gestionada"]}
+    ],
+    "risks": ["Cambios normativos en facturación electrónica", "Aislamiento de datos entre despachos", "Migración de clientes existentes"],
+    "questions": ["¿Debe cumplir ya con la facturación electrónica obligatoria?", "¿Cuántos despachos se esperan el primer año?"]
+  },
+  {
+    "title": "Pipeline diario de ventas hacia un data warehouse",
+    "project_type": "data_pipeline",
+    "description": "Consolidar cada noche las ventas del ERP, la tienda online y los CSV de las tiendas físicas en un data warehouse para los informes de dirección.",
+    "phases": [
+      {"name": "Análisis de fuentes", "min": 30, "max": 50, "confidence": 60,
+       "tasks": [{"name": "Inventario de fuentes y esquemas", "hours": 20}, {"name": "Perfilado de calidad de datos", "hours": 20}],
+       "assumptions": ["Tres fuentes con esquemas estables"]},
+      {"name": "Ingesta y transformación", "min": 120, "max": 170, "confidence": 55,
+       "tasks": [{"name": "Conectores de extracción", "hours": 55}, {"name": "Modelado y transformaciones", "hours": 70}, {"name": "Carga incremental", "hours": 20}],
+       "assumptions": ["Menos de 5 millones de filas diarias", "Acceso de solo lectura al ERP"]},
+      {"name": "Orquestación y monitorización", "min": 40, "max": 60, "confidence": 65,
+       "tasks": [{"name": "Orquestación y reintentos", "hours": 25}, {"name": "Alertas y métricas de calidad", "hours": 25}],
+       "assumptions": ["Se reutiliza el orquestador ya contratado"]},
+      {"name": "QA y documentación", "min": 30, "max": 45, "confidence": 70,
+       "tasks": [{"name": "Validación contra los informes actuales", "hours": 25}, {"name": "Documentación y traspaso", "hours": 12}],
+       "assumptions": ["El cliente valida las cifras en una semana"]}
+    ],
+    "risks": ["Calidad irregular de los CSV de tiendas", "Cambios de esquema en el ERP", "Ventana nocturna insuficiente"],
+    "questions": ["¿Qué latencia máxima aceptan los informes?", "¿Hay que conservar el histórico anterior?"]
+  }
+] %}
+{% macro estimation(example, output_format, detail_level) %}
+{% set ns = namespace(total=0) %}
+{% for phase in example.phases %}{% set ns.total = ns.total + (phase.tasks | sum(attribute="hours")) %}{% endfor %}
+{% if output_format == "phases_table" %}
+| Fase | Horas mín. | Horas máx. | confidence_pct |
+|---|---:|---:|---:|
+{% for phase in example.phases %}
+| {{ phase.name }} | {{ phase.min }} | {{ phase.max }} | {{ phase.confidence }} |
+{% endfor %}
+| **Total** | **{{ example.phases | sum(attribute="min") }}** | **{{ example.phases | sum(attribute="max") }}** | |
+{% if detail_level != "summary" %}
+
+Tareas principales:
+{% for phase in example.phases %}
+- {{ phase.name }}: {{ phase.tasks | map(attribute="name") | join(", ") }}.
+{% endfor %}
+{% endif %}
+{% elif output_format == "line_items" %}
+{% for phase in example.phases %}
+{% if detail_level == "summary" %}
+- [{{ phase.name }}] Fase completa — {{ phase.tasks | sum(attribute="hours") }} h
+{% else %}
+{% for task in phase.tasks %}
+- [{{ phase.name }}] {{ task.name }} — {{ task.hours }} h
+{% endfor %}
+{% endif %}
+{% endfor %}
+Total: {{ ns.total }} h
+{% else %}
+{% if detail_level == "summary" %}
+El proyecto se organiza en {{ example.phases | length }} fases ({{ example.phases | map(attribute="name") | join(", ") }}) y requiere entre {{ example.phases | sum(attribute="min") }} y {{ example.phases | sum(attribute="max") }} horas en total.
+{% else %}
+{% for phase in example.phases %}
+{{ phase.name }} ocupa entre {{ phase.min }} y {{ phase.max }} horas y abarca {{ phase.tasks | map(attribute="name") | map("lower") | join(", ") }}.
+
+{% endfor %}
+En total, el proyecto requiere entre {{ example.phases | sum(attribute="min") }} y {{ example.phases | sum(attribute="max") }} horas.
+{% endif %}
+{% endif %}
+{% if detail_level == "detailed" %}
+
+Asunciones por fase:
+{% for phase in example.phases %}
+- {{ phase.name }}: {{ phase.assumptions | join("; ") }}.
+{% endfor %}
+{% endif %}
+{% if detail_level != "summary" %}
+
+Riesgos principales:
+{% for risk in example.risks %}
+- {{ risk }}
+{% endfor %}
+{% endif %}
+{% if detail_level == "detailed" %}
+
+Preguntas abiertas:
+{% for question in example.questions %}
+- {{ question }}
+{% endfor %}
+{% endif %}
+{% endmacro %}
+{% for example in examples %}
+### Ejemplo {{ loop.index }}: {{ example.title }}
+
+Tipo de proyecto: {{ example.project_type }}
+
+<project_description>
+{{ example.description }}
+</project_description>
+
+Estimación:
+
+{{ estimation(example, output_format, detail_level) }}
+{% endfor %}

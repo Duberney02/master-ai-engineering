@@ -1,0 +1,124 @@
+{#
+  Ejemplos v2: proyectos distintos a v1 y apertura "En una frase". Se muestran
+  en el mismo formato (output_format) y detalle (detail_level) que se pide.
+#}
+{% set examples = [
+  {
+    "title": "Portal interno de solicitudes de compra",
+    "project_type": "internal_tool",
+    "headline": "Proyecto mediano; la incógnita es la integración con el ERP de compras.",
+    "description": "Los empleados piden material desde un portal, su responsable lo aprueba y la orden de compra se crea en el ERP. Unos 600 usuarios en tres sedes.",
+    "phases": [
+      {"name": "Análisis y diseño", "min": 30, "max": 45, "confidence": 75,
+       "tasks": [{"name": "Mapa del circuito de aprobación", "hours": 15}, {"name": "Diseño de pantallas", "hours": 22}],
+       "assumptions": ["Un único circuito de aprobación de dos niveles"]},
+      {"name": "Portal y aprobaciones", "min": 110, "max": 150, "confidence": 65,
+       "tasks": [{"name": "Catálogo y carrito de solicitud", "hours": 50}, {"name": "Flujo de aprobación y avisos", "hours": 45}, {"name": "Login corporativo (SSO)", "hours": 30}],
+       "assumptions": ["El directorio corporativo ya ofrece SSO", "El catálogo se carga desde el ERP"]},
+      {"name": "Integración con el ERP", "min": 60, "max": 110, "confidence": 45,
+       "tasks": [{"name": "Alta de órdenes de compra vía API", "hours": 60}, {"name": "Sincronización de proveedores", "hours": 25}],
+       "assumptions": ["El ERP expone una API documentada"]},
+      {"name": "QA, formación y puesta en marcha", "min": 40, "max": 55, "confidence": 70,
+       "tasks": [{"name": "Pruebas de aceptación con compras", "hours": 25}, {"name": "Formación y guías", "hours": 12}, {"name": "Despliegue", "hours": 10}],
+       "assumptions": ["Despliegue en la infraestructura interna existente"]}
+    ],
+    "risks": ["API del ERP incompleta o sin entorno de pruebas", "Excepciones al circuito de aprobación", "Baja adopción si el portal es más lento que el correo"],
+    "questions": ["¿Quién mantiene el catálogo de productos?", "¿Hay importes que exijan una tercera aprobación?"]
+  },
+  {
+    "title": "Plataforma de citas para clínicas veterinarias",
+    "project_type": "web_saas",
+    "headline": "Proyecto grande; lo que más pesa es el cobro por suscripción y los recordatorios.",
+    "description": "SaaS en el que cada clínica publica su agenda, los dueños reservan citas en línea y reciben recordatorios por SMS. Las clínicas pagan una cuota mensual.",
+    "phases": [
+      {"name": "Producto y arquitectura", "min": 45, "max": 60, "confidence": 70,
+       "tasks": [{"name": "Definición del producto mínimo", "hours": 25}, {"name": "Arquitectura multi-clínica", "hours": 27}],
+       "assumptions": ["Un veterinario por cita y sin salas compartidas"]},
+      {"name": "Agenda y reservas", "min": 160, "max": 220, "confidence": 60,
+       "tasks": [{"name": "Agenda configurable por clínica", "hours": 80}, {"name": "Reserva pública de citas", "hours": 60}, {"name": "Recordatorios por SMS", "hours": 45}],
+       "assumptions": ["Proveedor de SMS externo con API", "Sin historial clínico en esta fase"]},
+      {"name": "Cuentas y suscripciones", "min": 60, "max": 90, "confidence": 65,
+       "tasks": [{"name": "Alta de clínicas y usuarios", "hours": 30}, {"name": "Cobro recurrente", "hours": 45}],
+       "assumptions": ["Un único plan de precios"]},
+      {"name": "QA, seguridad y lanzamiento", "min": 70, "max": 95, "confidence": 65,
+       "tasks": [{"name": "Pruebas automatizadas y manuales", "hours": 45}, {"name": "Protección de datos personales", "hours": 20}, {"name": "Infraestructura y despliegue", "hours": 18}],
+       "assumptions": ["Hosting en una nube pública gestionada"]}
+    ],
+    "risks": ["Coste de SMS mayor de lo previsto", "Solapamiento de citas por concurrencia", "Clínicas que exigen integrar su software de gestión"],
+    "questions": ["¿Se cobra la cita por adelantado?", "¿Cuántas clínicas habrá en el piloto?"]
+  }
+] %}
+{% macro estimation(example, output_format, detail_level) %}
+{% set ns = namespace(total=0) %}
+{% for phase in example.phases %}{% set ns.total = ns.total + (phase.tasks | sum(attribute="hours")) %}{% endfor %}
+**En una frase:** {{ example.headline }}
+
+{% if output_format == "phases_table" %}
+| Fase | Horas mín. | Horas máx. | confidence_pct |
+|---|---:|---:|---:|
+{% for phase in example.phases %}
+| {{ phase.name }} | {{ phase.min }} | {{ phase.max }} | {{ phase.confidence }} |
+{% endfor %}
+| **Total** | **{{ example.phases | sum(attribute="min") }}** | **{{ example.phases | sum(attribute="max") }}** | |
+{% if detail_level != "summary" %}
+
+Qué incluye cada fase:
+{% for phase in example.phases %}
+- {{ phase.name }}: {{ phase.tasks | map(attribute="name") | join(", ") }}.
+{% endfor %}
+{% endif %}
+{% elif output_format == "line_items" %}
+{% for phase in example.phases %}
+{% if detail_level == "summary" %}
+- [{{ phase.name }}] Fase completa — {{ phase.tasks | sum(attribute="hours") }} h
+{% else %}
+{% for task in phase.tasks %}
+- [{{ phase.name }}] {{ task.name }} — {{ task.hours }} h
+{% endfor %}
+{% endif %}
+{% endfor %}
+Total: {{ ns.total }} h
+{% else %}
+{% if detail_level == "summary" %}
+Son {{ example.phases | length }} fases y entre {{ example.phases | sum(attribute="min") }} y {{ example.phases | sum(attribute="max") }} horas. La fase más pesada es {{ (example.phases | sort(attribute="max") | last).name | lower }}.
+{% else %}
+{% for phase in example.phases %}
+{{ phase.name }}: entre {{ phase.min }} y {{ phase.max }} horas para {{ phase.tasks | map(attribute="name") | map("lower") | join(", ") }}.
+
+{% endfor %}
+Total: entre {{ example.phases | sum(attribute="min") }} y {{ example.phases | sum(attribute="max") }} horas.
+{% endif %}
+{% endif %}
+{% if detail_level == "detailed" %}
+
+Lo que damos por hecho en cada fase:
+{% for phase in example.phases %}
+- {{ phase.name }}: {{ phase.assumptions | join("; ") }}.
+{% endfor %}
+{% endif %}
+{% if detail_level != "summary" %}
+
+Riesgos que más pesan:
+{% for risk in example.risks %}
+- {{ risk }}
+{% endfor %}
+{% endif %}
+{% if detail_level == "detailed" %}
+
+Preguntas para el cliente:
+{% for question in example.questions %}
+- {{ question }}
+{% endfor %}
+{% endif %}
+{% endmacro %}
+{% for example in examples %}
+### Ejemplo {{ loop.index }}: {{ example.title }}
+
+<project_description>
+{{ example.description }}
+</project_description>
+
+Respuesta:
+
+{{ estimation(example, output_format, detail_level) }}
+{% endfor %}

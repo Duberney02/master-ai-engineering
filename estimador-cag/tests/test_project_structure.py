@@ -14,10 +14,19 @@ REQUIRED_PATHS = [
     "app/config.py",
     "app/routers/__init__.py",
     "app/routers/estimations.py",
+    "app/routers/project_estimations.py",
     "app/services/__init__.py",
     "app/services/llm_service.py",
     "app/services/evaluation.py",
     "app/schemas/estimation.py",
+    "app/schemas/project_estimation.py",
+    "app/prompts/loader.py",
+    "app/prompts/estimation/v1/system.j2",
+    "app/prompts/estimation/v1/user.j2",
+    "app/prompts/estimation/v1/examples.j2",
+    "app/prompts/estimation/v2/system.j2",
+    "app/prompts/estimation/v2/user.j2",
+    "app/prompts/estimation/v2/examples.j2",
     "app/context/__init__.py",
     "app/context/examples.py",
     "tests/conftest.py",
@@ -44,6 +53,8 @@ def test_app_package_is_importable():
     import app.main  # noqa: F401
     import app.config  # noqa: F401
     import app.routers.estimations  # noqa: F401
+    import app.routers.project_estimations  # noqa: F401
+    import app.prompts.loader  # noqa: F401
     import app.services.llm_service  # noqa: F401
     import app.services.evaluation  # noqa: F401
     import app.schemas.estimation  # noqa: F401

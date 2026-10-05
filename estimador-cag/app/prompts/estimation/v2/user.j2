@@ -1,0 +1,15 @@
+Necesito una estimación para este proyecto ({{ project_type }}).
+
+<project_description>
+{{ description }}
+</project_description>
+{% if reference_projects %}
+
+Como referencia, proyectos parecidos que ya entregamos y lo que realmente costaron:
+
+<reference_projects>
+{% for project in reference_projects %}
+- {{ project.name }}: {{ project.description }} — {{ '%g' | format(project.actual_hours) }} h reales
+{% endfor %}
+</reference_projects>
+{% endif %}

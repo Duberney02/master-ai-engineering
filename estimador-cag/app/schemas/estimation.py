@@ -1,7 +1,8 @@
 """Contratos (Pydantic) del endpoint de estimación.
 
 Define explícitamente la forma de los datos que intercambian el servidor y
-sus consumidores para `/api/v1/estimate`, separada de la lógica del router.
+sus consumidores para `/api/v1/transcription/estimate` (y `/stream`), separada
+de la lógica del router.
 
 Todas las opciones nuevas de la solicitud son opcionales y sus valores por
 defecto reproducen el comportamiento previo: sin preprocesamiento, dos

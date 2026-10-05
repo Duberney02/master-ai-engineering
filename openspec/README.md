@@ -19,14 +19,18 @@ seleccionarse desde Skills; recargar la sesión si no aparecen tras clonar.
 No se requiere regenerarlos en cada checkout. Para añadir otro agente:
 `openspec init --tools <id>` (consultar `openspec init --help`).
 
-El cambio `estimador-resilience-and-streaming` contiene propuesta, diseño,
-especificaciones por capacidad y tareas verificables:
+Cada cambio contiene propuesta, diseño, especificaciones por capacidad, tareas
+verificables y evidencia de verificación. Para consultar uno en curso:
 
 ```sh
-openspec status --change estimador-resilience-and-streaming
-openspec instructions apply --change estimador-resilience-and-streaming --json
-openspec validate estimador-resilience-and-streaming --strict
+openspec list
+openspec status --change <nombre>
+openspec validate <nombre> --strict
 ```
+
+Los cambios completados están en `changes/archive/`:
+`2026-09-29-estimador-resilience-and-streaming` y
+`2026-09-29-estimador-structured-prompts`.
 
 Las especificaciones actuales viven en `specs/`; los cambios en curso y su
 evidencia viven en `changes/`. Tras revisar un cambio completado puede archivarse

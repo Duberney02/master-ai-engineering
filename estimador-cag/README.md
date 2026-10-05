@@ -21,20 +21,23 @@ El modelo recibe toda la información de contexto en una sola llamada.
 ### Estimación estructurada
 
 ```
-POST /api/v1/estimate?prompt_version=v1
+POST /api/v1/estimate?prompt_version=v3        ← EstimationPipeline inyectado con Depends
        │
        ▼
 EstimationRequest (app.schemas: description, project_type, detail_level,
                    output_format, reference_projects?)
        │
        ▼
-render_estimation_prompt(request, version)   ← app/prompts/estimation/<versión>/*.j2
-       │   → (system, user) + log "prompt_rendered" (versión y hash)
+1. Guardrails de entrada (PII, prompt injection, moderación)  → 400 {reason, message}
+2. Caché exacta (Redis)            ┐ cached=true
+3. Caché semántica (redisvl)       ┘ filtrada por versión/tipo/detalle/formato
+4. render_estimation_prompt(request, version)   ← app/prompts/estimation/<versión>/*.j2
+5. generate_from_prompts(system, user)          ← wrapper: caché, reintentos, fallback, costes
+6. Validación de negocio + corrección automática (suma de costes, "Out of scope:")
+7. Filtro de fuera de alcance → almacenamiento en ambas cachés
+       │
        ▼
-generate_from_prompts(system, user)   ← mismo wrapper: caché, reintentos, fallback, costes
-       │   → mensajes system y user separados
-       ▼
-EstimationResponse {text, prompt_version}
+EstimationResponse {result: EstimationResult, prompt_version, cached}
 ```
 
 ### Estimación desde transcripción
@@ -185,12 +188,12 @@ docker compose ps           # STATUS pasa a "healthy" cuando /health y /_stcore/
 docker compose down
 ```
 
-Levanta `estimador-cag` (API), `estimador-cag-chat` (chat HTTP) y Redis con
-volumen y límite de 128 MB. Redis no publica su puerto. API y chat montan
+Levanta `estimador-cag` (API), `estimador-cag-chat` (chat HTTP) y **Redis Stack**
+(RediSearch, necesario para la caché semántica) con volumen. Redis no publica su puerto. API y chat montan
 `app/` como volumen de solo lectura, así que los cambios de código se aplican
 sin reconstruir; si cambian las dependencias (`pyproject.toml`/`uv.lock`),
 vuelve a ejecutar `up --build`. El chat espera la API saludable; solo la API
-recibe el `.env` con claves. Redis tiene TTL y evicción LRU.
+recibe el `.env` con claves. Las entradas de caché caducan por TTL.
 
 Consulta [resiliencia, caché y contrato SSE](docs/resilience-and-streaming.md)
 para configurar fallback, precios, razonamiento y presupuesto económico.
@@ -224,7 +227,7 @@ curl http://localhost:8000/health
 ### Estimación estructurada
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/estimate?prompt_version=v1" \
+curl -X POST "http://localhost:8000/api/v1/estimate" \
   -H "Content-Type: application/json" \
   -d '{
     "description": "Marketplace de servicios profesionales con perfiles de freelancers, pagos con comisión, mensajería interna y valoraciones.",
@@ -237,13 +240,38 @@ curl -X POST "http://localhost:8000/api/v1/estimate?prompt_version=v1" \
   }'
 ```
 
-Respuesta: `{"text": "…", "prompt_version": "v1"}`.
+Respuesta (`EstimationResult`; el coste total es la suma de las fases):
+
+```json
+{
+  "result": {
+    "summary": "Proyecto mediano con pagos y mensajería…",
+    "confidence_pct": 70,
+    "phases": [
+      {"name": "Diseño", "description": "UX y flujos", "duration_weeks": 3, "cost_eur": 7200},
+      {"name": "Desarrollo", "description": "Plataforma y pagos", "duration_weeks": 10, "cost_eur": 24000}
+    ],
+    "total_duration_weeks": 13,
+    "total_cost_eur": 31200,
+    "out_of_scope": false
+  },
+  "prompt_version": "v3",
+  "cached": false
+}
+```
+
+**Fuera de alcance**: con `confidence_pct` < 30 el resumen empieza por `Out of scope:`, `out_of_scope`
+es `true` y las fases se reducen a un placeholder `No estimable` (0 EUR, 1 semana); el chat lo
+muestra como «No estimable». **Guardrails**: una entrada con correo, teléfono, IBAN, intento de
+prompt injection o contenido moderado devuelve `400 {"reason": "…", "message": "…"}` sin tocar
+cachés ni proveedor. Detalles y variables en [docs](docs/resilience-and-streaming.md).
 
 **Streaming**: `POST /api/v1/estimate/stream` acepta el mismo cuerpo y el mismo
-`?prompt_version`. Emite eventos SSE `token` (`{"text": …}`), luego `metadata`
+`?prompt_version`. Un resultado estructurado solo es válido completo, así que emite el evento SSE
+`result` (el `EstimationResult`), luego `metadata`
 (`prompt_version`, `model`, `provider`, `finish_reason`, `usage`, `latency_ms`,
 `cache_hit`, `estimated_cost_usd`, `request_cost_usd`) y `done`. Ante un fallo emite
-`error` saneado sin `done`. Las entradas o versiones inválidas dan `422` antes del stream.
+`error` saneado sin `done`. Las entradas o versiones inválidas dan `422`, y los guardrails `400`, antes del stream.
 
 ```bash
 curl -N "http://localhost:8000/api/v1/estimate/stream?prompt_version=v2" \
@@ -258,14 +286,15 @@ curl -N "http://localhost:8000/api/v1/estimate/stream?prompt_version=v2" \
 | `detail_level` | `summary`, `medium`, `detailed` (este último pide asunciones por fase) |
 | `output_format` | `phases_table` (con `confidence_pct`), `line_items`, `narrative` |
 | `reference_projects` | opcional, hasta 5 `{name, description, actual_hours}` |
-| `?prompt_version` | query param; `v1` por defecto. Una versión inexistente → `422` |
+| `?prompt_version` | query param; `v3` por defecto (`v1` y `v2` siguen disponibles con el contrato JSON añadido). Una versión inexistente → `422` |
 
 **Versionado de prompts**: cada versión es un directorio en `app/prompts/estimation/`
 con `system.j2` (rol, reglas y bloques condicionales por formato y detalle, que
 incluye `examples.j2`), `user.j2` (envuelve la descripción en `<project_description>`
 y recorre `reference_projects`) y `examples.j2` (ejemplos few-shot en el formato
-pedido). Crear `v3/` basta para exponer `?prompt_version=v3`. `v2` usa un tono de
-consultor de preventa y otros ejemplos. Cada render emite el evento `prompt_rendered`
+pedido). Crear `v4/` basta para exponer `?prompt_version=v4`. `v3` pide JSON y adapta
+resumen y descripciones al formato y detalle; `v1` y `v2` (markdown) reciben al final el
+contrato de salida compartido `output_contract.j2`. `v2` usa un tono de consultor de preventa. Cada render emite el evento `prompt_rendered`
 con la versión y el SHA-256 del prompt, sin incluir el texto.
 
 ### Estimación desde transcripción

@@ -25,7 +25,7 @@ def test_v2_respects_format_and_detail():
     detailed, _ = render_estimation_prompt(make_request(detail_level="detailed"), version="v2")
     summary, _ = render_estimation_prompt(make_request(detail_level="summary"), version="v2")
 
-    assert "confidence_pct" in table and "confidence_pct" not in narrative
+    assert "| confidence_pct |" in table and "| confidence_pct |" not in narrative
     assert PER_PHASE_ASSUMPTIONS in detailed and PER_PHASE_ASSUMPTIONS not in summary
 
 

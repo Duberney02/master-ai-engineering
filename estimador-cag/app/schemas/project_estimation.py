@@ -6,7 +6,7 @@ desde `app.schemas`.
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 class ProjectType(str, Enum):
@@ -51,9 +51,39 @@ class EstimationRequest(BaseModel):
     )
 
 
+# Por debajo de esta confianza (%) la estimación se declara fuera de alcance.
+OUT_OF_SCOPE_CONFIDENCE = 30
+OUT_OF_SCOPE_PREFIX = "Out of scope:"
+
+
+class Phase(BaseModel):
+    """Fase del proyecto con su duración y coste."""
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=1000)
+    duration_weeks: float = Field(gt=0, le=520, allow_inf_nan=False)
+    cost_eur: float = Field(ge=0, le=100_000_000, allow_inf_nan=False)
+
+
+class EstimationResult(BaseModel):
+    """Estimación estructurada; las reglas de negocio se validan en `app.services.validation`."""
+
+    summary: str = Field(min_length=1, max_length=2000)
+    confidence_pct: int = Field(ge=0, le=100)
+    phases: list[Phase] = Field(min_length=1, max_length=30)
+    total_duration_weeks: float = Field(gt=0, le=2600, allow_inf_nan=False)
+    total_cost_eur: float = Field(ge=0, le=100_000_000, allow_inf_nan=False)
+
+    @computed_field
+    @property
+    def out_of_scope(self) -> bool:
+        return self.confidence_pct < OUT_OF_SCOPE_CONFIDENCE
+
+
 class EstimationResponse(BaseModel):
-    text: str
+    result: EstimationResult
     prompt_version: str
+    cached: bool = False
 
 
 class StreamUsage(BaseModel):

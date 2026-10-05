@@ -2,13 +2,15 @@
 
 import os
 
+import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from app.prompts.loader import render_estimation_prompt
-from app.schemas import DetailLevel, EstimationRequest, OutputFormat, ProjectType
-from app.streamlit_client import PROMPT_VERSIONS, EstimationStreamError, stream_structured_estimation
+from app.schemas import DetailLevel, EstimationRequest, EstimationResult, OutputFormat, ProjectType
+from app.schemas.project_estimation import OUT_OF_SCOPE_PREFIX
+from app.streamlit_client import PROMPT_VERSIONS, EstimationStreamError, request_structured_estimation
 from app.streamlit_support import few_shot_examples
 
 load_dotenv()
@@ -49,6 +51,31 @@ def _validation_message(exc: ValidationError) -> str:
     return "Revisa los campos del formulario."
 
 
+def _show_result(result: dict) -> None:
+    """Presenta un `EstimationResult`; fuera de alcance se muestra como no estimable, sin cifras."""
+    data = EstimationResult.model_validate(result)
+    if data.out_of_scope:
+        reason = data.summary.removeprefix(OUT_OF_SCOPE_PREFIX).strip()
+        st.warning(f"**No estimable.** {reason}")
+        st.caption(f"Confianza {data.confidence_pct}% (por debajo del 30% no se ofrecen cifras).")
+        return
+    st.markdown(data.summary)
+    confidence, duration, cost = st.columns(3)
+    confidence.metric("Confianza", f"{data.confidence_pct}%")
+    duration.metric("Duración total", f"{data.total_duration_weeks:g} semanas")
+    cost.metric("Coste total", f"{data.total_cost_eur:,.2f} EUR")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {"Fase": p.name, "Descripción": p.description,
+                 "Semanas": p.duration_weeks, "Coste (EUR)": p.cost_eur}
+                for p in data.phases
+            ]
+        ),
+        hide_index=True,
+    )
+
+
 def _request_summary(request: EstimationRequest, prompt_version: str) -> str:
     return (
         f"**{_label(request.project_type.value)}** · detalle {_label(request.detail_level.value).lower()}"
@@ -87,7 +114,10 @@ with st.form("estimation_form"):
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        if "result" in msg:
+            _show_result(msg["result"])
+        else:
+            st.markdown(msg["content"])
 
 if submitted:
     try:
@@ -108,17 +138,16 @@ if submitted:
             st.markdown(summary)
 
         with st.chat_message("assistant"):
-            metrics = {}
             try:
-                response = st.write_stream(
-                    stream_structured_estimation(request, api_url, metrics, prompt_version)
-                )
+                with st.spinner("Estimando..."):
+                    estimation, metadata = request_structured_estimation(request, api_url, prompt_version)
             except EstimationStreamError as exc:
                 st.error(str(exc))
-                st.caption("El texto parcial, si aparece, no es una estimación completa.")
             else:
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                st.session_state.last_metrics = metrics
+                result = estimation.model_dump(mode="json")
+                _show_result(result)
+                st.session_state.messages.append({"role": "assistant", "result": result})
+                st.session_state.last_metrics = metadata.model_dump()
 
 # La barra lateral se dibuja al final para reflejar la solicitud recién enviada.
 prompt_request, prompt_request_version = st.session_state.last_prompt

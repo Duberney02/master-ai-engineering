@@ -56,6 +56,7 @@ def anthropic_response(
 
 def patch_settings(mocker, settings: Settings) -> None:
     mocker.patch("app.services.llm_service.get_settings", return_value=settings)
+    mocker.patch("app.services.pipeline.get_settings", return_value=settings)
 
 
 def patch_openai(mocker, *outcomes) -> AsyncMock:

@@ -3,7 +3,7 @@
 #   cp .env.example .env      # y completa la API key del proveedor elegido
 #   docker compose up --build
 #
-# Levanta API (8000), chat HTTP (8501) y Redis sin puerto publicado.
+# Levanta API (8000), chat HTTP (8501) y Redis Stack (RediSearch) sin puerto publicado.
 # El código montado como volumen de solo lectura y --reload
 # hacen que los cambios en el host se reflejen sin reconstruir la imagen.
 # Para producción usa la imagen del Dockerfile tal cual (sin volumen ni --reload).
@@ -67,8 +67,9 @@ services:
       retries: 3
 
   redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru", "--appendonly", "yes"]
+    # Redis Stack: Redis + RediSearch, necesario para la caché semántica (búsqueda vectorial).
+    # Sin política de evicción: el índice vectorial no debe expulsarse; las entradas caducan por TTL.
+    image: redis/redis-stack-server:latest
     volumes:
       - redis_data:/data
     healthcheck:

@@ -4,17 +4,47 @@ import hashlib
 import json
 import structlog
 
+from pydantic import BaseModel, ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.config import Settings
+from app.schemas.project_estimation import EstimationRequest, EstimationResult
 
 logger = structlog.get_logger(__name__)
 
 
-def make_key(**payload) -> str:
+def _digest(payload: dict) -> str:
     serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    return "estimation:v1:" + hashlib.sha256(serialized.encode()).hexdigest()
+    return hashlib.sha256(serialized.encode()).hexdigest()
+
+
+def make_key(**payload) -> str:
+    return "estimation:v1:" + _digest(payload)
+
+
+def make_result_key(request: EstimationRequest, prompt_version: str, provider: str, model: str) -> str:
+    """Clave de la caché exacta de resultados validados (distinta de la de completions)."""
+    return "estimation:v2:" + _digest({
+        "request": request.model_dump(mode="json"), "prompt_version": prompt_version,
+        "provider": provider, "model": model,
+    })
+
+
+class CachedEstimation(BaseModel):
+    """Resultado validado que comparten la caché exacta y la semántica."""
+
+    result: EstimationResult
+    model: str = ""
+    provider: str = ""
+
+    @classmethod
+    def parse(cls, raw: object) -> "CachedEstimation | None":
+        try:
+            return cls.model_validate(raw)
+        except ValidationError:
+            logger.warning("cache_payload_invalid")
+            return None
 
 
 class EstimationCache:

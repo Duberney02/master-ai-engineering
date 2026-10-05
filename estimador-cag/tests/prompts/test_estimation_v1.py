@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from app.prompts.loader import render_estimation_prompt
+from app.prompts.loader import render_estimation_prompt as _render
 from app.schemas import EstimationRequest
 
 DESCRIPTION = (
@@ -12,6 +12,10 @@ DESCRIPTION = (
     "reservas y avisos de devolución por correo."
 )
 PER_PHASE_ASSUMPTIONS = "Para cada fase, lista explícitamente las asunciones"
+
+
+def render_estimation_prompt(request, version="v1"):
+    return _render(request, version)
 
 
 def make_request(**overrides) -> EstimationRequest:
@@ -37,8 +41,9 @@ def test_phases_table_mentions_confidence_pct_and_narrative_does_not():
     table_system, _ = render_estimation_prompt(make_request(output_format="phases_table"))
     narrative_system, _ = render_estimation_prompt(make_request(output_format="narrative"))
 
-    assert "confidence_pct" in table_system
-    assert "confidence_pct" not in narrative_system
+    # El contrato JSON compartido siempre menciona `confidence_pct`; lo propio de v1 es la columna.
+    assert "| confidence_pct |" in table_system
+    assert "| confidence_pct |" not in narrative_system
 
 
 def test_line_items_format_instruction_only_for_line_items():

@@ -4,9 +4,9 @@ name: estimador-cag CI
 on:
   push:
     branches: [master]
-    paths: ["estimador-cag/**", "estimator-web/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
+    paths: ["estimador-cag/**", "estimator-web/**", "estimator-web-react/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
   pull_request:
-    paths: ["estimador-cag/**", "estimator-web/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
+    paths: ["estimador-cag/**", "estimator-web/**", "estimator-web-react/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
 
 jobs:
   specs:
@@ -123,11 +123,28 @@ jobs:
           working-directory: estimator-web
       - run: bin/rails test
 
-  stack:
-    # Compose raíz: construye las imágenes, espera a que los cuatro servicios estén healthy
-    # y comprueba que la API y la web responden y que el historial está operativo.
+  web-react:
+    # Pruebas Vitest y compilación (tsc + vite) de estimator-web-react (sin red ni claves reales).
     runs-on: ubuntu-latest
-    needs: [test, web]
+    defaults:
+      run:
+        working-directory: estimator-web-react
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: estimator-web-react/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  stack:
+    # Compose raíz: construye las imágenes, espera a que los servicios estén healthy
+    # y comprueba que la API y las webs responden y que el historial está operativo.
+    runs-on: ubuntu-latest
+    needs: [test, web, web-react]
     steps:
       - uses: actions/checkout@v4
 
@@ -150,6 +167,9 @@ jobs:
           curl -fsS http://localhost:3000/up
           test "$(curl -fsS http://localhost:8000/api/v1/estimations)" = "[]"
           curl -fsS http://localhost:3000/estimations | grep -q 'Historial'
+          curl -fsS http://localhost:3001/healthz
+          test "$(curl -fsS http://localhost:3001/api/v1/estimations)" = "[]"
+          curl -fsS http://localhost:3001/estimations | grep -q '<div id="root">'
 
       - name: Logs on failure
         if: failure()

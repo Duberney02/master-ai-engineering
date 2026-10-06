@@ -94,11 +94,12 @@ def _root_compose() -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def test_root_compose_defines_the_four_services_on_a_shared_network():
+def test_root_compose_defines_all_services_on_a_shared_network():
     compose = _root_compose()
 
     assert set(compose["services"]) == {
-        "estimador-cag", "estimador-cag-chat", "estimator-web", "redis", "postgres"}
+        "estimador-cag", "estimador-cag-chat", "estimator-web", "estimator-web-react",
+        "redis", "postgres"}
     assert "estimator-net" in compose["networks"]
     for name, service in compose["services"].items():
         assert service["networks"] == ["estimator-net"], name
@@ -116,6 +117,7 @@ def test_root_compose_has_named_volumes_and_healthchecks():
     assert "redis-cli" in str(compose["services"]["redis"]["healthcheck"]["test"])
     assert "/health" in str(compose["services"]["estimador-cag"]["healthcheck"]["test"])
     assert "/up" in str(compose["services"]["estimator-web"]["healthcheck"]["test"])
+    assert "/healthz" in str(compose["services"]["estimator-web-react"]["healthcheck"]["test"])
 
 
 def test_root_compose_waits_for_healthy_dependencies():

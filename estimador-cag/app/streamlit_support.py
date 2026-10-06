@@ -1,19 +1,23 @@
 """Utilidades sin dependencia de Streamlit que soportan `streamlit_app.py`."""
 
 import asyncio
-import re
 from collections.abc import AsyncIterator, Iterator, Mapping, MutableMapping
 
+from app.prompts.loader import few_shot_examples  # noqa: F401  (se reexporta para el cliente Streamlit)
+
+# Una transcripción de 80 000 caracteres ocupa como mucho ~320 KB en UTF-8.
+MAX_TRANSCRIPT_BYTES = 400_000
 _SECRET_ENV_KEYS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")
-_EXAMPLE = re.compile(
-    r"^### Ejemplo \d+: (?P<title>.+?)\n.*?<project_description>\n(?P<description>.*?)\n</project_description>",
-    re.S | re.M,
-)
 
 
-def few_shot_examples(system_prompt: str) -> list[tuple[str, str]]:
-    """(título, descripción) de cada ejemplo few-shot incluido en un prompt de sistema renderizado."""
-    return [(m["title"], m["description"]) for m in _EXAMPLE.finditer(system_prompt)]
+def decode_transcript(data: bytes) -> str:
+    """Texto de un archivo .txt subido; lanza ValueError con un mensaje apto para el usuario."""
+    if len(data) > MAX_TRANSCRIPT_BYTES:
+        raise ValueError(f"El archivo supera el máximo de {MAX_TRANSCRIPT_BYTES // 1000} KB.")
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValueError("El archivo debe estar codificado en UTF-8.") from None
 
 
 def sync_secrets_to_env(secrets: Mapping[str, str], environ: MutableMapping[str, str]) -> None:

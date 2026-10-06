@@ -1,0 +1,23 @@
+<h1>Estimación<%= " ##{@estimation["id"]}" if @estimation["id"] %></h1>
+
+<div class="card">
+  <p class="meta" id="estimation-meta">
+    <% options = @estimation["options"] || {} %>
+    <%= label_for(options["project_type"]) %> · detalle <%= label_for(options["detail_level"]).downcase %> ·
+    <%= label_for(options["output_format"]).downcase %> · prompt <%= @estimation["prompt_version"] %> ·
+    <%= cache_source_label(@estimation["cache_source"]) %>
+    <% if @estimation["requested_at"] %> · <%= format_time(@estimation["requested_at"]) %><% end %>
+  </p>
+  <%= render "result", estimation: @estimation %>
+</div>
+
+<div class="card">
+  <h2>Descripción</h2>
+  <% description = @estimation["description"].to_s %>
+  <p id="description-text" style="white-space: pre-wrap;"><%= description.truncate(2000) %></p>
+  <% if description.length > 2000 %>
+    <p class="meta"><%= number_with_delimiter(description.length, delimiter: ".") %> caracteres en total.</p>
+  <% end %>
+</div>
+
+<p><a href="<%= estimations_path %>">← Historial</a> · <a href="<%= root_path %>">Nueva estimación</a></p>

@@ -71,3 +71,28 @@ def test_get_settings_is_cached(monkeypatch):
 def test_invalid_resilience_settings(options):
     with pytest.raises(ValidationError):
         _openai(**options)
+
+
+def test_guardrail_and_semantic_cache_defaults():
+    s = _openai()
+    assert s.moderation_enabled and s.moderation_fail_open
+    assert s.semantic_cache_mode == "active"
+    assert s.semantic_cache_threshold == 0.92
+    assert s.semantic_cache_ttl == 86400
+    assert s.embedding_model == "text-embedding-3-small" and s.embedding_dimensions == 1536
+    assert s.validation_max_attempts == 3
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"semantic_cache_mode": "maybe"},
+        {"semantic_cache_threshold": 1.5},
+        {"semantic_cache_ttl": 0},
+        {"validation_max_attempts": 0},
+        {"embedding_dimensions": 0},
+    ],
+)
+def test_invalid_semantic_cache_and_validation_settings(overrides):
+    with pytest.raises(ValidationError):
+        _openai(**overrides)

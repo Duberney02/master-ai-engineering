@@ -1,0 +1,93 @@
+<h1>Estimador de proyectos</h1>
+
+<% if @form.errors.any? %>
+  <div class="alert error" role="alert" id="form-errors">
+    <% @form.errors.each do |error| %>
+      <div><%= error.message %></div>
+    <% end %>
+  </div>
+<% end %>
+
+<%= form_with model: @form, scope: :estimation_form, url: estimations_path, method: :post,
+              html: { id: "estimation-form", multipart: true } do |f| %>
+  <div class="card">
+    <%= f.label :description, "Descripción del proyecto o transcripción" %>
+    <%= f.text_area :description, id: "description", maxlength: EstimationForm::MAX_DESCRIPTION,
+                    placeholder: "Qué debe hacer el sistema, para quién y con qué restricciones, o pega la transcripción completa de la reunión." %>
+    <div class="counter"><span id="char-count"><%= @form.description.length %></span> / <%= number_with_delimiter(EstimationForm::MAX_DESCRIPTION, delimiter: ".") %> caracteres (mínimo <%= EstimationForm::MIN_DESCRIPTION %>)</div>
+
+    <%= f.label :upload, "…o carga una transcripción (.txt)" %>
+    <%= f.file_field :upload, id: "upload", accept: ".txt,text/plain" %>
+    <div class="hint">El contenido del archivo sustituye a la descripción. Máximo <%= EstimationForm::MAX_UPLOAD_BYTES / 1000 %> KB, codificación UTF-8.</div>
+
+    <div class="row">
+      <div>
+        <%= f.label :project_type, "Tipo de proyecto" %>
+        <%= f.select :project_type, options_for_labels(EstimationForm::PROJECT_TYPES), selected: @form.project_type %>
+      </div>
+      <div>
+        <%= f.label :detail_level, "Nivel de detalle" %>
+        <%= f.select :detail_level, options_for_labels(EstimationForm::DETAIL_LEVELS), selected: @form.detail_level %>
+      </div>
+      <div>
+        <%= f.label :output_format, "Formato de salida" %>
+        <%= f.select :output_format, options_for_labels(EstimationForm::OUTPUT_FORMATS), selected: @form.output_format %>
+      </div>
+      <div>
+        <%= f.label :prompt_version, "Versión del prompt" %>
+        <%= f.select :prompt_version, EstimationForm::PROMPT_VERSIONS, selected: @form.prompt_version %>
+      </div>
+    </div>
+
+    <button type="submit" id="submit-button">Estimar</button>
+    <div id="loading" role="status" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>Estimando… <strong id="timer">0 s</strong> <span class="hint">(las transcripciones largas pueden tardar un par de minutos)</span></div>
+    </div>
+  </div>
+<% end %>
+
+<script>
+  (function () {
+    var form = document.getElementById("estimation-form");
+    var textarea = document.getElementById("description");
+    var counter = document.getElementById("char-count");
+    var upload = document.getElementById("upload");
+    var button = document.getElementById("submit-button");
+    var loading = document.getElementById("loading");
+    var timer = document.getElementById("timer");
+    var max = <%= EstimationForm::MAX_DESCRIPTION %>;
+    var interval = null;
+
+    function updateCount() { counter.textContent = textarea.value.length; }
+    textarea.addEventListener("input", updateCount);
+
+    // Previsualiza el .txt en el área de texto; el servidor vuelve a validarlo igualmente.
+    upload.addEventListener("change", function () {
+      var file = upload.files[0];
+      if (!file || !/\.txt$/i.test(file.name)) { return; }
+      var reader = new FileReader();
+      reader.onload = function () { textarea.value = String(reader.result).slice(0, max); updateCount(); };
+      reader.readAsText(file);
+    });
+
+    function stop() {
+      if (interval) { clearInterval(interval); interval = null; }
+      loading.classList.remove("active");
+      button.disabled = false;
+    }
+
+    form.addEventListener("submit", function () {
+      var started = Date.now();
+      button.disabled = true;
+      loading.classList.add("active");
+      timer.textContent = "0 s";
+      interval = setInterval(function () {
+        timer.textContent = Math.floor((Date.now() - started) / 1000) + " s";
+      }, 1000);
+    });
+
+    // Al volver con el botón "atrás" el navegador puede restaurar la página con el estado de carga.
+    window.addEventListener("pageshow", stop);
+  })();
+</script>

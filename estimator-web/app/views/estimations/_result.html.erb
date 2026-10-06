@@ -1,0 +1,29 @@
+<% result = estimation.fetch("result") %>
+<% if result["out_of_scope"] %>
+  <div class="alert warn" id="out-of-scope">
+    <strong>No estimable.</strong> <%= out_of_scope_reason(result["summary"]) %>
+    <div class="meta">Confianza <%= result["confidence_pct"] %>% (por debajo del 30% no se ofrecen cifras).</div>
+  </div>
+<% else %>
+  <p><%= result["summary"] %></p>
+  <div class="metrics">
+    <div class="metric"><span>Confianza</span><strong id="confidence"><%= result["confidence_pct"] %>%</strong></div>
+    <div class="metric"><span>Duración total</span><strong id="duration"><%= format_weeks(result["total_duration_weeks"]) %></strong></div>
+    <div class="metric"><span>Coste total</span><strong id="cost"><%= format_cost(result["total_cost_eur"]) %></strong></div>
+  </div>
+  <table id="phases">
+    <thead>
+      <tr><th>Fase</th><th>Descripción</th><th class="num">Semanas</th><th class="num">Coste</th></tr>
+    </thead>
+    <tbody>
+      <% Array(result["phases"]).each do |phase| %>
+        <tr>
+          <td><%= phase["name"] %></td>
+          <td><%= phase["description"] %></td>
+          <td class="num"><%= number_with_precision(phase["duration_weeks"], precision: 1, strip_insignificant_zeros: true, separator: ",") %></td>
+          <td class="num"><%= format_cost(phase["cost_eur"]) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>

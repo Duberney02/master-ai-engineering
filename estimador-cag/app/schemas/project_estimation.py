@@ -5,8 +5,9 @@ desde `app.schemas`.
 """
 
 from enum import Enum
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 class ProjectType(str, Enum):
@@ -29,6 +30,11 @@ class OutputFormat(str, Enum):
 
 
 MAX_REFERENCE_PROJECTS = 5
+# Una transcripción completa de reunión cabe en ~20 000 tokens.
+MIN_DESCRIPTION_CHARS = 20
+MAX_DESCRIPTION_CHARS = 80_000
+
+CacheSource = Literal["none", "exact", "semantic"]
 
 
 class ReferenceProject(BaseModel):
@@ -40,7 +46,9 @@ class ReferenceProject(BaseModel):
 
 
 class EstimationRequest(BaseModel):
-    description: str = Field(min_length=20, max_length=2000)
+    description: str = Field(
+        min_length=MIN_DESCRIPTION_CHARS, max_length=MAX_DESCRIPTION_CHARS
+    )
     project_type: ProjectType
     detail_level: DetailLevel
     output_format: OutputFormat
@@ -51,9 +59,33 @@ class EstimationRequest(BaseModel):
     )
 
 
-class EstimationResponse(BaseModel):
-    text: str
-    prompt_version: str
+# Por debajo de esta confianza (%) la estimación se declara fuera de alcance.
+OUT_OF_SCOPE_CONFIDENCE = 30
+OUT_OF_SCOPE_PREFIX = "Out of scope:"
+
+
+class Phase(BaseModel):
+    """Fase del proyecto con su duración y coste."""
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=1000)
+    duration_weeks: float = Field(gt=0, le=520, allow_inf_nan=False)
+    cost_eur: float = Field(ge=0, le=100_000_000, allow_inf_nan=False)
+
+
+class EstimationResult(BaseModel):
+    """Estimación estructurada; las reglas de negocio se validan en `app.services.validation`."""
+
+    summary: str = Field(min_length=1, max_length=2000)
+    confidence_pct: int = Field(ge=0, le=100)
+    phases: list[Phase] = Field(min_length=1, max_length=30)
+    total_duration_weeks: float = Field(gt=0, le=2600, allow_inf_nan=False)
+    total_cost_eur: float = Field(ge=0, le=100_000_000, allow_inf_nan=False)
+
+    @computed_field
+    @property
+    def out_of_scope(self) -> bool:
+        return self.confidence_pct < OUT_OF_SCOPE_CONFIDENCE
 
 
 class StreamUsage(BaseModel):
@@ -62,10 +94,9 @@ class StreamUsage(BaseModel):
     total_tokens: int = Field(ge=0)
 
 
-class EstimationStreamMetadata(BaseModel):
-    """Evento `metadata` de `POST /api/v1/estimate/stream`, emitido tras el último `token`."""
+class CallMetrics(BaseModel):
+    """Métricas de la llamada que produjo (o sirvió desde caché) una estimación."""
 
-    prompt_version: str
     model: str
     provider: str
     finish_reason: str
@@ -74,3 +105,20 @@ class EstimationStreamMetadata(BaseModel):
     cache_hit: bool
     estimated_cost_usd: float | None
     request_cost_usd: float | None
+
+
+class EstimationResponse(BaseModel):
+    result: EstimationResult
+    prompt_version: str
+    cached: bool = False
+    cache_source: CacheSource = "none"
+    estimation_id: int | None = None
+    metrics: CallMetrics | None = None
+
+
+class EstimationStreamMetadata(CallMetrics):
+    """Evento `metadata` de `POST /api/v1/estimate/stream`, emitido tras el último `token`."""
+
+    prompt_version: str
+    cache_source: CacheSource = "none"
+    estimation_id: int | None = None

@@ -4,9 +4,9 @@ name: estimador-cag CI
 on:
   push:
     branches: [master]
-    paths: ["estimador-cag/**", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
+    paths: ["estimador-cag/**", "estimator-web/**", "estimator-web-react/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
   pull_request:
-    paths: ["estimador-cag/**", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
+    paths: ["estimador-cag/**", "estimator-web/**", "estimator-web-react/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
 
 jobs:
   specs:
@@ -22,6 +22,20 @@ jobs:
           OPENSPEC_TELEMETRY: "0"
   test:
     runs-on: ubuntu-latest
+    # PostgreSQL real para la prueba de integración del historial (tests/test_history_postgres.py).
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: estimator
+          POSTGRES_PASSWORD: estimator
+          POSTGRES_DB: estimator
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U estimator -d estimator"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://estimator:estimator@localhost:5432/estimator
     defaults:
       run:
         working-directory: estimador-cag
@@ -50,6 +64,8 @@ jobs:
         # - test_examples.py / test_prompt_options.py -> catálogo, selección y formatos CAG
         # - test_evaluation.py         -> evaluación estructural y discrepancias numéricas
         # - test_api_errors.py / test_llm_service.py / test_config.py -> errores y configuración
+        # - test_long_transcriptions.py -> validadores, rechazos, guardrails y caché semántica con 80 000 caracteres
+        # - test_history.py / test_history_postgres.py -> historial (SQLite en memoria y PostgreSQL real)
         run: uv run pytest -v
 
   docker:
@@ -91,3 +107,74 @@ jobs:
           done
           docker logs estimador-ci
           exit 1
+
+  web:
+    # Pruebas Minitest + WebMock de estimator-web (nunca llaman a la API real).
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: estimator-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: estimator-web
+      - run: bin/rails test
+
+  web-react:
+    # Pruebas Vitest y compilación (tsc + vite) de estimator-web-react (sin red ni claves reales).
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: estimator-web-react
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: estimator-web-react/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  stack:
+    # Compose raíz: construye las imágenes, espera a que los servicios estén healthy
+    # y comprueba que la API y las webs responden y que el historial está operativo.
+    runs-on: ubuntu-latest
+    needs: [test, web, web-react]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Prepare env (dummy key, no provider is called)"
+        run: |
+          {
+            echo LLM_PROVIDER=openai
+            echo OPENAI_API_KEY=sk-ci-dummy
+            echo MODERATION_ENABLED=false
+          } > estimador-cag/.env
+
+      - run: docker compose config --quiet
+
+      - name: Start the stack
+        run: docker compose up -d --build --wait --wait-timeout 240
+
+      - name: Smoke checks
+        run: |
+          curl -fsS http://localhost:8000/health
+          curl -fsS http://localhost:3000/up
+          test "$(curl -fsS http://localhost:8000/api/v1/estimations)" = "[]"
+          curl -fsS http://localhost:3000/estimations | grep -q 'Historial'
+          curl -fsS http://localhost:3001/healthz
+          test "$(curl -fsS http://localhost:3001/api/v1/estimations)" = "[]"
+          curl -fsS http://localhost:3001/estimations | grep -q '<div id="root">'
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop
+        if: always()
+        run: docker compose down -v

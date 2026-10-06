@@ -13,6 +13,8 @@ def openai_settings(**kw) -> Settings:
 
 
 def anthropic_settings(**kw) -> Settings:
+    # Sin clave de OpenAI aunque el entorno de las pruebas defina una ficticia (conftest).
+    kw.setdefault("openai_api_key", None)
     return Settings(llm_provider="anthropic", anthropic_api_key="sk-ant-test", _env_file=None, **kw)
 
 
@@ -56,6 +58,8 @@ def anthropic_response(
 
 def patch_settings(mocker, settings: Settings) -> None:
     mocker.patch("app.services.llm_service.get_settings", return_value=settings)
+    mocker.patch("app.services.pipeline.get_settings", return_value=settings)
+    mocker.patch("app.services.history.get_settings", return_value=settings)
 
 
 def patch_openai(mocker, *outcomes) -> AsyncMock:

@@ -1,0 +1,14 @@
+source "https://rubygems.org"
+
+gem "rails", "~> 8.1.4"
+gem "puma", ">= 5.0"
+# Cliente HTTP de la API del estimador.
+gem "faraday", "~> 2.9"
+
+# Windows does not include zoneinfo files, so bundle the tzinfo-data gem
+gem "tzinfo-data", platforms: %i[ windows jruby ]
+
+group :test do
+  # Dobles HTTP: las pruebas nunca llaman a la API real.
+  gem "webmock", "~> 3.23"
+end

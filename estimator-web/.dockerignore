@@ -1,0 +1,10 @@
+.git
+.gitignore
+.dockerignore
+Dockerfile
+/log/*
+/tmp/*
+/config/master.key
+/vendor/bundle
+/.bundle
+/test

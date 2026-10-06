@@ -11,14 +11,17 @@ from functools import lru_cache
 from pathlib import Path
 
 import structlog
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, StrictUndefined
 
 from app.schemas import EstimationRequest
 
 logger = structlog.get_logger(__name__)
 
 ESTIMATION_PROMPTS_DIR = Path(__file__).parent / "estimation"
-DEFAULT_PROMPT_VERSION = "v1"
+DEFAULT_PROMPT_VERSION = "v3"
+# Contrato de salida JSON compartido (`estimation/output_contract.j2`). Las versiones que no lo
+# incluyen en su `system.j2` lo reciben al final del prompt de sistema.
+OUTPUT_CONTRACT_MARKER = "## Contrato de salida (JSON)"
 _VERSION_PATTERN = re.compile(r"^v\d+$")
 
 
@@ -38,9 +41,13 @@ def available_versions() -> list[str]:
 
 @lru_cache
 def _environment(version: str) -> Environment:
-    # Un loader por versión: `{% include "examples.j2" %}` resuelve dentro de la misma versión.
+    # Un loader por versión: `{% include "examples.j2" %}` resuelve dentro de la misma versión
+    # y, si no existe allí, en el directorio común.
     return Environment(
-        loader=FileSystemLoader(ESTIMATION_PROMPTS_DIR / version),
+        loader=ChoiceLoader([
+            FileSystemLoader(ESTIMATION_PROMPTS_DIR / version),
+            FileSystemLoader(ESTIMATION_PROMPTS_DIR),  # parciales compartidos entre versiones
+        ]),
         undefined=StrictUndefined,
         trim_blocks=True,
         lstrip_blocks=True,
@@ -61,6 +68,17 @@ def _render(env: Environment, name: str, context: dict) -> str:
     return re.sub(r"\n{3,}", "\n\n", env.get_template(name).render(**context)).strip()
 
 
+_EXAMPLE = re.compile(
+    r"^### Ejemplo \d+: (?P<title>.+?)\n.*?<project_description>\n(?P<description>.*?)\n</project_description>",
+    re.S | re.M,
+)
+
+
+def few_shot_examples(system_prompt: str) -> list[tuple[str, str]]:
+    """(título, descripción) de cada ejemplo few-shot incluido en un prompt de sistema renderizado."""
+    return [(m["title"], m["description"]) for m in _EXAMPLE.finditer(system_prompt)]
+
+
 def prompt_hash(system: str, user: str) -> str:
     return hashlib.sha256(f"{system}\0{user}".encode("utf-8")).hexdigest()
 
@@ -72,6 +90,9 @@ def render_estimation_prompt(
     env = _environment(_validated(version))
     context = request.model_dump(mode="json")
     system = _render(env, "system.j2", context)
+    if OUTPUT_CONTRACT_MARKER not in system:
+        contract = _render(env, "output_contract.j2", context)
+        system = system + "\n\n" + contract
     user = _render(env, "user.j2", context)
     logger.info(
         "prompt_rendered",

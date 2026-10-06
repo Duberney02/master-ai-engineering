@@ -38,6 +38,24 @@ class Settings(BaseSettings):
     cache_ttl: int = Field(default=86400, gt=0)
     cache_timeout: float = Field(default=0.5, gt=0, le=10)
     model_prices: dict[str, ModelPrice] = Field(default_factory=dict)
+    # Guardrails de entrada: la moderación usa OpenAI y se omite sin OPENAI_API_KEY.
+    moderation_enabled: bool = True
+    moderation_model: str = "omni-moderation-latest"
+    moderation_fail_open: bool = True
+    # Embeddings (OpenAI) y caché semántica sobre Redis Stack. El umbral es una
+    # similitud coseno (1 = idéntico); log_only consulta y registra sin devolver aciertos.
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = Field(default=1536, gt=0, le=8192)
+    semantic_cache_mode: Literal["off", "log_only", "active"] = "active"
+    semantic_cache_threshold: float = Field(default=0.92, ge=0, le=1)
+    semantic_cache_ttl: int = Field(default=86400, gt=0)
+    # Por encima de esta longitud (caracteres) la caché semántica se omite: los embeddings
+    # tienen un límite de tokens y truncar produciría aciertos falsos entre transcripciones.
+    semantic_cache_max_chars: int = Field(default=8000, gt=0)
+    # PostgreSQL del historial (postgresql+asyncpg://...). Sin valor, el historial se desactiva.
+    database_url: str | None = None
+    # Intentos totales para obtener un resultado que cumpla las reglas de negocio.
+    validation_max_attempts: int = Field(default=3, ge=1, le=5)
 
     @model_validator(mode="after")
     def validate_provider_key(self) -> "Settings":

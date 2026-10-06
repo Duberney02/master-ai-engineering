@@ -1,0 +1,35 @@
+<%# Barra lateral equivalente a la de Streamlit: contexto del prompt, ejemplos few-shot y última llamada. %>
+<% preview = @sidebar[:preview] %>
+<% metrics = @sidebar[:metrics] %>
+
+<h2>Contexto del prompt</h2>
+<% if preview %>
+  <label for="system-prompt">System prompt</label>
+  <textarea id="system-prompt" readonly rows="14"><%= preview["system_prompt"] %></textarea>
+  <p class="hint">Plantillas <%= preview["prompt_version"] %> renderizadas por la API para estas opciones.</p>
+
+  <h3>Ejemplos few-shot</h3>
+  <div id="few-shot">
+    <% Array(preview["examples"]).each do |example| %>
+      <p class="example"><strong><%= example["title"] %></strong><br><span class="hint"><%= example["description"] %></span></p>
+    <% end %>
+  </div>
+<% else %>
+  <p class="hint" id="prompt-unavailable">El contexto del prompt no está disponible en este momento.</p>
+<% end %>
+
+<h3>Última llamada</h3>
+<% if metrics %>
+  <% usage = metrics["usage"] || {} %>
+  <dl id="last-call">
+    <div><dt>Modelo</dt><dd id="metric-model"><%= metrics["model"].presence || "Desconocido" %></dd></div>
+    <div><dt>Versión del prompt</dt><dd id="metric-prompt-version"><%= @sidebar[:prompt_version] %></dd></div>
+    <div><dt>Tokens de entrada</dt><dd id="metric-input-tokens"><%= number_with_delimiter(usage["input_tokens"].to_i, delimiter: ".") %></dd></div>
+    <div><dt>Tokens de salida</dt><dd id="metric-output-tokens"><%= number_with_delimiter(usage["output_tokens"].to_i, delimiter: ".") %></dd></div>
+    <div><dt>Latencia (ms)</dt><dd id="metric-latency"><%= number_with_delimiter(metrics["latency_ms"].to_i, delimiter: ".") %></dd></div>
+    <div><dt>Coste de solicitud</dt><dd id="metric-cost"><%= format_usd(metrics["request_cost_usd"]) %></dd></div>
+  </dl>
+  <p class="hint" id="metric-cache"><%= metrics["cache_hit"] ? "Respuesta de caché" : "Respuesta generada" %></p>
+<% else %>
+  <p class="hint" id="no-metrics">Aún no se ha generado ninguna estimación.</p>
+<% end %>

@@ -1,0 +1,147 @@
+# Stack completo: API del estimador, chat Streamlit, aplicaciones web Rails y React, Redis Stack y PostgreSQL.
+#
+#   cp estimador-cag/.env.example estimador-cag/.env   # y completa la API key del proveedor elegido
+#   cp .env.example .env                               # opcional: contraseñas y secretos propios
+#   docker compose up --build
+#
+# Web Rails: http://localhost:3000 · Web React: http://localhost:3001 · Chat Streamlit: http://localhost:8501 · API (docs): http://localhost:8000/docs
+# Solo la API, las webs y el chat publican puertos; Redis y PostgreSQL son internos a la red `estimator-net`.
+# Para desarrollar solo el backend con recarga en caliente usa estimador-cag/docker-compose.yml.
+
+name: estimator
+
+services:
+  estimador-cag:
+    build:
+      context: ./estimador-cag
+      target: runtime
+    image: estimador-cag:latest
+    ports:
+      - "8000:8000"
+    # Claves del proveedor y ajustes del estimador (ignorado por git y por la imagen).
+    env_file:
+      - path: ./estimador-cag/.env
+        required: true
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://estimator:${POSTGRES_PASSWORD:-estimator-dev}@postgres:5432/estimator
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks: [estimator-net]
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  estimador-cag-chat:
+    # Cliente Streamlit: misma imagen que la API, pero solo habla HTTP con ella (sin claves de proveedores).
+    image: estimador-cag:latest
+    ports:
+      - "8501:8501"
+    environment:
+      ESTIMATOR_API_BASE_URL: http://estimador-cag:8000
+    command: ["streamlit", "run", "streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
+    depends_on:
+      estimador-cag:
+        condition: service_healthy
+    networks: [estimator-net]
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  estimator-web:
+    build:
+      context: ./estimator-web
+    image: estimator-web:latest
+    ports:
+      - "3000:3000"
+    # La web solo habla HTTP con la API: no recibe claves de proveedores.
+    environment:
+      ESTIMATOR_API_URL: http://estimador-cag:8000
+      ESTIMATOR_READ_TIMEOUT: "300"
+      # Solo desarrollo: define SECRET_KEY_BASE (openssl rand -hex 64) en .env para otro entorno.
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-only-secret-key-base-change-me-0123456789abcdef0123456789abcdef0123456789abcdef}
+    depends_on:
+      estimador-cag:
+        condition: service_healthy
+    networks: [estimator-net]
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ruby", "-rnet/http", "-e", "exit(Net::HTTP.start('127.0.0.1', 3000, read_timeout: 3) { |h| h.get('/up').code == '200' } ? 0 : 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  estimator-web-react:
+    # Misma funcionalidad que estimator-web, en React: SPA estática con nginx, que reenvía /api/ a la API
+    # (el navegador solo habla con su origen: sin CORS). No recibe claves de proveedores.
+    build:
+      context: ./estimator-web-react
+    image: estimator-web-react:latest
+    ports:
+      - "3001:8080"
+    environment:
+      API_UPSTREAM: http://estimador-cag:8000
+    depends_on:
+      estimador-cag:
+        condition: service_healthy
+    networks: [estimator-net]
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "--timeout=3", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  redis:
+    # Redis Stack: Redis + RediSearch, necesario para la caché semántica (búsqueda vectorial).
+    image: redis/redis-stack-server:latest
+    volumes:
+      - redis_data:/data
+    networks: [estimator-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  postgres:
+    # Historial persistente de estimaciones.
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: estimator
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-estimator-dev}
+      POSTGRES_DB: estimator
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [estimator-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U estimator -d estimator"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+networks:
+  estimator-net:
+
+volumes:
+  redis_data:
+  postgres_data:

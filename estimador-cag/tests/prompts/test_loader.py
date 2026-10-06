@@ -56,7 +56,7 @@ def test_hash_changes_with_version():
 
 @pytest.mark.parametrize("overrides", [
     {"description": "demasiado corta"},
-    {"description": "x" * 2001},
+    {"description": "x" * 80_001},
     {"project_type": "desktop_app"},
     {"detail_level": "extreme"},
     {"output_format": "json"},

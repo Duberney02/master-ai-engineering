@@ -1,0 +1,21 @@
+## Contrato de salida (JSON)
+
+Responde únicamente con un objeto JSON válido, sin texto antes ni después y sin bloques de código, con exactamente estos campos:
+
+{
+  "summary": "texto en español",
+  "confidence_pct": 0-100 (entero),
+  "phases": [
+    {"name": "nombre de la fase", "description": "texto breve", "duration_weeks": número mayor que 0, "cost_eur": número mayor o igual que 0}
+  ],
+  "total_duration_weeks": número mayor que 0,
+  "total_cost_eur": número mayor o igual que 0
+}
+
+Reglas del contrato:
+
+1. `total_cost_eur` es exactamente la suma de `cost_eur` de todas las fases.
+2. `confidence_pct` expresa tu confianza global en la estimación.
+3. Si `confidence_pct` es inferior a 30 (la descripción no basta para estimar), `summary` debe empezar por `Out of scope:` y explicar qué información falta.
+4. Costes en euros y duraciones en semanas; todo el texto en español.
+5. La respuesta es siempre este JSON, aunque antes se haya pedido una tabla, una lista o prosa: el formato y el nivel de detalle pedidos se reflejan en `summary` y en las descripciones de las fases.

@@ -1,0 +1,27 @@
+<h1>Historial</h1>
+
+<% if @error %>
+  <div class="alert warn" id="history-error"><%= @error %></div>
+<% elsif @estimations.empty? %>
+  <div class="card" id="history-empty">Todavía no hay estimaciones. <a href="<%= root_path %>">Crea la primera</a>.</div>
+<% else %>
+  <div class="card">
+    <table id="history">
+      <thead>
+        <tr><th>Fecha</th><th>Tipo</th><th class="num">Confianza</th><th class="num">Coste</th><th>Procedencia</th><th>Descripción</th></tr>
+      </thead>
+      <tbody>
+        <% @estimations.each do |item| %>
+          <tr>
+            <td><a href="<%= estimation_path(item["id"]) %>"><%= format_time(item["requested_at"]) %></a></td>
+            <td><%= label_for(item["project_type"]) %></td>
+            <td class="num"><%= item["confidence_pct"] %>%</td>
+            <td class="num"><%= item["out_of_scope"] ? "No estimable" : format_cost(item["total_cost_eur"]) %></td>
+            <td><%= cache_source_label(item["cache_source"]) %></td>
+            <td><%= item["description_excerpt"].to_s.truncate(90) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>

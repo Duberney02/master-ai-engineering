@@ -47,7 +47,7 @@ varias llamadas.
 Redis almacena contenido derivado de transcripciones y está destinado a un solo
 ámbito de confianza. Separar instancias/namespaces y añadir autenticación antes
 de convertirlo en multiusuario. La API sigue sin autenticación; Compose es para
-desarrollo. Redis interno tiene volumen, 128 MB y evicción LRU, sin puerto publicado.
+desarrollo. Redis interno es **Redis Stack** (RediSearch, necesario para la caché semántica), con volumen y sin puerto publicado ni política de evicción: el índice vectorial no debe expulsarse. Las entradas caducan por TTL.
 
 Fallback ocurre ante timeout/conexión/429/5xx tras reintentos SDK, no ante errores
 de credenciales o parámetros. `model` explícito lo desactiva. Después del primer
@@ -133,3 +133,37 @@ uv run pytest -q
 
 Pruebas con SDK/HTTP simulados: fallback, caché normal/streaming, TTL, corrupción,
 cancelación, coste por fase, parser SSE, UI y evaluación monetaria. No usan modelos pagados.
+
+## Estimación estructurada: guardrails, validación y caché semántica
+
+`POST /api/v1/estimate` ejecuta un pipeline único (`app/services/pipeline.py`):
+guardrails de entrada → caché exacta → caché semántica → render del prompt →
+generación → validación de negocio (con reintentos) → almacenamiento.
+
+| Variable | Defecto | Efecto |
+|---|---|---|
+| `MODERATION_ENABLED` | true | Moderación de OpenAI; se omite sin `OPENAI_API_KEY` |
+| `MODERATION_MODEL` | omni-moderation-latest | Modelo de moderación |
+| `MODERATION_FAIL_OPEN` | true | Si la moderación falla: continuar (true) o responder 503 (false) |
+| `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | text-embedding-3-small / 1536 | Embeddings (OpenAI); forman parte del nombre del índice |
+| `SEMANTIC_CACHE_MODE` | active | `off`, `log_only` (consulta y registra `semantic_cache_would_hit`, no devuelve) o `active` |
+| `SEMANTIC_CACHE_THRESHOLD` | 0.92 | Similitud coseno mínima (0–1) |
+| `SEMANTIC_CACHE_TTL` | 86400 | TTL de las entradas semánticas en segundos |
+| `VALIDATION_MAX_ATTEMPTS` | 3 | Intentos totales para obtener un resultado válido (1 = sin corrección) |
+
+**Guardrails**: se evalúan `description` y los textos de `reference_projects`. Orden: datos
+personales (correo, teléfono, IBAN con mod-97), prompt injection (heurística ES/EN) y moderación.
+Un rechazo es `400 {"reason", "message"}` con `reason` en `pii_email`, `pii_phone`, `pii_iban`,
+`prompt_injection` o `moderation`; el mensaje no reproduce el dato detectado. Los guardrails
+corren antes de cualquier caché o llamada al proveedor.
+
+**Validación**: la suma de `cost_eur` de las fases debe coincidir con `total_cost_eur` (±0,01 EUR) y,
+con `confidence_pct` < 30, `summary` debe empezar por `Out of scope:`. Si falla, se reenvía la
+respuesta anterior y el error concreto al modelo; agotados los intentos, 502 saneado. Un resultado
+fuera de alcance se normaliza a una fase placeholder `No estimable` (0 EUR, 1 semana).
+
+**Caché semántica**: `redisvl` sobre Redis Stack; cada consulta filtra por versión de prompt, tipo de
+proyecto, detalle y formato, de modo que nunca se mezclan. Sin `REDIS_URL` o sin `OPENAI_API_KEY`
+(Anthropic no ofrece embeddings) queda desactivada. Los fallos de Redis o embeddings se tratan como
+un fallo de caché. Para calibrar el umbral, arrancar en `log_only` y revisar los eventos
+`semantic_cache_would_hit` y su `similarity`.

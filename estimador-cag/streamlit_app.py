@@ -1,15 +1,26 @@
 """Cliente HTTP del estimador: formulario tipado con respuesta en streaming; no necesita claves de proveedores."""
 
 import os
+import time
 
+import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from app.prompts.loader import render_estimation_prompt
-from app.schemas import DetailLevel, EstimationRequest, OutputFormat, ProjectType
-from app.streamlit_client import PROMPT_VERSIONS, EstimationStreamError, stream_structured_estimation
-from app.streamlit_support import few_shot_examples
+from app.schemas import (
+    MAX_DESCRIPTION_CHARS,
+    MIN_DESCRIPTION_CHARS,
+    DetailLevel,
+    EstimationRequest,
+    EstimationResult,
+    OutputFormat,
+    ProjectType,
+)
+from app.schemas.project_estimation import OUT_OF_SCOPE_PREFIX
+from app.streamlit_client import PROMPT_VERSIONS, EstimationStreamError, request_structured_estimation
+from app.streamlit_support import decode_transcript, few_shot_examples
 
 load_dotenv()
 try:
@@ -45,14 +56,46 @@ def _label(value: str) -> str:
 
 def _validation_message(exc: ValidationError) -> str:
     if any(error["loc"] == ("description",) for error in exc.errors()):
-        return "La descripción debe tener entre 20 y 2000 caracteres."
+        return f"La descripción debe tener entre {MIN_DESCRIPTION_CHARS} y {MAX_DESCRIPTION_CHARS} caracteres."
     return "Revisa los campos del formulario."
 
 
+def _show_result(result: dict) -> None:
+    """Presenta un `EstimationResult`; fuera de alcance se muestra como no estimable, sin cifras."""
+    data = EstimationResult.model_validate(result)
+    if data.out_of_scope:
+        reason = data.summary.removeprefix(OUT_OF_SCOPE_PREFIX).strip()
+        st.warning(f"**No estimable.** {reason}")
+        st.caption(f"Confianza {data.confidence_pct}% (por debajo del 30% no se ofrecen cifras).")
+        return
+    st.markdown(data.summary)
+    confidence, duration, cost = st.columns(3)
+    confidence.metric("Confianza", f"{data.confidence_pct}%")
+    duration.metric("Duración total", f"{data.total_duration_weeks:g} semanas")
+    cost.metric("Coste total", f"{data.total_cost_eur:,.2f} EUR")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {"Fase": p.name, "Descripción": p.description,
+                 "Semanas": p.duration_weeks, "Coste (EUR)": p.cost_eur}
+                for p in data.phases
+            ]
+        ),
+        hide_index=True,
+    )
+
+
+SUMMARY_PREVIEW_CHARS = 600
+
+
 def _request_summary(request: EstimationRequest, prompt_version: str) -> str:
+    text = request.description
+    if len(text) > SUMMARY_PREVIEW_CHARS:
+        # Una transcripción de 80 000 caracteres no debe llenar el historial del chat.
+        text = f"{text[:SUMMARY_PREVIEW_CHARS].rstrip()}… ({len(request.description):,} caracteres)"
     return (
         f"**{_label(request.project_type.value)}** · detalle {_label(request.detail_level.value).lower()}"
-        f" · {_label(request.output_format.value).lower()} · prompt {prompt_version}\n\n{request.description}"
+        f" · {_label(request.output_format.value).lower()} · prompt {prompt_version}\n\n{text}"
     )
 
 
@@ -71,8 +114,14 @@ if st.sidebar.button("Borrar historial"):
 with st.form("estimation_form"):
     description = st.text_area(
         "Descripción del proyecto",
-        max_chars=2000,
-        placeholder="Qué debe hacer el sistema, para quién y con qué restricciones (mínimo 20 caracteres).",
+        max_chars=MAX_DESCRIPTION_CHARS,
+        placeholder=(
+            "Qué debe hacer el sistema, para quién y con qué restricciones "
+            f"(mínimo {MIN_DESCRIPTION_CHARS} caracteres), o pega una transcripción larga."
+        ),
+    )
+    transcript_file = st.file_uploader(
+        "…o carga una transcripción (.txt, sustituye a la descripción)", type="txt"
     )
     project_type = st.selectbox("Tipo de proyecto", [t.value for t in ProjectType], format_func=_label)
     left, right = st.columns(2)
@@ -87,18 +136,33 @@ with st.form("estimation_form"):
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        if "result" in msg:
+            _show_result(msg["result"])
+            if "elapsed" in msg:
+                st.caption(f"Tiempo: {msg['elapsed']:.1f} s")
+        else:
+            st.markdown(msg["content"])
 
 if submitted:
+    text = description
+    upload_error = None
+    if transcript_file is not None:
+        try:
+            text = decode_transcript(transcript_file.getvalue())
+        except ValueError as exc:
+            upload_error = str(exc)
     try:
+        if upload_error:
+            raise ValueError(upload_error)
         request = EstimationRequest(
-            description=description.strip(),
+            description=text.strip(),
             project_type=project_type,
             detail_level=detail_level,
             output_format=output_format,
         )
-    except ValidationError as exc:
-        st.error(_validation_message(exc))
+    except ValueError as exc:
+        # ValidationError de pydantic es una subclase de ValueError.
+        st.error(_validation_message(exc) if isinstance(exc, ValidationError) else str(exc))
     else:
         st.session_state.last_metrics = None
         st.session_state.last_prompt = (request, prompt_version)
@@ -108,17 +172,21 @@ if submitted:
             st.markdown(summary)
 
         with st.chat_message("assistant"):
-            metrics = {}
+            started = time.monotonic()
             try:
-                response = st.write_stream(
-                    stream_structured_estimation(request, api_url, metrics, prompt_version)
-                )
+                with st.spinner("Estimando… las transcripciones largas pueden tardar un par de minutos."):
+                    estimation, metadata = request_structured_estimation(request, api_url, prompt_version)
             except EstimationStreamError as exc:
                 st.error(str(exc))
-                st.caption("El texto parcial, si aparece, no es una estimación completa.")
             else:
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                st.session_state.last_metrics = metrics
+                result = estimation.model_dump(mode="json")
+                elapsed = time.monotonic() - started
+                _show_result(result)
+                st.caption(f"Tiempo: {elapsed:.1f} s")
+                st.session_state.messages.append(
+                    {"role": "assistant", "result": result, "elapsed": elapsed}
+                )
+                st.session_state.last_metrics = metadata.model_dump()
 
 # La barra lateral se dibuja al final para reflejar la solicitud recién enviada.
 prompt_request, prompt_request_version = st.session_state.last_prompt

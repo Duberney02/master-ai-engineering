@@ -93,6 +93,12 @@ class SemanticCache:
             self._vectors[text] = await self.embedder.embed(text)
         return self._vectors[text]
 
+    def _too_long(self, request: EstimationRequest) -> bool:
+        if len(semantic_text(request)) <= self.settings.semantic_cache_max_chars:
+            return False
+        logger.info("semantic_cache_skipped", reason="text_too_long")
+        return True
+
     @property
     def enabled(self) -> bool:
         return (
@@ -111,7 +117,7 @@ class SemanticCache:
 
     async def lookup(self, request: EstimationRequest, prompt_version: str) -> CachedEstimation | None:
         """Devuelve la entrada más parecida por encima del umbral (nunca en `log_only`)."""
-        if not self.enabled:
+        if not self.enabled or self._too_long(request):
             return None
         values = attributes(request, prompt_version)
         try:
@@ -137,7 +143,7 @@ class SemanticCache:
         return entry
 
     async def store(self, request: EstimationRequest, prompt_version: str, entry: CachedEstimation) -> None:
-        if not self.enabled:
+        if not self.enabled or self._too_long(request):
             return
         values = attributes(request, prompt_version)
         try:

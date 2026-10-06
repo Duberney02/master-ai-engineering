@@ -5,6 +5,10 @@
 """
 
 from app.schemas.project_estimation import (
+    MAX_DESCRIPTION_CHARS,
+    MIN_DESCRIPTION_CHARS,
+    CacheSource,
+    CallMetrics,
     DetailLevel,
     EstimationRequest,
     EstimationResponse,
@@ -18,6 +22,10 @@ from app.schemas.project_estimation import (
 )
 
 __all__ = [
+    "CacheSource",
+    "CallMetrics",
+    "MAX_DESCRIPTION_CHARS",
+    "MIN_DESCRIPTION_CHARS",
     "DetailLevel",
     "EstimationRequest",
     "EstimationResponse",

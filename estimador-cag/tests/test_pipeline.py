@@ -100,6 +100,7 @@ async def test_stages_run_in_order_and_result_is_stored_in_both_caches():
         "guardrails", "exact_get", "semantic_lookup", "generate", "exact_set", "semantic_store"
     ]
     assert outcome.cached is False and outcome.prompt_version == "v3"
+    assert outcome.cache_source == "none"
     assert outcome.result.total_cost_eur == 20000
     key, value = exact.sets[0]
     assert key == make_result_key(REQUEST, "v3", "openai", "gpt-4o-mini")
@@ -135,6 +136,7 @@ async def test_exact_hit_skips_semantic_render_and_generation():
 
     assert rec.events == ["guardrails", "exact_get"]
     assert outcome.cached is True and outcome.result == ENTRY.result
+    assert outcome.cache_source == "exact"
     assert (outcome.model, outcome.input_tokens, outcome.request_cost_usd) == ("m", 0, 0.0)
 
 
@@ -146,6 +148,7 @@ async def test_semantic_hit_is_promoted_to_the_exact_cache():
 
     assert rec.events == ["guardrails", "exact_get", "semantic_lookup", "exact_set"]
     assert outcome.cached is True and generate.calls == []
+    assert outcome.cache_source == "semantic"
     assert len(exact.sets) == 1
 
 

@@ -5,6 +5,7 @@ desde `app.schemas`.
 """
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -29,6 +30,11 @@ class OutputFormat(str, Enum):
 
 
 MAX_REFERENCE_PROJECTS = 5
+# Una transcripción completa de reunión cabe en ~20 000 tokens.
+MIN_DESCRIPTION_CHARS = 20
+MAX_DESCRIPTION_CHARS = 80_000
+
+CacheSource = Literal["none", "exact", "semantic"]
 
 
 class ReferenceProject(BaseModel):
@@ -40,7 +46,9 @@ class ReferenceProject(BaseModel):
 
 
 class EstimationRequest(BaseModel):
-    description: str = Field(min_length=20, max_length=2000)
+    description: str = Field(
+        min_length=MIN_DESCRIPTION_CHARS, max_length=MAX_DESCRIPTION_CHARS
+    )
     project_type: ProjectType
     detail_level: DetailLevel
     output_format: OutputFormat
@@ -80,22 +88,15 @@ class EstimationResult(BaseModel):
         return self.confidence_pct < OUT_OF_SCOPE_CONFIDENCE
 
 
-class EstimationResponse(BaseModel):
-    result: EstimationResult
-    prompt_version: str
-    cached: bool = False
-
-
 class StreamUsage(BaseModel):
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
     total_tokens: int = Field(ge=0)
 
 
-class EstimationStreamMetadata(BaseModel):
-    """Evento `metadata` de `POST /api/v1/estimate/stream`, emitido tras el último `token`."""
+class CallMetrics(BaseModel):
+    """Métricas de la llamada que produjo (o sirvió desde caché) una estimación."""
 
-    prompt_version: str
     model: str
     provider: str
     finish_reason: str
@@ -104,3 +105,20 @@ class EstimationStreamMetadata(BaseModel):
     cache_hit: bool
     estimated_cost_usd: float | None
     request_cost_usd: float | None
+
+
+class EstimationResponse(BaseModel):
+    result: EstimationResult
+    prompt_version: str
+    cached: bool = False
+    cache_source: CacheSource = "none"
+    estimation_id: int | None = None
+    metrics: CallMetrics | None = None
+
+
+class EstimationStreamMetadata(CallMetrics):
+    """Evento `metadata` de `POST /api/v1/estimate/stream`, emitido tras el último `token`."""
+
+    prompt_version: str
+    cache_source: CacheSource = "none"
+    estimation_id: int | None = None

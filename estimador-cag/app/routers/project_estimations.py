@@ -5,6 +5,7 @@ vive en `EstimationPipeline`, inyectado con `Depends`.
 """
 
 import json
+from datetime import datetime, timezone
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,8 +16,8 @@ from app.schemas import (
     EstimationRequest,
     EstimationResponse,
     EstimationStreamMetadata,
-    StreamUsage,
 )
+from app.services.history import EstimationHistory, get_history
 from app.services.pipeline import EstimationPipeline, PipelineOutcome, get_pipeline
 
 logger = structlog.get_logger(__name__)
@@ -52,11 +53,15 @@ async def estimate(
     request: EstimationRequest,
     prompt_version: str = PromptVersionQuery,
     pipeline: EstimationPipeline = Depends(get_pipeline),
+    history: EstimationHistory = Depends(get_history),
 ) -> EstimationResponse:
+    requested_at = datetime.now(timezone.utc)
     outcome = await pipeline.run(request, prompt_version)
+    estimation_id = await history.save(request, outcome, requested_at)
     _log_completed(outcome, streamed=False)
     return EstimationResponse(
-        result=outcome.result, prompt_version=outcome.prompt_version, cached=outcome.cached
+        result=outcome.result, prompt_version=outcome.prompt_version, cached=outcome.cached,
+        cache_source=outcome.cache_source, estimation_id=estimation_id, metrics=outcome.metrics(),
     )
 
 
@@ -64,21 +69,12 @@ def _event(name: str, data: dict) -> str:
     return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _metadata(outcome: PipelineOutcome) -> EstimationStreamMetadata:
+def _metadata(outcome: PipelineOutcome, estimation_id: int | None) -> EstimationStreamMetadata:
     return EstimationStreamMetadata(
+        **outcome.metrics().model_dump(),
         prompt_version=outcome.prompt_version,
-        model=outcome.model,
-        provider=outcome.provider,
-        finish_reason=outcome.finish_reason,
-        usage=StreamUsage(
-            input_tokens=outcome.input_tokens,
-            output_tokens=outcome.output_tokens,
-            total_tokens=outcome.input_tokens + outcome.output_tokens,
-        ),
-        latency_ms=outcome.latency_ms,
-        cache_hit=outcome.cached or outcome.completion_cache_hit,
-        estimated_cost_usd=outcome.estimated_cost_usd,
-        request_cost_usd=outcome.request_cost_usd,
+        cache_source=outcome.cache_source,
+        estimation_id=estimation_id,
     )
 
 
@@ -91,16 +87,19 @@ async def estimate_stream(
     request: EstimationRequest,
     prompt_version: str = PromptVersionQuery,
     pipeline: EstimationPipeline = Depends(get_pipeline),
+    history: EstimationHistory = Depends(get_history),
 ) -> StreamingResponse:
     # Versión y guardrails antes de abrir el stream: son un 422/400, no un evento.
     await pipeline.check_input(request, prompt_version)
 
     async def events():
         try:
+            requested_at = datetime.now(timezone.utc)
             outcome = await pipeline.run(request, prompt_version, input_checked=True)
+            estimation_id = await history.save(request, outcome, requested_at)
             _log_completed(outcome, streamed=True)
             yield _event("result", outcome.result.model_dump(mode="json"))
-            yield _event("metadata", _metadata(outcome).model_dump(mode="json"))
+            yield _event("metadata", _metadata(outcome, estimation_id).model_dump(mode="json"))
             yield _event("done", {"status": "complete"})
         except HTTPException as exc:
             # Los detalles provienen del mapeo saneado de errores del proveedor.

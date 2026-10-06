@@ -18,6 +18,9 @@ from app.schemas import EstimationRequest
 
 logger = structlog.get_logger(__name__)
 
+# Tamaño máximo de cada tramo enviado a moderación (una llamada, varios tramos).
+MODERATION_CHUNK_CHARS = 30_000
+
 REASON_MODERATION = "moderation"
 REASON_INJECTION = "prompt_injection"
 REASON_EMAIL = "pii_email"
@@ -108,6 +111,10 @@ def detect_prompt_injection(text: str) -> bool:
     return bool(_INJECTION.search(_normalize(text)))
 
 
+def _chunks(text: str, size: int = MODERATION_CHUNK_CHARS) -> list[str]:
+    return [text[start : start + size] for start in range(0, len(text), size)] or [""]
+
+
 def request_texts(request: EstimationRequest) -> list[str]:
     texts = [request.description]
     for project in request.reference_projects or []:
@@ -147,7 +154,7 @@ class InputGuardrails:
         client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.llm_timeout,
                              max_retries=settings.llm_retries)
         try:
-            response = await client.moderations.create(model=settings.moderation_model, input=text)
+            response = await client.moderations.create(model=settings.moderation_model, input=_chunks(text))
             return any(result.flagged for result in response.results)
         except Exception as exc:
             logger.error("moderation_failed", error_type=type(exc).__name__)

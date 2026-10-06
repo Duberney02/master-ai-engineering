@@ -40,6 +40,27 @@ EstimationRequest (app.schemas: description, project_type, detail_level,
 EstimationResponse {result: EstimationResult, prompt_version, cached}
 ```
 
+### Transcripciones largas
+
+`description` admite hasta **80 000 caracteres** (≈20 000 tokens). Los guardrails evalúan el texto completo y la
+moderación lo envía por tramos de 30 000 caracteres. Por encima de `SEMANTIC_CACHE_MAX_CHARS` (8 000 por defecto)
+la caché semántica se omite —los embeddings tienen un límite de tokens y truncar daría aciertos falsos—; la caché
+exacta sigue funcionando. Una transcripción larga tarda más: los clientes muestran indicador y temporizador.
+
+### Historial de estimaciones
+
+Con `DATABASE_URL` (PostgreSQL, p. ej. `postgresql+asyncpg://usuario:clave@host:5432/db`) cada estimación completada
+(generada o servida desde caché) se guarda con descripción, opciones, resultado JSON, versión de prompt, procedencia
+de caché y fechas. La tabla `estimations` se crea sola. Sin `DATABASE_URL` el historial queda desactivado y un fallo
+al guardar nunca rompe la estimación.
+
+```bash
+curl "http://localhost:8000/api/v1/estimations?limit=10"   # últimas N (1–50), más reciente primero, sin la descripción completa
+curl "http://localhost:8000/api/v1/estimations/42"        # registro completo; 404 si no existe
+```
+
+Sin historial disponible ambos responden `503 {"detail": "History is not configured" | "History is unavailable"}`.
+
 ### Estimación desde transcripción
 
 ```
@@ -256,9 +277,14 @@ Respuesta (`EstimationResult`; el coste total es la suma de las fases):
     "out_of_scope": false
   },
   "prompt_version": "v3",
-  "cached": false
+  "cached": false,
+  "cache_source": "none",
+  "estimation_id": 42
 }
 ```
+
+`cache_source` indica la procedencia (`none` generada, `exact` o `semantic`) y `estimation_id` el registro del
+[historial](#historial-de-estimaciones) (`null` si está desactivado o no se pudo guardar).
 
 **Fuera de alcance**: con `confidence_pct` < 30 el resumen empieza por `Out of scope:`, `out_of_scope`
 es `true` y las fases se reducen a un placeholder `No estimable` (0 EUR, 1 semana); el chat lo
@@ -281,7 +307,7 @@ curl -N "http://localhost:8000/api/v1/estimate/stream?prompt_version=v2" \
 
 | Campo | Valores |
 |---|---|
-| `description` | 20–2000 caracteres |
+| `description` | 20–80 000 caracteres (admite la transcripción completa de una reunión) |
 | `project_type` | `mobile_app`, `web_saas`, `internal_tool`, `data_pipeline` |
 | `detail_level` | `summary`, `medium`, `detailed` (este último pide asunciones por fase) |
 | `output_format` | `phases_table` (con `confidence_pct`), `line_items`, `narrative` |
@@ -434,7 +460,7 @@ Documentación interactiva en `http://localhost:8000/docs`.
 uv run pytest -v
 ```
 
-La suite no llama a los proveedores reales (los SDK se simulan). `tests/prompts/` prueba las
+La suite no llama a los proveedores reales (los SDK se simulan) y usa SQLite en memoria para el historial; `tests/test_history_postgres.py` se activa con `TEST_DATABASE_URL` y ejercita un PostgreSQL real (ver el Compose raíz). `tests/prompts/` prueba las
 plantillas en milisegundos (descripción literal, formato, detalle, referencias, versiones
 y log del render). El resto cubre el contrato estructurado, las opciones del
 endpoint de transcripción, ambos modos de preprocesamiento, selección y formatos de ejemplos (incluida la

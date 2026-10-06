@@ -68,6 +68,17 @@ def _render(env: Environment, name: str, context: dict) -> str:
     return re.sub(r"\n{3,}", "\n\n", env.get_template(name).render(**context)).strip()
 
 
+_EXAMPLE = re.compile(
+    r"^### Ejemplo \d+: (?P<title>.+?)\n.*?<project_description>\n(?P<description>.*?)\n</project_description>",
+    re.S | re.M,
+)
+
+
+def few_shot_examples(system_prompt: str) -> list[tuple[str, str]]:
+    """(título, descripción) de cada ejemplo few-shot incluido en un prompt de sistema renderizado."""
+    return [(m["title"], m["description"]) for m in _EXAMPLE.finditer(system_prompt)]
+
+
 def prompt_hash(system: str, user: str) -> str:
     return hashlib.sha256(f"{system}\0{user}".encode("utf-8")).hexdigest()
 

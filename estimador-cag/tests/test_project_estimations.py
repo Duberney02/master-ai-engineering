@@ -59,8 +59,9 @@ def test_valid_request_returns_structured_result(client, mocker):
 
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body) == {"result", "prompt_version", "cached"}
+    assert set(body) == {"result", "prompt_version", "cached", "cache_source", "estimation_id", "metrics"}
     assert body["prompt_version"] == "v3" and body["cached"] is False
+    assert body["cache_source"] == "none" and body["estimation_id"] is None
     assert body["result"] == RESULT | {"out_of_scope": False}
 
 

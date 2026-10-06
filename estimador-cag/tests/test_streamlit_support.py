@@ -1,4 +1,11 @@
-from app.streamlit_support import iter_sync, sync_secrets_to_env
+import pytest
+
+from app.streamlit_support import (
+    MAX_TRANSCRIPT_BYTES,
+    decode_transcript,
+    iter_sync,
+    sync_secrets_to_env,
+)
 
 
 def test_sync_secrets_to_env_copies_known_keys():
@@ -43,3 +50,16 @@ async def _empty_stream():
 
 def test_iter_sync_empty_generator_yields_nothing():
     assert list(iter_sync(_empty_stream())) == []
+
+
+def test_decode_transcript_accepts_utf8_with_or_without_bom():
+    assert decode_transcript("Reunión: añadir facturación".encode("utf-8")) == "Reunión: añadir facturación"
+    assert decode_transcript(b"\xef\xbb\xbfHola") == "Hola"
+
+
+def test_decode_transcript_rejects_invalid_encoding_and_oversized_files():
+    with pytest.raises(ValueError, match="UTF-8"):
+        decode_transcript("Reunión".encode("latin-1"))
+    with pytest.raises(ValueError, match="400 KB"):
+        decode_transcript(b"x" * (MAX_TRANSCRIPT_BYTES + 1))
+    assert len(decode_transcript(b"x" * MAX_TRANSCRIPT_BYTES)) == MAX_TRANSCRIPT_BYTES

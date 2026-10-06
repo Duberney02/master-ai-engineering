@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     semantic_cache_mode: Literal["off", "log_only", "active"] = "active"
     semantic_cache_threshold: float = Field(default=0.92, ge=0, le=1)
     semantic_cache_ttl: int = Field(default=86400, gt=0)
+    # Por encima de esta longitud (caracteres) la caché semántica se omite: los embeddings
+    # tienen un límite de tokens y truncar produciría aciertos falsos entre transcripciones.
+    semantic_cache_max_chars: int = Field(default=8000, gt=0)
+    # PostgreSQL del historial (postgresql+asyncpg://...). Sin valor, el historial se desactiva.
+    database_url: str | None = None
     # Intentos totales para obtener un resultado que cumpla las reglas de negocio.
     validation_max_attempts: int = Field(default=3, ge=1, le=5)
 

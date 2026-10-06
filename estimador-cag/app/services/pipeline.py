@@ -14,7 +14,7 @@ from fastapi import HTTPException
 
 from app.config import Settings, get_settings
 from app.prompts.loader import available_versions, render_estimation_prompt
-from app.schemas import EstimationRequest, EstimationResult
+from app.schemas import CacheSource, CallMetrics, EstimationRequest, EstimationResult, StreamUsage
 from app.services.cache import CachedEstimation, EstimationCache, make_result_key
 from app.services.guardrails import InputGuardrails
 from app.services.llm_service import generate_from_prompts
@@ -41,6 +41,7 @@ class PipelineOutcome:
     result: EstimationResult
     prompt_version: str
     cached: bool
+    cache_source: CacheSource = "none"
     model: str = ""
     provider: str = ""
     finish_reason: str = "stop"
@@ -51,6 +52,17 @@ class PipelineOutcome:
     completion_cache_hit: bool = False
     estimated_cost_usd: float | None = 0.0
     request_cost_usd: float | None = 0.0
+
+    def metrics(self) -> CallMetrics:
+        return CallMetrics(
+            model=self.model, provider=self.provider, finish_reason=self.finish_reason,
+            usage=StreamUsage(
+                input_tokens=self.input_tokens, output_tokens=self.output_tokens,
+                total_tokens=self.input_tokens + self.output_tokens,
+            ),
+            latency_ms=self.latency_ms, cache_hit=self.cached or self.completion_cache_hit,
+            estimated_cost_usd=self.estimated_cost_usd, request_cost_usd=self.request_cost_usd,
+        )
 
 
 class EstimationPipeline:
@@ -96,12 +108,12 @@ class EstimationPipeline:
         entry = self._valid(CachedEstimation.parse(raw) if raw is not None else None)
         if entry is not None:
             logger.info("estimation_cache_hit", layer="exact", prompt_version=prompt_version)
-            return self._cached(entry, prompt_version, started)
+            return self._cached(entry, prompt_version, started, "exact")
 
         entry = self._valid(await self.semantic_cache.lookup(request, prompt_version))
         if entry is not None:
             await self.exact_cache.set(key, entry.model_dump(mode="json"))
-            return self._cached(entry, prompt_version, started)
+            return self._cached(entry, prompt_version, started, "semantic")
 
         outcome = await self._generate_validated(request, prompt_version, started)
         entry = CachedEstimation(
@@ -124,9 +136,11 @@ class EstimationPipeline:
         return entry
 
     @staticmethod
-    def _cached(entry: CachedEstimation, prompt_version: str, started: float) -> PipelineOutcome:
+    def _cached(
+        entry: CachedEstimation, prompt_version: str, started: float, source: CacheSource
+    ) -> PipelineOutcome:
         return PipelineOutcome(
-            result=entry.result, prompt_version=prompt_version, cached=True,
+            result=entry.result, prompt_version=prompt_version, cached=True, cache_source=source,
             model=entry.model, provider=entry.provider,
             latency_ms=int((time.monotonic() - started) * 1000),
         )

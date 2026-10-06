@@ -161,7 +161,7 @@ def test_short_description_shows_validation_error_without_http(mocker):
 
     assert at.exception == []
     assert calls == []
-    assert "20 y 2000 caracteres" in at.error[0].value
+    assert "20 y 80000 caracteres" in at.error[0].value
     assert len(at.chat_message) == 0
 
 
@@ -228,3 +228,71 @@ def test_few_shot_examples_are_extracted_from_the_rendered_prompt():
     assert examples[0][1].startswith("Aplicación iOS y Android")
     v3_titles = [t for t, _ in few_shot_examples(render_estimation_prompt(_request())[0])]
     assert v3_titles == ["Portal de reservas para un gimnasio", "Plataforma de IA para todo el hospital"]
+
+
+def test_description_field_is_capped_at_80000_chars():
+    at = _fresh_app().run()
+
+    assert at.exception == []
+    assert at.text_area[0].max_chars == 80_000
+
+
+def test_long_transcription_is_accepted_and_summarised_in_the_chat(mocker):
+    calls = patch_stream(mocker, RESULT, _metadata())
+    long_text = ("Reunión de planificación del portal de clientes. " * 1700)[:80_000]
+    at = _submit(_fresh_app().run(), description=long_text)
+
+    assert at.exception == []
+    assert calls[0]["json"]["description"] == long_text
+    user_message = at.chat_message[0].markdown[0].value
+    assert len(user_message) < 1_000 and "80,000 caracteres" in user_message
+
+
+def test_elapsed_time_is_shown_with_the_result(mocker):
+    patch_stream(mocker, RESULT, _metadata())
+    at = _submit(_fresh_app().run())
+
+    assert any(c.value.startswith("Tiempo: ") and c.value.endswith(" s") for c in at.chat_message[1].caption)
+    assert at.session_state.messages[-1]["elapsed"] >= 0
+
+
+def test_form_offers_a_txt_uploader():
+    at = _fresh_app().run()
+
+    assert at.exception == []
+    assert any("transcripción (.txt" in str(el) for el in at.main)
+
+
+def _upload(at, content: bytes, name="reunion.txt"):
+    at.file_uploader[0].upload(name, content, "text/plain")
+    return at
+
+
+def test_uploaded_txt_replaces_the_description(mocker):
+    calls = patch_stream(mocker, RESULT, _metadata())
+    transcript = "Reunión de kickoff: el cliente pide un portal de facturación con incidencias."
+    at = _upload(_fresh_app().run(), transcript.encode("utf-8"))
+
+    at = _submit(at, description="texto que se ignora")
+
+    assert at.exception == []
+    assert calls[0]["json"]["description"] == transcript
+    assert len(at.error) == 0
+
+
+def test_uploaded_file_with_invalid_encoding_is_rejected_without_http(mocker):
+    calls = patch_stream(mocker, RESULT, _metadata())
+    at = _upload(_fresh_app().run(), "Reunión de planificación del portal".encode("latin-1"))
+
+    at = _submit(at)
+
+    assert at.exception == []
+    assert calls == []
+    assert "UTF-8" in at.error[0].value
+
+
+def test_uploaded_file_shorter_than_20_chars_shows_the_range_message(mocker):
+    calls = patch_stream(mocker, RESULT, _metadata())
+    at = _submit(_upload(_fresh_app().run(), b"corto"))
+
+    assert calls == [] and "20 y 80000 caracteres" in at.error[0].value

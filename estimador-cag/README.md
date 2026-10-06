@@ -248,7 +248,7 @@ curl http://localhost:8000/health
 ### Estimación estructurada
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/estimate" \
+curl -X POST "http://localhost:8000/api/v1/transcription/estimate" \
   -H "Content-Type: application/json" \
   -d '{
     "description": "Marketplace de servicios profesionales con perfiles de freelancers, pagos con comisión, mensajería interna y valoraciones.",

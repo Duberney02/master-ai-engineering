@@ -236,6 +236,19 @@ def test_description_field_is_capped_at_80000_chars():
     assert at.exception == []
     assert at.text_area[0].max_chars == 80_000
 
+    assert len(at.chat_message) == 2
+    assert DESCRIPTION in at.chat_message[0].markdown[0].value
+    assert at.chat_message[1].markdown[0].value == "## Estimación: Vacaciones"
+
+    metrics = {m.label: m.value for m in at.sidebar.metric}
+    assert metrics["Tokens de entrada"] == "111"
+    assert metrics["Tokens de salida"] == "22"
+    assert metrics["Versión del prompt"] == "v2"
+    system_prompt = at.sidebar.text_area[0].value
+    assert "consultor de preventa" in system_prompt  # plantillas v2 de la última solicitud
+    assert "- [Fase] Tarea — N h" in system_prompt  # formato line_items
+    sidebar_markdown = " ".join(m.value for m in at.sidebar.markdown)
+    assert "Plataforma de citas para clínicas veterinarias" in sidebar_markdown
 
 def test_long_transcription_is_accepted_and_summarised_in_the_chat(mocker):
     calls = patch_stream(mocker, RESULT, _metadata())
@@ -262,6 +275,10 @@ def test_form_offers_a_txt_uploader():
     assert at.exception == []
     assert any("transcripción (.txt" in str(el) for el in at.main)
 
+    at.sidebar.button[0].click().run()
+
+    assert len(at.chat_message) == 0
+    assert at.session_state.last_metrics is None
 
 def _upload(at, content: bytes, name="reunion.txt"):
     at.file_uploader[0].upload(name, content, "text/plain")

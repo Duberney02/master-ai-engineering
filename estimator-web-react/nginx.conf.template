@@ -1,0 +1,54 @@
+# Plantilla de nginx: el entrypoint de la imagen sustituye ${API_UPSTREAM} al arrancar.
+# El navegador solo habla con este origen: /api/ y /health se reenvían a la API (sin CORS
+# ni exponer la dirección interna de la API).
+
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # El JSON de una transcripción de 80 000 caracteres ocupa como mucho ~330 KB.
+    client_max_body_size 1m;
+    server_tokens off;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "same-origin" always;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Las estimaciones largas pueden tardar un par de minutos (igual que ESTIMATOR_READ_TIMEOUT).
+    location /api/ {
+        proxy_pass ${API_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        proxy_buffering off;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /health {
+        proxy_pass ${API_UPSTREAM};
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 10s;
+    }
+
+    # Los ficheros con hash en el nombre no cambian nunca.
+    location /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # Rutas de la SPA (/estimations, /estimations/7...): siempre index.html, sin caché.
+    location / {
+        try_files $uri /index.html;
+        add_header Cache-Control "no-cache";
+    }
+}

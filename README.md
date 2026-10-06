@@ -23,7 +23,8 @@ master-ai-engineering/
 │   ├── docs/                    ← documentación e historial de diseño
 │   └── README.md                 ← documentación completa del proyecto
 ├── estimator-web/                ← aplicación web Rails (cliente HTTP de la API)
-├── docker-compose.yml            ← stack completo: API + web + Redis Stack + PostgreSQL
+├── estimator-web-react/          ← la misma web en React + TypeScript (SPA con proxy nginx)
+├── docker-compose.yml            ← stack completo: API + webs + Redis Stack + PostgreSQL
 ├── openspec/                     ← especificaciones y cambios SDD actuales
 └── .agents/skills/               ← integración OpenSpec para Codex
 ```
@@ -35,13 +36,14 @@ master-ai-engineering/
 | [`estimador-cag/`](./estimador-cag/README.md) | API FastAPI que genera estimaciones iniciales de proyectos de software a partir de transcripciones de reuniones con clientes, usando CAG (Context-Augmented Generation): los ejemplos históricos se inyectan directamente en el prompt del LLM, sin embeddings ni vector store. Soporta OpenAI y Anthropic como proveedores. | Python 3.11, FastAPI, Pydantic, uv, OpenAI SDK, Anthropic SDK |
 
 | [`estimator-web/`](./estimator-web/README.md) | Aplicación web Rails para el estimador: formulario con carga de transcripciones `.txt` (hasta 80 000 caracteres), historial de estimaciones y vista del resultado con duración, coste, confianza y tabla de fases. Consume la API por HTTP con Faraday. | Ruby 3.4, Rails 8, Faraday, Minitest |
+| [`estimator-web-react/`](./estimator-web-react/README.md) | La misma web del estimador en React: formulario con carga de `.txt`, historial, resultado y barra lateral del prompt, como componentes reutilizables. Se sirve con nginx, que reenvía `/api/` a la API (sin CORS). | React 19, TypeScript, Vite, Vitest, nginx |
 
 A medida que se agreguen nuevos proyectos del máster (RAG, agentes,
 evaluación, etc.), se listarán aquí con un enlace a su propio README.
 
 ## Arranque completo con Docker
 
-Desde la raíz, un único Compose levanta API, aplicación web, Redis Stack y PostgreSQL en la red
+Desde la raíz, un único Compose levanta API, aplicaciones web, Redis Stack y PostgreSQL en la red
 `estimator-net`, con volúmenes y healthchecks:
 
 ```bash
@@ -49,7 +51,7 @@ cp estimador-cag/.env.example estimador-cag/.env   # completa la API key del pro
 docker compose up --build
 ```
 
-Web Rails en <http://localhost:3000>, chat Streamlit en <http://localhost:8501> y API en <http://localhost:8000/docs>. Solo esos tres puertos se publican. Variables
+Web Rails en <http://localhost:3000>, web React en <http://localhost:3001>, chat Streamlit en <http://localhost:8501> y API en <http://localhost:8000/docs>. Solo esos cuatro puertos se publican. Variables
 opcionales (`POSTGRES_PASSWORD`, `SECRET_KEY_BASE`) en [`.env.example`](./.env.example).
 
 ## Metodología de trabajo (SDD)

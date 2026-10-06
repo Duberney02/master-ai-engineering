@@ -1,9 +1,6 @@
-# estimator/deployment-stack Specification
+# Spec Delta
 
-## Purpose
-Arrancar el sistema completo con un único comando desde la raíz del repositorio.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Compose raíz con todos los servicios
 El repositorio SHALL incluir un `docker-compose.yml` en su raíz que defina los servicios API (`estimador-cag`), chat Streamlit (`estimador-cag-chat`), aplicación web Rails (`estimator-web`), aplicación web React (`estimator-web-react`), Redis Stack (`redis`) y PostgreSQL (`postgres`) en una red compartida. La API SHALL recibir `REDIS_URL` y `DATABASE_URL` apuntando a los servicios internos y la web Rails SHALL recibir `ESTIMATOR_API_URL` apuntando a la API. La web React SHALL recibir la dirección interna de la API para su proxy inverso. Solo la API (8000), el chat (8501), la web Rails (3000) y la web React (3001) SHALL publicar puertos; el chat SHALL recibir `ESTIMATOR_API_BASE_URL` y ninguna clave de proveedor.

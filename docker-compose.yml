@@ -1,11 +1,11 @@
-# Stack completo: API del estimador, chat Streamlit, aplicación web Rails, Redis Stack y PostgreSQL.
+# Stack completo: API del estimador, chat Streamlit, aplicaciones web Rails y React, Redis Stack y PostgreSQL.
 #
 #   cp estimador-cag/.env.example estimador-cag/.env   # y completa la API key del proveedor elegido
 #   cp .env.example .env                               # opcional: contraseñas y secretos propios
 #   docker compose up --build
 #
-# Web Rails: http://localhost:3000 · Chat Streamlit: http://localhost:8501 · API (docs): http://localhost:8000/docs
-# Solo la API, la web y el chat publican puertos; Redis y PostgreSQL son internos a la red `estimator-net`.
+# Web Rails: http://localhost:3000 · Web React: http://localhost:3001 · Chat Streamlit: http://localhost:8501 · API (docs): http://localhost:8000/docs
+# Solo la API, las webs y el chat publican puertos; Redis y PostgreSQL son internos a la red `estimator-net`.
 # Para desarrollar solo el backend con recarga en caliente usa estimador-cag/docker-compose.yml.
 
 name: estimator
@@ -84,6 +84,29 @@ services:
       interval: 15s
       timeout: 5s
       start_period: 20s
+      retries: 3
+
+  estimator-web-react:
+    # Misma funcionalidad que estimator-web, en React: SPA estática con nginx, que reenvía /api/ a la API
+    # (el navegador solo habla con su origen: sin CORS). No recibe claves de proveedores.
+    build:
+      context: ./estimator-web-react
+    image: estimator-web-react:latest
+    ports:
+      - "3001:8080"
+    environment:
+      API_UPSTREAM: http://estimador-cag:8000
+    depends_on:
+      estimador-cag:
+        condition: service_healthy
+    networks: [estimator-net]
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "--timeout=3", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
       retries: 3
 
   redis:

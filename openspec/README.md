@@ -32,7 +32,8 @@ Los cambios completados están en `changes/archive/`:
 `2026-09-29-estimador-resilience-and-streaming`,
 `2026-09-29-estimador-structured-prompts`,
 `2026-10-05-estimador-structured-result-guardrails-cache` y
-`2026-10-06-estimador-historial-web-transcripciones-largas`.
+`2026-10-06-estimador-historial-web-transcripciones-largas` y
+`2026-10-06-estimador-web-react`.
 
 Las especificaciones actuales viven en `specs/`; los cambios en curso y su
 evidencia viven en `changes/`. Tras revisar un cambio completado puede archivarse

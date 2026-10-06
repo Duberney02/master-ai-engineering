@@ -225,3 +225,48 @@ async def test_input_checked_skips_guardrails():
     outcome = await pipeline.run(REQUEST, "v3", input_checked=True)
 
     assert "guardrails" not in rec.events and outcome.cached is False
+
+
+# --- Validar antes de cachear: la caché de completions no puede perpetuar una respuesta inválida ---
+
+BAD_SUM = json.dumps({**RESULT, "total_cost_eur": 18000})  # las fases suman 20000
+
+
+class MemoryCompletionCache:
+    def __init__(self):
+        self.values = {}
+
+    async def get(self, key):
+        return self.values.get(key)
+
+    async def set(self, key, value):
+        self.values[key] = value
+
+
+async def test_invalid_completions_are_not_cached_so_a_later_request_can_recover(mocker):
+    from fastapi import HTTPException  # noqa: F811
+    from tests._fakes import openai_response, patch_openai, patch_settings
+
+    settings = openai_settings()
+    memory = MemoryCompletionCache()
+    mocker.patch("app.services.llm_wrapper.EstimationCache", return_value=memory)
+    patch_settings(mocker, settings)
+    call = patch_openai(
+        mocker, *[openai_response(BAD_SUM)] * settings.validation_max_attempts,
+        openai_response(GOOD),
+    )
+    rec = Recorder()
+    pipeline = EstimationPipeline(
+        settings, guardrails=FakeGuardrails(rec), exact_cache=FakeExact(rec),
+        semantic_cache=FakeSemantic(rec),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await pipeline.run(REQUEST, "v3")
+    assert exc.value.status_code == 502
+    assert memory.values == {}  # ninguna completion inválida llegó a la caché
+
+    outcome = await pipeline.run(REQUEST, "v3")  # misma solicitud: el modelo acierta esta vez
+
+    assert outcome.result.total_cost_eur == 20000
+    assert call.await_count == settings.validation_max_attempts + 1

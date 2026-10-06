@@ -36,6 +36,21 @@ _PREVIOUS_ANSWER_LIMIT = 6000
 Generator = Callable[[str, str], Awaitable[Completion]]
 
 
+def _is_valid_text(text: str) -> bool:
+    """Criterio de aceptación para la caché de completions: el texto supera la validación de negocio."""
+    try:
+        validate_text(text)
+    except ResultValidationError:
+        return False
+    return True
+
+
+async def _generate_checked(system: str, user: str) -> Completion:
+    """Generador por defecto: solo cachea completions válidas (validar antes de cachear), de modo
+    que el reintento de corrección no reciba de la caché la misma respuesta inválida."""
+    return await generate_from_prompts(system, user, accept=_is_valid_text)
+
+
 @dataclass
 class PipelineOutcome:
     result: EstimationResult
@@ -73,7 +88,7 @@ class EstimationPipeline:
         guardrails: InputGuardrails | None = None,
         exact_cache: EstimationCache | None = None,
         semantic_cache: SemanticCache | None = None,
-        generate: Generator = generate_from_prompts,
+        generate: Generator = _generate_checked,
     ):
         self.settings = settings
         self.guardrails = guardrails or InputGuardrails(settings)

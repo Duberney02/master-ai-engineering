@@ -4,7 +4,7 @@ import inspect
 import structlog
 import time
 from contextlib import aclosing
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -419,12 +419,18 @@ async def generate_estimation_stream(
     metrics.latency_ms = metrics.result.latency_ms
 
 
-async def generate_from_prompts(system_prompt: str, user_message: str) -> _Completion:
+async def generate_from_prompts(
+    system_prompt: str, user_message: str, accept: Callable[[str], bool] | None = None
+) -> _Completion:
     """Estimación estructurada: recibe los mensajes system/user ya renderizados desde las
-    plantillas y aplica la misma política de proveedor (caché, reintentos, fallback, costes)."""
+    plantillas y aplica la misma política de proveedor (caché, reintentos, fallback, costes).
+
+    `accept` decide si el texto es una respuesta válida: solo esas se guardan en la caché de
+    completions y las entradas cacheadas que no la cumplen se ignoran."""
     settings = get_settings()
     return await _complete(
         settings, system_prompt, user_message, settings.effective_model(), max_tokens=None,
+        accept=accept,
     )
 
 
@@ -474,6 +480,7 @@ async def _complete(
     max_tokens: int | None,
     thinking_budget: int | None = None,
     allow_fallback: bool = True,
+    accept: Callable[[str], bool] | None = None,
 ) -> _Completion:
     async def call(provider, target_model):
         selected = settings.model_copy(update={"llm_provider": provider})
@@ -483,6 +490,7 @@ async def _complete(
                                      max_tokens, thinking_budget)
     return await LLMWrapper(settings).complete(
         system_prompt, user_message, model, max_tokens, thinking_budget, allow_fallback, call,
+        accept,
     )
 
 

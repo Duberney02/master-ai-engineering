@@ -64,7 +64,20 @@ class LLMWrapper:
             temperature=0.3 if self.settings.llm_provider == "openai" else None,
         )
 
-    async def _cached(self, key: str) -> Completion | None:
+    @staticmethod
+    def _accepted(accept: Callable[[str], bool] | None, text: str) -> bool:
+        """Criterio del llamador sobre el texto; una excepción del criterio cuenta como rechazo."""
+        if accept is None:
+            return True
+        try:
+            return bool(accept(text))
+        except Exception:
+            logger.warning("cache_accept_failed")
+            return False
+
+    async def _cached(
+        self, key: str, accept: Callable[[str], bool] | None = None
+    ) -> Completion | None:
         raw = await self.cache.get(key)
         if raw is None:
             return None
@@ -75,6 +88,9 @@ class LLMWrapper:
                 return None
             result = Completion.model_validate(raw, strict=True)
             if not self._cacheable(result):
+                return None
+            if not self._accepted(accept, result.text):
+                logger.warning("cache_entry_not_accepted")
                 return None
             result.cache_hit = True
             result.latency_ms = 0
@@ -92,11 +108,16 @@ class LLMWrapper:
         return bool(result.text.strip() and result.model and result.provider in {"openai", "anthropic"}
                     and result.finish_reason in SUCCESS_REASONS and result.usage_available)
 
-    async def _finish(self, key: str, result: Completion, started: float) -> Completion:
+    async def _finish(
+        self, key: str, result: Completion, started: float,
+        accept: Callable[[str], bool] | None = None,
+    ) -> Completion:
         result.latency_ms = int((time.monotonic() - started) * 1000)
         result.estimated_cost_usd = estimate_cost(self.settings, result)
         result.request_cost_usd = result.estimated_cost_usd
-        if self._cacheable(result):
+        # Validar antes de cachear: una respuesta que el llamador rechaza no se almacena, para que
+        # un reintento con el mismo prompt vuelva a invocar al proveedor.
+        if self._cacheable(result) and self._accepted(accept, result.text):
             await self.cache.set(key, result.model_dump())
         logger.info(
             "llm_completed", provider=result.provider, model=result.model,
@@ -108,9 +129,10 @@ class LLMWrapper:
 
     async def complete(self, system: str, user: str, model: str, max_tokens: int | None,
                        thinking_budget: int | None, allow_fallback: bool,
-                       call: Callable[[str, str], Awaitable[Completion]]) -> Completion:
+                       call: Callable[[str, str], Awaitable[Completion]],
+                       accept: Callable[[str], bool] | None = None) -> Completion:
         key = self.key(system, user, model, max_tokens, thinking_budget, allow_fallback)
-        cached = await self._cached(key)
+        cached = await self._cached(key, accept)
         if cached is not None:
             return cached
         started = time.monotonic()
@@ -119,7 +141,7 @@ class LLMWrapper:
             try:
                 result = await call(provider, target_model)
                 result.provider = provider
-                return await self._finish(key, result, started)
+                return await self._finish(key, result, started, accept)
             except ProviderFailure as exc:
                 if not exc.retryable or index == len(targets) - 1:
                     raise

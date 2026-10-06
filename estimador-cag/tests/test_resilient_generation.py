@@ -10,7 +10,10 @@ from openai import APITimeoutError, AuthenticationError
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.services.cache import EstimationCache, make_key
-from app.services.llm_service import GenerationOptions, StreamMetrics, generate_estimation, generate_estimation_stream
+from app.services.llm_service import (
+    GenerationOptions, StreamMetrics, generate_estimation, generate_estimation_stream,
+    generate_from_prompts,
+)
 from app.services.llm_wrapper import Completion, LLMWrapper
 from tests._fakes import (
     LONG_TRANSCRIPTION, openai_settings, anthropic_settings, patch_settings,
@@ -277,3 +280,59 @@ async def test_sdk_timeout_retries_and_close_are_configured(mocker):
     assert llm_service.AsyncOpenAI.call_args.kwargs["timeout"] == 12
     assert llm_service.AsyncOpenAI.call_args.kwargs["max_retries"] == 1
     llm_service.AsyncOpenAI.return_value.close.assert_awaited_once()
+
+
+# --- Validar antes de cachear: solo se guardan las respuestas que el llamador acepta ---
+
+def _accept_only_good(text: str) -> bool:
+    return text == "buena"
+
+
+async def test_unaccepted_response_is_returned_but_not_cached(mocker, memory):
+    patch_settings(mocker, priced())
+    call = patch_openai(mocker, openai_response("mala"), openai_response("buena"))
+
+    first = await generate_from_prompts("sys", "usr", accept=_accept_only_good)
+    assert first.text == "mala" and memory.values == {}
+
+    second = await generate_from_prompts("sys", "usr", accept=_accept_only_good)
+    assert second.text == "buena" and not second.cache_hit
+    assert call.await_count == 2
+    assert len(memory.values) == 1
+
+
+async def test_cached_entry_that_is_no_longer_acceptable_is_ignored_and_replaced(mocker, memory):
+    patch_settings(mocker, priced())
+    call = patch_openai(mocker, openai_response("mala"), openai_response("buena"))
+    await generate_from_prompts("sys", "usr")  # sin criterio: la respuesta mala queda cacheada
+    (key,) = memory.values
+    assert memory.values[key]["text"] == "mala"
+
+    result = await generate_from_prompts("sys", "usr", accept=_accept_only_good)
+
+    assert result.text == "buena" and not result.cache_hit
+    assert call.await_count == 2
+    assert memory.values[key]["text"] == "buena"
+
+
+async def test_accepted_response_is_cached_and_served_from_cache(mocker, memory):
+    patch_settings(mocker, priced())
+    call = patch_openai(mocker, openai_response("buena"))
+
+    await generate_from_prompts("sys", "usr", accept=_accept_only_good)
+    second = await generate_from_prompts("sys", "usr", accept=_accept_only_good)
+
+    assert second.cache_hit and second.text == "buena"
+    assert call.await_count == 1
+
+
+async def test_failing_accept_callback_counts_as_not_acceptable(mocker, memory):
+    patch_settings(mocker, priced())
+    patch_openai(mocker, openai_response("buena"))
+
+    def broken(text):
+        raise RuntimeError("fallo del criterio")
+
+    result = await generate_from_prompts("sys", "usr", accept=broken)
+
+    assert result.text == "buena" and memory.values == {}

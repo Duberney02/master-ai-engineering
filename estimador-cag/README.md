@@ -40,6 +40,13 @@ EstimationRequest (app.schemas: description, project_type, detail_level,
 EstimationResponse {result: EstimationResult, prompt_version, cached}
 ```
 
+### Caché y validación
+
+Solo se guardan en caché respuestas **válidas**: la caché de completions del paso 5 recibe del pipeline un criterio
+de aceptación (la validación de negocio) y no almacena el texto que no lo cumple. Así, el reintento de corrección
+vuelve a invocar al modelo en lugar de recibir de la caché la misma respuesta inválida, y las entradas inválidas que
+ya existieran en Redis se ignoran y se sobrescriben solas; no hace falta vaciar la caché.
+
 ### Transcripciones largas
 
 `description` admite hasta **80 000 caracteres** (≈20 000 tokens). Los guardrails evalúan el texto completo y la

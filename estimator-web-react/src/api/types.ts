@@ -45,6 +45,29 @@ export interface EstimationResponse {
   requested_at?: string;
 }
 
+/** Hechos conocidos del proyecto, acumulados durante la conversación (`project_metadata`). */
+export interface ProjectMetadata {
+  project_name: string | null;
+  assumed_team_size: number | null;
+  mentioned_technologies: string[];
+  agreed_scope: string | null;
+}
+
+export const EMPTY_METADATA: ProjectMetadata = {
+  project_name: null,
+  assumed_team_size: null,
+  mentioned_technologies: [],
+  agreed_scope: null,
+};
+
+/** Respuesta de `POST /sessions/{id}/estimate`: la estimación y el estado de la conversación. */
+export interface SessionEstimationResponse extends EstimationResponse {
+  session_id: string;
+  project_metadata: ProjectMetadata;
+  turn_count: number;
+  max_turns: number;
+}
+
 export interface EstimationSummary {
   id: number;
   requested_at: string;

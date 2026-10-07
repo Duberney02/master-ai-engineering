@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { App } from "../App";
-import { DESCRIPTION, estimateBody, json, mockApi } from "../test/mockApi";
+import { DESCRIPTION, SESSION_ID, estimateBody, isSessionEstimate, json, mockApi, sessionBody } from "../test/mockApi";
 
 function renderApp(path = "/") {
   return render(
@@ -41,7 +41,7 @@ describe("NewEstimationPage", () => {
 
   test("una descripción válida llama a la API y navega al detalle", async () => {
     const api = mockApi((url, init) =>
-      url.pathname === "/api/v1/estimate" && init.method === "POST" ? json(estimateBody()) : undefined,
+      isSessionEstimate(url, init) ? json(sessionBody()) : undefined,
       (url) => (url.pathname === "/api/v1/estimations/7" ? json({ ...estimateBody(), id: 7, description: DESCRIPTION, options: { project_type: "web_saas", detail_level: "medium", output_format: "phases_table" } }) : undefined),
     );
     renderApp();
@@ -51,11 +51,14 @@ describe("NewEstimationPage", () => {
     await user().click(screen.getByRole("button", { name: "Estimar" }));
 
     expect(await screen.findByRole("heading", { name: "Estimación #7" })).toBeInTheDocument();
-    const post = api.callsTo("/api/v1/estimate")[0];
-    expect(post.url.searchParams.get("prompt_version")).toBe("v3");
-    expect(JSON.parse(post.init.body as string)).toEqual({
-      description: DESCRIPTION, project_type: "web_saas", detail_level: "medium", output_format: "phases_table",
+    const post = api.estimateCalls()[0];
+    expect(post.url.pathname).toBe(`/api/v1/sessions/${SESSION_ID}/estimate`);
+    expect(post.init.body).toBeInstanceOf(FormData);
+    expect(Object.fromEntries((post.init.body as FormData).entries())).toEqual({
+      transcript: DESCRIPTION, project_type: "web_saas", detail_level: "medium", output_format: "phases_table", prompt_version: "v3",
     });
+    // El navegador fija el Content-Type multipart con su frontera: no debe fijarse a mano.
+    expect(post.init.headers).not.toHaveProperty("Content-Type");
     expect(document.getElementById("cost")).toHaveTextContent("20.000,00 EUR");
   });
 
@@ -67,7 +70,7 @@ describe("NewEstimationPage", () => {
     await user().click(screen.getByRole("button", { name: "Estimar" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("La descripción debe tener entre 20 y 80000 caracteres.");
-    expect(api.callsTo("/api/v1/estimate")).toHaveLength(0);
+    expect(api.estimateCalls()).toHaveLength(0);
   });
 
   test("al cargar un .txt válido su contenido sustituye a la descripción y actualiza el contador", async () => {
@@ -95,14 +98,14 @@ describe("NewEstimationPage", () => {
     await user().upload(screen.getByLabelText("…o carga una transcripción (.txt)"), makeFile());
 
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
-    expect(api.callsTo("/api/v1/estimate")).toHaveLength(0);
+    expect(api.estimateCalls()).toHaveLength(0);
   });
 
   test("durante el envío deshabilita el botón y muestra el indicador con el temporizador", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let resolve: (response: Response) => void = () => {};
     mockApi((url, init) =>
-      url.pathname === "/api/v1/estimate" && init.method === "POST"
+      isSessionEstimate(url, init)
         ? (new Promise<Response>((r) => { resolve = r; }) as unknown as Response)
         : undefined,
     );
@@ -124,7 +127,7 @@ describe("NewEstimationPage", () => {
 
   test("tras un error de la API conserva los datos y muestra el mensaje saneado", async () => {
     mockApi((url, init) =>
-      url.pathname === "/api/v1/estimate" && init.method === "POST"
+      isSessionEstimate(url, init)
         ? json({ reason: "r", message: "El contenido no parece un proyecto de software." }, 400)
         : undefined,
     );
@@ -142,7 +145,7 @@ describe("NewEstimationPage", () => {
 
   test("con la API caída muestra el mensaje de conexión sin detalles internos", async () => {
     mockApi((url, init) => {
-      if (url.pathname === "/api/v1/estimate" && init.method === "POST") throw new TypeError("connect ECONNREFUSED 10.0.0.5:8000");
+      if (isSessionEstimate(url, init)) throw new TypeError("connect ECONNREFUSED 10.0.0.5:8000");
       return undefined;
     });
     renderApp();
@@ -176,7 +179,7 @@ describe("NewEstimationPage", () => {
 
   test("sin estimation_id muestra el resultado en línea con métricas y sin enlace permanente", async () => {
     mockApi((url, init) =>
-      url.pathname === "/api/v1/estimate" && init.method === "POST" ? json(estimateBody({ estimation_id: null })) : undefined,
+      isSessionEstimate(url, init) ? json(sessionBody({ estimation_id: null })) : undefined,
     );
     renderApp();
     describe_(DESCRIPTION);

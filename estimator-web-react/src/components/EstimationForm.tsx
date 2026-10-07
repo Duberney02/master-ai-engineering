@@ -1,8 +1,8 @@
 import { useId, useRef, type ChangeEvent, type FormEvent } from "react";
 import { formatInteger, optionsForLabels } from "../lib/format";
 import {
-  DETAIL_LEVELS, MAX_DESCRIPTION, MAX_UPLOAD_BYTES, MIN_DESCRIPTION, OUTPUT_FORMATS, PROJECT_TYPES,
-  PROMPT_VERSIONS, readTxtFile, type FormValues,
+  ATTACHMENT_ACCEPT, DETAIL_LEVELS, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, MAX_DESCRIPTION, MAX_UPLOAD_BYTES,
+  MIN_DESCRIPTION, OUTPUT_FORMATS, PROJECT_TYPES, PROMPT_VERSIONS, readTxtFile, type FormValues,
 } from "../lib/estimationForm";
 import { Alert } from "./Alert";
 
@@ -47,6 +47,10 @@ export function EstimationForm({ values, errors, submitting, elapsedSeconds, onC
     }
   }
 
+  function handleAttachments(event: ChangeEvent<HTMLInputElement>) {
+    onChange({ ...values, attachments: Array.from(event.target.files ?? []) });
+  }
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!submitting) onSubmit();
@@ -80,6 +84,13 @@ export function EstimationForm({ values, errors, submitting, elapsedSeconds, onC
           <input id="upload" ref={fileInput} type="file" accept=".txt,text/plain" onChange={handleUpload} />
           <div className="hint">
             El contenido del archivo sustituye a la descripción. Máximo {MAX_UPLOAD_BYTES / 1000} KB, codificación UTF-8.
+          </div>
+
+          <label htmlFor="attachments">Adjuntos (PDF o Word)</label>
+          <input id="attachments" type="file" multiple accept={ATTACHMENT_ACCEPT} onChange={handleAttachments} />
+          <div className="hint">
+            Su texto se añade a la transcripción. Hasta {MAX_ATTACHMENTS} archivos de {MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB.
+            {values.attachments.length > 0 && <> Seleccionados: <span id="attachment-names">{values.attachments.map((file) => file.name).join(", ")}</span>.</>}
           </div>
 
           <div className="row">

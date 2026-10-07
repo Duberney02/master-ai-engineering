@@ -56,7 +56,7 @@ class LLMWrapper:
         if allow_fallback and self.settings.fallback_provider:
             yield self.settings.fallback_provider, self.settings.fallback_model
 
-    def key(self, system: str, user: str, model: str, max_tokens: int | None,
+    def key(self, system: str, user: "str | list[dict[str, str]]", model: str, max_tokens: int | None,
             thinking_budget: int | None, allow_fallback: bool) -> str:
         return make_key(
             system=system, user=user, targets=list(self.targets(model, allow_fallback)),
@@ -127,7 +127,7 @@ class LLMWrapper:
         )
         return result
 
-    async def complete(self, system: str, user: str, model: str, max_tokens: int | None,
+    async def complete(self, system: str, user: "str | list[dict[str, str]]", model: str, max_tokens: int | None,
                        thinking_budget: int | None, allow_fallback: bool,
                        call: Callable[[str, str], Awaitable[Completion]],
                        accept: Callable[[str], bool] | None = None) -> Completion:

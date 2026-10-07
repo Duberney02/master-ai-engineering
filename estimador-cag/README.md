@@ -90,6 +90,103 @@ evaluate_estimation()   ← evaluación estructural (regex, sin LLM), opcional
 EstimationResponse (JSON)
 ```
 
+### Conversación con memoria (sesiones)
+
+Las estimaciones pueden agruparse en una **conversación**: la API recuerda los turnos recientes y los hechos del
+proyecto, y acepta documentos adjuntos. El contrato de resultado es el mismo (`EstimationResult`).
+
+```
+POST /api/v1/sessions                              → 201 {"session_id": "<UUID v4>"}
+POST /api/v1/sessions/{session_id}/estimate        (multipart/form-data)
+       │   transcript          texto del turno (opcional si hay adjuntos)
+       │   attachments         0..5 archivos PDF (.pdf) o Word (.docx), de hasta 10 MB
+       │   project_type, detail_level, output_format   (como /api/v1/estimate; project_type es obligatorio)
+       │   reference_projects  lista JSON opcional · prompt_version (por defecto v3)
+       ▼
+1. Adjuntos → extracción local (pypdf / python-docx) → "--- attachment: nombre.pdf ---" + texto
+2. Guardrails de entrada sobre el texto combinado (PII, prompt injection, moderación)  → 400 {reason, message}
+3. Session.to_messages_list(): system prompt regenerado con <project_metadata> + turnos recientes + mensaje actual
+4. LLM con validación y corrección automática (mismas reglas que /api/v1/estimate)       → 502 si se agotan los intentos
+5. Segunda llamada al LLM, con un prompt específico, que devuelve los metadatos actualizados (JSON validado)
+6. Se confirma el turno en la sesión (historial + metadatos) y se guarda en el historial PostgreSQL si está activo
+       ▼
+{result, prompt_version, project_metadata, turn_count, max_turns, metrics, estimation_id, ...}
+```
+
+```bash
+SID=$(curl -s -X POST http://localhost:8000/api/v1/sessions | python -c "import sys,json; print(json.load(sys.stdin)['session_id'])")
+curl -s -X POST "http://localhost:8000/api/v1/sessions/$SID/estimate" \
+  -F "transcript=Portal Orion para pedidos y facturas, con FastAPI y PostgreSQL." \
+  -F "project_type=web_saas" -F "detail_level=medium" -F "output_format=phases_table" \
+  -F "attachments=@requisitos.pdf" -F "attachments=@alcance.docx"
+```
+
+Errores: `404` sesión desconocida o caducada, `413` adjunto/texto demasiado grande (o más de 5 adjuntos),
+`415` adjunto que no es PDF/Word o cuyo contenido no corresponde a su extensión, `422` parámetros inválidos, texto
+combinado de menos de 20 caracteres, PDF cifrado/escaneado/corrupto. Una estimación fallida **no modifica** la sesión.
+Las peticiones concurrentes de una misma sesión se procesan una tras otra.
+
+**Ventana deslizante.** `ConversationHistory` guarda pares completos usuario+asistente (un turno) y descarta los más
+antiguos al superar `MAX_TURNS` (6 por defecto; `SESSION_MAX_TURNS`). El system prompt no forma parte de los pares:
+se conserva siempre y se regenera en cada llamada con los metadatos vigentes. Al enviar un turno, el modelo ve como
+máximo `MAX_TURNS` turnos contando el actual (`MAX_TURNS - 1` previos), de modo que nunca se supera la ventana.
+
+**Volatilidad aceptada.** Las sesiones viven en un diccionario del proceso (`app/services/sessions.py`), sin base de
+datos ni Redis: son contexto auxiliar, no un registro (las estimaciones completadas ya se guardan en el historial
+PostgreSQL). Se pierden al reiniciar el servicio y no se comparten entre procesos o réplicas, así que la API debe
+ejecutarse como un único proceso (como hace Docker Compose). El crecimiento está acotado por `SESSION_MAX_COUNT`
+(200; se expulsa primero lo caducado y luego lo menos reciente), `SESSION_TTL_SECONDS` (6 h de inactividad) y la
+ventana de turnos. Los clientes detectan el `404` y abren una conversación nueva.
+
+#### Estrategia de adjuntos: extracción local frente a envío directo al proveedor
+
+Los PDF y Word se **leen en el propio servicio** (`pypdf` y `python-docx`) y su texto se añade a la transcripción
+con un separador `--- attachment: <nombre> ---`, en el orden recibido. Los archivos no se envían al proveedor del LLM.
+Motivos de la decisión:
+
+- **Un único camino de seguridad**: el texto extraído pasa por los mismos guardrails (PII, prompt injection,
+  moderación), el mismo límite de 80 000 caracteres y la misma caché que una transcripción pegada. Un archivo enviado
+  tal cual al proveedor llegaría al modelo sin inspección local.
+- **Independencia del proveedor**: funciona igual con OpenAI y Anthropic y con el *fallback* entre ambos; los
+  formatos y límites de archivos nativos difieren entre proveedores y modelos y cambian con el tiempo.
+- **Privacidad y coste previsibles**: el documento completo no sale de la infraestructura propia y solo se paga por
+  los tokens de texto que se envían; el servicio decide qué se envía.
+- **Determinismo y pruebas**: la extracción es una función local verificable sin llamar a ninguna API.
+
+El precio es que se pierde lo que no es texto (imágenes, diagramas, tablas escaneadas): un PDF sin capa de texto se
+rechaza con `422` en lugar de enviarse a un modelo con visión. Defensas: tamaño y número de adjuntos, comprobación de
+la firma del archivo (no solo la extensión), tope de páginas (200) y de tamaño descomprimido de los `.docx`, rechazo
+de PDF cifrados, nombre de archivo saneado (no puede falsificar un separador) y extracción fuera del bucle de eventos.
+
+#### Metadatos del proyecto: llamada adicional al LLM frente a heurística
+
+`ProjectMetadata` recoge `project_name`, `assumed_team_size`, `mentioned_technologies` y `agreed_scope`. El system
+prompt incluye un bloque `<project_metadata>` con los hechos conocidos (vacío en la primera llamada; se omite en
+`/api/v1/estimate`). Tras cada estimación válida, una **segunda llamada al LLM** con un prompt específico
+(`app/prompts/sessions/`) recibe los metadatos actuales, el mensaje del usuario y la estimación, y devuelve un
+objeto JSON que se valida con el modelo Pydantic; el código lo fusiona con lo ya conocido (las listas se unen sin
+duplicados, un valor nuevo no nulo sustituye al anterior y nunca se borra un hecho). Si la llamada falla o su JSON no
+es válido, la estimación se devuelve igualmente y los metadatos anteriores se conservan.
+
+Se eligió esto frente a una heurística (regex o lógica básica sobre la respuesta del LLM) porque:
+
+- **La información está en lo que dice el usuario, no en la estimación**: la respuesta del modelo es un JSON de fases
+  y costes que casi nunca nombra el proyecto, el tamaño del equipo o las tecnologías; una heurística sobre ese texto
+  no tiene de dónde extraerlos, y sobre la transcripción tendría que reconocer nombres propios, cifras escritas de
+  mil formas («seremos unos cinco», «equipo de 4 devs») y tecnologías sin un catálogo cerrado.
+- **Entiende matices y correcciones** («al final no usaremos Kafka», «el equipo crece a seis»), que un patrón fijo
+  interpreta mal o ignora; el modelo recibe los hechos actuales y devuelve el estado actualizado.
+- **Contrato verificable**: la salida es JSON validado con límites estrictos, no texto parseado con expresiones
+  frágiles que fallan en silencio ante cualquier variación de redacción o de idioma.
+- **Robusto al formato**: un cambio de plantilla o de modelo no rompe la extracción, mientras que las regex dependen
+  de la redacción exacta.
+
+El coste es una llamada corta adicional (latencia y tokens, contabilizados en `metrics`) y que la extracción puede
+equivocarse. Se mitiga acotándola: prompt breve, `max_tokens` bajo, instrucción de extraer solo afirmaciones
+explícitas, fusión determinista en código y tolerancia a fallos. Como los metadatos los produce el LLM a partir de
+texto del usuario y se reinyectan en el system prompt, se normalizan (una línea, sin `<`, `>` ni comillas
+invertidas, longitudes acotadas) y el prompt los marca como datos y no como instrucciones.
+
 ## Estructura del proyecto
 
 ```
@@ -99,16 +196,22 @@ estimador-cag/
 │   ├── config.py            — BaseSettings + lru_cache + validación por proveedor
 │   ├── routers/
 │   │   ├── project_estimations.py — POST /api/v1/estimate (contrato estructurado)
+│   │   ├── sessions.py     — POST /api/v1/sessions[/{id}/estimate] (memoria conversacional)
 │   │   └── estimations.py  — POST /api/v1/transcription/estimate[/stream]
 │   ├── schemas/
 │   │   ├── project_estimation.py — contrato estructurado (compartido con Streamlit)
 │   │   └── estimation.py   — contratos del flujo de transcripción
 │   ├── prompts/
 │   │   ├── loader.py       — render_estimation_prompt(request, version) -> (system, user)
-│   │   └── estimation/
-│   │       ├── v1/         — system.j2, user.j2, examples.j2
-│   │       └── v2/         — variación de tono y ejemplos
+│   │   ├── estimation/
+│   │   │   ├── v1/         — system.j2, user.j2, examples.j2
+│   │   │   ├── v2/         — variación de tono y ejemplos
+│   │   │   └── project_metadata.j2 — bloque <project_metadata> compartido por las versiones
+│   │   └── sessions/       — prompts de la extracción de metadatos
 │   ├── services/
+│   │   ├── sessions.py     — ConversationHistory, ProjectMetadata, Session, SessionStore (en memoria)
+│   │   ├── session_estimation.py — orquestación de un turno (mensajes, validación, metadatos)
+│   │   ├── attachments.py  — extracción local de PDF y Word
 │   │   ├── llm_service.py  — prompts, preprocesamiento, dispatch OpenAI/Anthropic
 │   │   └── evaluation.py   — evaluación estructural de la estimación
 │   └── context/
@@ -152,6 +255,9 @@ cp .env.example .env
 | `APP_ENV` | Entorno | `development` |
 | `LOG_LEVEL` | Nivel de logging | `DEBUG` |
 | `ALLOWED_MODELS` | Lista (separada por comas) de modelos que una solicitud puede pedir con `model`. Vacío = sin restricción | vacío |
+| `SESSION_MAX_TURNS` | Turnos (pares usuario+asistente) que conserva cada sesión (`MAX_TURNS`) | `6` |
+| `SESSION_TTL_SECONDS` | Inactividad tras la que caduca una sesión | `21600` |
+| `SESSION_MAX_COUNT` | Sesiones simultáneas en memoria (peor caso ≈ 0,5 MB por sesión con turnos de 80 000 caracteres) | `200` |
 
 ### Selección automática de modelo
 
@@ -161,6 +267,15 @@ Para usar otro modelo de Anthropic, configura `LLM_MODEL` explícitamente.
 
 ## Ejecución local
 
+Con Docker (recomendado; ver [Ejecución con Docker](#ejecución-con-docker)):
+
+```bash
+cp .env.example .env        # completa la API key del proveedor elegido
+docker compose up --build   # API: http://localhost:8000  ·  Chat: http://localhost:8501
+```
+
+O sin contenedores:
+
 ```bash
 uv run uvicorn app.main:app --reload
 ```
@@ -169,34 +284,40 @@ La API queda disponible en `http://localhost:8000`.
 
 ## Interfaz web (Streamlit)
 
-Formulario para probar la estimación estructurada sin curl/Postman/Swagger:
-descripción, tipo de proyecto, nivel de detalle, formato de salida y versión
-del prompt.
+Chat para probar la estimación estructurada sin curl/Postman/Swagger, con memoria
+conversacional: mensaje o transcripción, archivo `.txt`, varios adjuntos PDF o Word,
+tipo de proyecto, nivel de detalle, formato de salida y versión del prompt.
 
 ```bash
 uv run streamlit run streamlit_app.py
 ```
 
 Se abre en `http://localhost:8501`. Arranca también la API en otra terminal.
-El formulario construye el mismo `EstimationRequest` que valida la API (lo
-importa de `app.schemas`), lo envía a `POST /api/v1/estimate/stream` y muestra
-la estimación en streaming dentro de un historial. No necesita claves LLM.
+Al cargar la página crea una sesión (`POST /api/v1/sessions`) y conserva su
+`session_id` en `st.session_state`; cada envío valida las opciones con el mismo
+`EstimationRequest` que usa la API (lo importa de `app.schemas`) y va como
+`multipart/form-data` a `POST /api/v1/sessions/{id}/estimate`. Con adjuntos el
+mensaje puede ser corto: la API valida la longitud del conjunto. No necesita claves LLM.
 Configura `ESTIMATOR_API_BASE_URL` (por defecto `http://localhost:8000`) en
 el entorno, `.env` o `st.secrets`; el entorno tiene prioridad. Las claves de
 proveedores se configuran únicamente en el backend.
 
 El `st.sidebar` muestra, de solo lectura:
 
-- el system prompt renderizado con las plantillas de la última solicitud (o una
-  vista previa con los valores por defecto antes de la primera);
+- los **metadatos del proyecto** de la conversación (nombre, equipo supuesto,
+  tecnologías y alcance acordado) y el botón **«Nueva conversación»**, que crea otra
+  sesión y reinicia el historial, los metadatos y las métricas;
+- el system prompt renderizado con las plantillas de la última solicitud y los
+  metadatos ya conocidos (el que recibirá el modelo en el siguiente turno; vacío
+  antes de la primera);
 - los ejemplos few-shot que incluye ese prompt;
 - las métricas de la última llamada: modelo, versión del prompt, tokens de
   entrada y salida, latencia, coste y si la respuesta vino de caché.
 
 El prompt se renderiza con las plantillas de esta versión del cliente. Si la API
-remota tiene otras plantillas, el panel no las refleja. «Borrar historial» limpia
-los mensajes y las métricas. Cada solicitud se estima por separado: el historial
-visible no se envía al modelo.
+remota tiene otras plantillas, el panel no las refleja. Si la API pierde la sesión
+(reinicio o caducidad), el chat abre otra conversación y lo avisa. El historial
+visible no es lo que ve el modelo: la API mantiene su propia ventana de turnos.
 
 Los errores de validación (por ejemplo, una descripción de menos de 20
 caracteres) se muestran sin llamar a la API. Los errores de red, HTTP o del
@@ -241,6 +362,8 @@ Características de la imagen:
   llegan a la imagen final.
 - **Usuario sin privilegios**: el proceso corre como `app` (UID 10001), no como root.
 - **Health check**: `GET /health` cada 30 s (sin `curl`, con la biblioteca estándar).
+- **Etapa `test`**: dependencias de desarrollo para ejecutar la suite en contenedor (ver [Tests](#tests));
+  se declara antes de `runtime`, así que `docker build .` sigue produciendo la imagen de producción.
 - Si falta la API key del proveedor configurado, el contenedor termina al arrancar con
   un mensaje claro en `docker logs`.
 
@@ -463,6 +586,17 @@ Documentación interactiva en `http://localhost:8000/docs`.
 
 ## Tests
 
+Todas las validaciones se ejecutan en contenedores Docker (el código y los tests se montan en el contenedor; las
+dependencias de desarrollo viven en la imagen):
+
+```bash
+docker build --target test -t estimador-cag:test .      # una vez, o al cambiar pyproject.toml / uv.lock
+docker run --rm -v "$PWD:/app" estimador-cag:test       # suite completa (pytest -q)
+docker run --rm -v "$PWD:/app" estimador-cag:test pytest -v tests/test_sessions_api.py   # un archivo
+```
+
+(En PowerShell usa `${PWD}` en lugar de `$PWD`.) Sin Docker, desde `estimador-cag/`:
+
 ```bash
 uv run pytest -v
 ```
@@ -504,4 +638,10 @@ además construye la imagen Docker y comprueba que arranca sin root y queda `hea
 - La evaluación valida forma y aritmética, no la calidad del contenido; con formatos de
   tabla muy distintos al exigido puede no reconocer las filas
 - `num_examples` toma los primeros ejemplos del catálogo; no hay selección por similitud
+- Las sesiones son volátiles: viven en memoria de un único proceso, se pierden al reiniciar y no se comparten entre
+  réplicas. No hay persistencia, resumen acumulativo de la conversación ni memoria híbrida: solo la ventana de
+  `MAX_TURNS` turnos y los metadatos
+- Los adjuntos solo aportan su texto: un PDF escaneado (sin capa de texto) se rechaza y las imágenes se ignoran
+- La extracción de metadatos es una llamada LLM adicional: puede equivocarse y suma latencia y tokens
+- Cada turno debe aportar al menos 20 caracteres entre mensaje y adjuntos (mínimo de la solicitud estructurada)
 - No hay tiempo de espera configurable para las llamadas al proveedor (se usa el del SDK)

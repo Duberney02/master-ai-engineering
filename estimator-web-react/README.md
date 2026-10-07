@@ -10,8 +10,14 @@ su propio origen y nginx reenvía `/api/` y `/health` a la API, así que no hace
   salida y versión de prompt. Admite cargar un `.txt` (UTF-8, máx. 400 KB) que sustituye a la descripción. Valida en el
   navegador con los mismos mensajes que Rails y, al enviar, muestra un indicador de carga con temporizador. Si la API
   falla conserva lo escrito.
-- **Barra lateral** a la izquierda: prompt de sistema renderizado, ejemplos few-shot y métricas de la última llamada.
-  En el formulario se actualiza al cambiar las opciones; se puede ocultar con «».
+- **Conversación con memoria**: al cargar la página crea una sesión (`POST /api/v1/sessions`) y conserva su
+  `session_id` en un contexto de React mientras la página siga abierta (una recarga abre otra conversación: la API guarda
+  las sesiones solo en memoria). Cada estimación va como `FormData` a `/api/v1/sessions/{id}/estimate`. Permite
+  **seleccionar varios adjuntos PDF o Word** (hasta 5 de 10 MB; la API extrae su texto) y, con adjuntos, un mensaje corto.
+  Si la API pierde la sesión abre otra, avisa y conserva lo escrito.
+- **Barra lateral** a la izquierda: **metadatos del proyecto** de la conversación con el botón **«Nueva conversación»**
+  (crea otra sesión y reinicia el formulario), prompt de sistema renderizado, ejemplos few-shot y métricas de la última
+  llamada. En el formulario se actualiza al cambiar las opciones; se puede ocultar con «».
 - **Historial** (`/estimations`): últimas 10 estimaciones. **Detalle** (`/estimations/:id`): resumen, confianza,
   duración, coste y tabla de fases; «No estimable» sin cifras con baja confianza.
 - **Errores saneados**: conexión o tiempo, 400 de guardrails, 422, 404 y 5xx se traducen a mensajes en español, sin
@@ -62,6 +68,13 @@ docker run --rm -p 3001:8080 -e API_UPSTREAM=http://host.docker.internal:8000 es
 ```bash
 npm test           # Vitest + Testing Library; sin red ni claves (fetch simulado)
 npm run build      # comprueba tipos (tsc) y compila
+```
+
+Sin Node local, en Docker (con `node_modules` en un volumen, sin escribir en el directorio del proyecto):
+
+```bash
+docker run --rm -v "$PWD:/src:ro" -v react_nm:/app/node_modules -w /app node:22-alpine sh -c \
+  "cp -r /src/package.json /src/package-lock.json /src/tsconfig.json /src/vite.config.ts /src/index.html /src/src . && npm ci && npm test && npm run build"
 ```
 
 Las pruebas cubren las funciones puras de formato y validación, el cliente HTTP por código de estado, los hooks, los

@@ -66,6 +66,8 @@ jobs:
         # - test_api_errors.py / test_llm_service.py / test_config.py -> errores y configuración
         # - test_long_transcriptions.py -> validadores, rechazos, guardrails y caché semántica con 80 000 caracteres
         # - test_history.py / test_history_postgres.py -> historial (SQLite en memoria y PostgreSQL real)
+        # - test_sessions.py / test_attachments.py / test_llm_messages.py -> ventana de turnos, metadatos, PDF/Word y mensajes multi-turno
+        # - test_sessions_api.py       -> sesiones de extremo a extremo con httpx.AsyncClient (metadatos, adjuntos, MAX_TURNS)
         run: uv run pytest -v
 
   docker:

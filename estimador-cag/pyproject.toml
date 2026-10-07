@@ -19,6 +19,9 @@ dependencies = [
     "redisvl>=0.8",
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.29",
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "python-multipart>=0.0.9",
 ]
 
 [dependency-groups]

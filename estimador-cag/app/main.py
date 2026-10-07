@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
-from app.routers import estimations, history, project_estimations, prompts
+from app.routers import estimations, history, project_estimations, prompts, sessions
 from app.logging_config import configure_logging
 from app.services.guardrails import GuardrailViolation
 from app.services.history import close_history
@@ -44,6 +44,7 @@ app = FastAPI(
 app.include_router(project_estimations.router, prefix="/api/v1", tags=["estimations"])
 app.include_router(prompts.router, prefix="/api/v1", tags=["prompts"])
 app.include_router(history.router, prefix="/api/v1", tags=["history"])
+app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
 app.include_router(estimations.router, prefix="/api/v1/transcription", tags=["transcription"])
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 

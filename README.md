@@ -54,6 +54,24 @@ docker compose up --build
 Web Rails en <http://localhost:3000>, web React en <http://localhost:3001>, chat Streamlit en <http://localhost:8501> y API en <http://localhost:8000/docs>. Solo esos cuatro puertos se publican. Variables
 opcionales (`POSTGRES_PASSWORD`, `SECRET_KEY_BASE`) en [`.env.example`](./.env.example).
 
+## Conversación con memoria y adjuntos
+
+La API admite **sesiones conversacionales** (`POST /api/v1/sessions` y `POST /api/v1/sessions/{id}/estimate`): recuerdan
+los últimos 6 turnos y los metadatos del proyecto (nombre, equipo, tecnologías, alcance) y aceptan adjuntos PDF/Word cuyo
+texto se extrae en local. Las tres interfaces (chat Streamlit, web Rails y web React) crean la sesión al cargar la página,
+permiten transcripción más varios archivos, muestran los metadatos en la barra lateral y ofrecen «Nueva conversación». Las
+sesiones viven en memoria de la API (se pierden al reiniciar). Detalle, decisiones y límites en el
+[README de `estimador-cag`](./estimador-cag/README.md#conversación-con-memoria-sesiones).
+
+Las validaciones se ejecutan en contenedores:
+
+```bash
+docker build --target test -t estimador-cag:test ./estimador-cag
+docker run --rm -v "$PWD/estimador-cag:/app" estimador-cag:test         # API + Streamlit (pytest)
+```
+
+Las pruebas de las webs tienen su comando Docker en el README de cada una.
+
 ## Metodología de trabajo (SDD)
 
 Los proyectos de este repositorio se construyen siguiendo un flujo de

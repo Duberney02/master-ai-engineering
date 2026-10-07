@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     database_url: str | None = None
     # Intentos totales para obtener un resultado que cumpla las reglas de negocio.
     validation_max_attempts: int = Field(default=3, ge=1, le=5)
+    # Sesiones conversacionales en memoria del proceso (ver app.services.sessions): turnos
+    # (pares usuario+asistente) que conserva cada sesión —6 es app.services.sessions.MAX_TURNS—,
+    # inactividad tras la que caduca y número máximo de sesiones simultáneas.
+    session_max_turns: int = Field(default=6, ge=1, le=50)
+    session_ttl_seconds: float = Field(default=6 * 3600, gt=0)
+    session_max_count: int = Field(default=200, ge=1)
 
     @model_validator(mode="after")
     def validate_provider_key(self) -> "Settings":

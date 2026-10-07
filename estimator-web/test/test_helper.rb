@@ -7,6 +7,8 @@ require "webmock/minitest"
 WebMock.disable_net_connect!
 
 API = "http://estimator-api.test".freeze
+SESSION_ID = "6f1c2c1e-6d0a-4a5e-9c1a-0d6f5b1f4a10".freeze
+SESSION_ESTIMATE_URL = "#{API}/api/v1/sessions/#{SESSION_ID}/estimate".freeze
 
 module ApiHelpers
   RESULT = {
@@ -30,9 +32,24 @@ module ApiHelpers
     "phases" => [ { "name" => "No estimable", "description" => "", "duration_weeks" => 1, "cost_eur" => 0 } ]
   }.freeze
 
-  def estimate_body(result: RESULT, id: 7, cache_source: "none")
+  EMPTY_METADATA = {
+    "project_name" => nil, "assumed_team_size" => nil, "mentioned_technologies" => [], "agreed_scope" => nil
+  }.freeze
+
+  PROJECT_METADATA = {
+    "project_name" => "Orion", "assumed_team_size" => 4,
+    "mentioned_technologies" => %w[FastAPI Kafka], "agreed_scope" => "Portal y panel de administración"
+  }.freeze
+
+  # Respuesta de `POST /sessions/{id}/estimate`: la estimación más el estado de la conversación.
+  def estimate_body(result: RESULT, id: 7, cache_source: "none", project_metadata: EMPTY_METADATA)
     { "result" => result, "prompt_version" => "v3", "cached" => cache_source != "none",
-      "cache_source" => cache_source, "estimation_id" => id, "metrics" => metrics_body }
+      "cache_source" => cache_source, "estimation_id" => id, "metrics" => metrics_body,
+      "session_id" => SESSION_ID, "project_metadata" => project_metadata, "turn_count" => 1, "max_turns" => 6 }
+  end
+
+  def stub_session_create(id = SESSION_ID)
+    stub_request(:post, "#{API}/api/v1/sessions").to_return(json_response({ "session_id" => id }, status: 201))
   end
 
   def detail_body(id: 7, result: RESULT, cache_source: "none", metrics: metrics_body, description: "Portal de clientes para facturas e incidencias.")
@@ -84,5 +101,6 @@ class ActiveSupport::TestCase
   setup do
     Rails.configuration.x.estimator_api_url = API
     stub_prompt_preview
+    stub_session_create
   end
 end

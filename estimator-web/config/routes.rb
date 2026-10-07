@@ -4,4 +4,6 @@ Rails.application.routes.draw do
 
   root "estimations#new"
   resources :estimations, only: %i[index show create]
+  # «Nueva conversación»: abre otra sesión en la API y reinicia el estado.
+  resource :conversation, only: :create
 end

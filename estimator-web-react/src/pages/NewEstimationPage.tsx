@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { EstimatorApiError, createEstimation } from "../api/estimatorApi";
+import { EstimatorApiError, SessionExpiredError, createSessionEstimation } from "../api/estimatorApi";
 import type { EstimationResponse } from "../api/types";
+import { Alert } from "../components/Alert";
 import { EstimationDetail } from "../components/EstimationDetail";
 import { EstimationForm } from "../components/EstimationForm";
 import { PromptSidebar } from "../components/PromptSidebar";
 import { WithSidebar } from "../components/WithSidebar";
 import { useElapsedSeconds } from "../hooks/useElapsedSeconds";
+import { useConversation } from "../hooks/useConversation";
 import { usePromptPreview } from "../hooks/usePromptPreview";
-import { apiAttributes, defaultForm, validateForm, type FormValues } from "../lib/estimationForm";
+import { apiAttributes, defaultForm, sessionFormData, validateForm, type FormValues } from "../lib/estimationForm";
 
 /** Estimación mostrada en línea cuando la API no devuelve `estimation_id` (sin enlace permanente). */
 interface InlineEstimation {
@@ -18,6 +20,7 @@ interface InlineEstimation {
 
 export function NewEstimationPage() {
   const navigate = useNavigate();
+  const conversation = useConversation();
   const [values, setValues] = useState<FormValues>(defaultForm);
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -42,7 +45,9 @@ export function NewEstimationPage() {
     setSubmitting(true);
     try {
       const attributes = apiAttributes(values);
-      const response = await createEstimation(attributes, values.prompt_version);
+      const sessionId = await conversation.ensureSession();
+      const response = await createSessionEstimation(sessionId, sessionFormData(values));
+      conversation.recordEstimation(response);
       if (response.estimation_id) {
         navigate(`/estimations/${response.estimation_id}`);
       } else {
@@ -53,7 +58,12 @@ export function NewEstimationPage() {
         });
       }
     } catch (error) {
-      setErrors([error instanceof EstimatorApiError ? error.message : "No se pudo completar la operación."]);
+      if (error instanceof SessionExpiredError) {
+        // La API perdió la sesión: se abre otra y el aviso aparece sobre el formulario, que conserva lo escrito.
+        await conversation.recoverExpired();
+      } else {
+        setErrors([error instanceof EstimatorApiError ? error.message : "No se pudo completar la operación."]);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -75,6 +85,7 @@ export function NewEstimationPage() {
   return (
     <WithSidebar sidebar={<PromptSidebar preview={preview} loading={loading} />}>
       <h1>Estimador de proyectos</h1>
+      {conversation.notice && <Alert kind="warn" id="conversation-notice">{conversation.notice}</Alert>}
       <EstimationForm
         values={values}
         errors={errors}

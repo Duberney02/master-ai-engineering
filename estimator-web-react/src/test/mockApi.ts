@@ -1,4 +1,4 @@
-import type { EstimationResponse } from "../api/types";
+import { EMPTY_METADATA, type EstimationResponse, type SessionEstimationResponse } from "../api/types";
 
 export const DESCRIPTION = "Portal de clientes para consultar facturas y abrir incidencias de soporte.";
 
@@ -26,6 +26,23 @@ export function estimateBody(overrides: Partial<EstimationResponse> = {}): Estim
   };
 }
 
+export const SESSION_ID = "6f1c2c1e-6d0a-4a5e-9c1a-0d6f5b1f4a10";
+
+/** Respuesta de `POST /sessions/{id}/estimate`: la estimación más el estado de la conversación. */
+export function sessionBody(overrides: Partial<SessionEstimationResponse> = {}): SessionEstimationResponse {
+  return {
+    ...estimateBody(),
+    session_id: SESSION_ID,
+    project_metadata: EMPTY_METADATA,
+    turn_count: 1,
+    max_turns: 6,
+    ...overrides,
+  };
+}
+
+export const isSessionEstimate = (url: URL, init: RequestInit) =>
+  init.method === "POST" && /^\/api\/v1\/sessions\/[^/]+\/estimate$/.test(url.pathname);
+
 export type Handler = (url: URL, init: RequestInit) => Response | Promise<Response> | undefined;
 
 /**
@@ -34,12 +51,18 @@ export type Handler = (url: URL, init: RequestInit) => Response | Promise<Respon
  */
 export function mockApi(...handlers: Handler[]) {
   const calls: { url: URL; init: RequestInit }[] = [];
+  const sessions: string[] = [];
   const fetchMock = vi.fn(async (input: string, init: RequestInit = {}) => {
     const url = new URL(input, "http://localhost");
     calls.push({ url, init });
     for (const handler of handlers) {
       const response = handler(url, init);
       if (response) return response;
+    }
+    if (url.pathname === "/api/v1/sessions" && init.method === "POST") {
+      const sessionId = sessions.length === 0 ? SESSION_ID : `${SESSION_ID.slice(0, -2)}${String(sessions.length + 1).padStart(2, "0")}`;
+      sessions.push(sessionId);
+      return json({ session_id: sessionId }, 201);
     }
     if (url.pathname === "/api/v1/prompts/estimation") {
       return json({
@@ -53,6 +76,9 @@ export function mockApi(...handlers: Handler[]) {
   vi.stubGlobal("fetch", fetchMock);
   return {
     calls,
+    /** Identificadores de las sesiones creadas por la aplicación, en orden. */
+    sessions,
     callsTo: (pathname: string) => calls.filter((call) => call.url.pathname === pathname),
+    estimateCalls: () => calls.filter((call) => isSessionEstimate(call.url, call.init)),
   };
 }

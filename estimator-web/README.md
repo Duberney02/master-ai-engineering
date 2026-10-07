@@ -8,7 +8,12 @@ proveedores: habla solo HTTP con la API (cliente [Faraday](https://lostisland.gi
 - **Formulario** con descripción (20–80 000 caracteres), tipo de proyecto, nivel de detalle, formato de salida y
   versión de prompt. Admite **cargar un archivo `.txt`** (UTF-8, máx. 400 KB) que sustituye a la descripción.
   Al enviar muestra un **indicador de carga y un temporizador** de segundos transcurridos.
-- **Barra lateral izquierda** (como en Streamlit): prompt de sistema renderizado, ejemplos few-shot y métricas de la última llamada (modelo, tokens, latencia, coste, caché); se puede ocultar con «».
+- **Conversación con memoria**: al abrir el formulario crea una sesión en la API (`POST /api/v1/sessions`) y guarda su
+  `session_id` en la sesión de Rails; cada estimación se envía como multipart a `/api/v1/sessions/{id}/estimate`. Admite
+  **varios adjuntos PDF o Word** (hasta 5 de 10 MB; la API extrae su texto) y, con adjuntos, un mensaje corto. Si la API
+  pierde la sesión (reinicio o caducidad) abre otra y avisa; el formulario conserva lo escrito.
+- **Barra lateral izquierda** (como en Streamlit): **metadatos del proyecto** de la conversación (nombre, equipo,
+  tecnologías, alcance) con el botón **«Nueva conversación»**, prompt de sistema renderizado, ejemplos few-shot y métricas de la última llamada (modelo, tokens, latencia, coste, caché); se puede ocultar con «».
 - **Historial** (`/estimations`): las últimas 10 estimaciones (fecha, tipo, confianza, coste, procedencia y extracto).
 - **Resultado** (`/estimations/:id`): resumen, **confianza, duración y coste totales** y **tabla de fases**. Con baja
   confianza (< 30 %) muestra «No estimable» sin cifras. Indica si fue generada o servida de la caché exacta/semántica.
@@ -45,5 +50,7 @@ docker run --rm -v "$PWD:/rails" -w /rails ruby:3.4-slim sh -c \
   "apt-get update -qq && apt-get install -y -qq build-essential git libyaml-dev && bundle install && bin/rails test"
 ```
 
-Cubren el cliente (`test/services`), el formulario y la carga de `.txt` (`test/models`) y los flujos completos —envío,
+(`bundle install` instala gemas del grupo de pruebas en el contenedor; el montaje escribe `tmp/` y `log/` en el directorio.)
+
+Cubren el cliente y la sesión multipart (`test/services`), el formulario, la carga de `.txt` y los adjuntos (`test/models`) y los flujos completos —envío,
 rechazos antes de llamar a la API, baja confianza, historial vacío o desactivado y API caída— (`test/controllers`).

@@ -1,4 +1,5 @@
-import type { CallMetrics, PromptPreview } from "../api/types";
+import type { CallMetrics, ProjectMetadata, PromptPreview } from "../api/types";
+import { useConversation } from "../hooks/useConversation";
 import { formatInteger, formatUsd } from "../lib/format";
 
 interface Props {
@@ -8,15 +9,42 @@ interface Props {
   promptVersion?: string;
 }
 
-// Barra lateral equivalente a la de Streamlit: contexto del prompt, ejemplos few-shot y última llamada.
+// Barra lateral equivalente a la de Streamlit: metadatos del proyecto, contexto del prompt, ejemplos
+// few-shot y última llamada.
 export function PromptSidebar({ preview, loading = false, metrics = null, promptVersion }: Props) {
+  const conversation = useConversation();
   return (
     <>
+      <h2>Metadatos del proyecto</h2>
+      <ProjectMetadataPanel metadata={conversation.metadata} />
+      <button type="button" id="new-conversation" onClick={() => void conversation.newConversation()}>
+        Nueva conversación
+      </button>
       <h2>Contexto del prompt</h2>
       <SystemPrompt preview={preview} loading={loading} />
       <h3>Última llamada</h3>
       <LastCallMetrics metrics={metrics} promptVersion={promptVersion} />
     </>
+  );
+}
+
+function ProjectMetadataPanel({ metadata }: { metadata: ProjectMetadata }) {
+  const known =
+    metadata.project_name || metadata.assumed_team_size || metadata.mentioned_technologies.length > 0 || metadata.agreed_scope;
+  if (!known) {
+    return (
+      <p className="hint" id="no-project-metadata">
+        Aún no hay datos del proyecto: se irán recogiendo durante la conversación.
+      </p>
+    );
+  }
+  return (
+    <dl id="project-metadata">
+      <div><dt>Nombre</dt><dd id="metadata-name">{metadata.project_name ?? "—"}</dd></div>
+      <div><dt>Equipo supuesto</dt><dd id="metadata-team">{metadata.assumed_team_size ?? "—"}</dd></div>
+      <div><dt>Tecnologías</dt><dd id="metadata-technologies">{metadata.mentioned_technologies.join(", ") || "—"}</dd></div>
+      <div><dt>Alcance acordado</dt><dd id="metadata-scope">{metadata.agreed_scope ?? "—"}</dd></div>
+    </dl>
   );
 }
 

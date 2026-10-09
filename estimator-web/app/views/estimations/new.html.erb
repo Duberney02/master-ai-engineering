@@ -1,5 +1,9 @@
 <h1>Estimador de proyectos</h1>
 
+<% if @notice %>
+  <div class="alert warn" role="status" id="conversation-notice"><%= @notice %></div>
+<% end %>
+
 <% if @form.errors.any? %>
   <div class="alert error" role="alert" id="form-errors">
     <% @form.errors.each do |error| %>
@@ -19,6 +23,11 @@
     <%= f.label :upload, "…o carga una transcripción (.txt)" %>
     <%= f.file_field :upload, id: "upload", accept: ".txt,text/plain" %>
     <div class="hint">El contenido del archivo sustituye a la descripción. Máximo <%= EstimationForm::MAX_UPLOAD_BYTES / 1000 %> KB, codificación UTF-8.</div>
+
+    <%= f.label :attachments, "Adjuntos (PDF o Word)", for: "attachments" %>
+    <%= f.file_field :attachments, id: "attachments", multiple: true,
+                     accept: ".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" %>
+    <div class="hint">Su texto se añade a la transcripción. Hasta <%= EstimationForm::MAX_ATTACHMENTS %> archivos de <%= EstimationForm::MAX_ATTACHMENT_BYTES / (1024 * 1024) %> MB.</div>
 
     <div class="row">
       <div>

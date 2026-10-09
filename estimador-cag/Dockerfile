@@ -29,7 +29,32 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 
 # =============================================================================
-# Etapa 2 — runtime: imagen mínima, usuario sin privilegios
+# Etapa de pruebas — dependencias de desarrollo; el código y los tests se montan en ejecución
+#   docker build --target test -t estimador-cag:test .
+#   docker run --rm -v "$PWD:/app" estimador-cag:test
+# Se declara antes de runtime para que `docker build .` siga generando la imagen de producción.
+# =============================================================================
+FROM python:3.11-slim AS test
+
+COPY --from=uv /uv /bin/uv
+
+# El entorno vive fuera de /app para que el montaje del código no lo oculte.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --group dev --no-install-project
+
+CMD ["pytest", "-q"]
+
+
+# =============================================================================
+# Etapa 3 — runtime: imagen mínima, usuario sin privilegios
 # =============================================================================
 FROM python:3.11-slim AS runtime
 

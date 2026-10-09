@@ -41,6 +41,13 @@ _ANTHROPIC_DEFAULT_MAX_TOKENS = 4096
 # La extracción de requisitos es una tarea corta y acotada.
 EXTRACTION_MAX_TOKENS = 2000
 
+# Mensaje de usuario único (texto) o conversación completa sin el system prompt: `[{role, content}]`.
+Turns = str | list[dict[str, str]]
+
+
+def _turns(user_message: Turns) -> list[dict[str, str]]:
+    return [{"role": "user", "content": user_message}] if isinstance(user_message, str) else list(user_message)
+
 
 @dataclass
 class GenerationOptions:
@@ -434,6 +441,22 @@ async def generate_from_prompts(
     )
 
 
+async def generate_from_messages(
+    messages: list[dict[str, str]],
+    accept: Callable[[str], bool] | None = None,
+    max_tokens: int | None = None,
+) -> _Completion:
+    """Como `generate_from_prompts` para una conversación: `messages` empieza por el mensaje `system`
+    y sigue con los turnos `user`/`assistant` (el último, del usuario). Misma política de proveedor."""
+    if len(messages) < 2 or messages[0].get("role") != "system":
+        raise ValueError("messages must start with a system message followed by at least one turn")
+    settings = get_settings()
+    return await _complete(
+        settings, messages[0]["content"], messages[1:], settings.effective_model(),
+        max_tokens=max_tokens, accept=accept,
+    )
+
+
 async def generate_from_prompts_stream(
     system_prompt: str, user_message: str, result: _Completion
 ) -> AsyncIterator[str]:
@@ -475,7 +498,7 @@ def _phase_result(phase: Phase, completion: _Completion) -> PhaseResult:
 async def _complete(
     settings: Settings,
     system_prompt: str,
-    user_message: str,
+    user_message: Turns,
     model: str,
     max_tokens: int | None,
     thinking_budget: int | None = None,
@@ -560,7 +583,7 @@ _ANTHROPIC_ERRORS = {
 
 async def _call_openai(
     system_prompt: str,
-    user_message: str,
+    user_message: Turns,
     settings: Settings,
     model: str,
     max_tokens: int | None,
@@ -573,10 +596,7 @@ async def _call_openai(
     try:
         response = await client.chat.completions.create(
             model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
+            messages=[{"role": "system", "content": system_prompt}, *_turns(user_message)],
             temperature=0.3,
             **kwargs,
         )
@@ -602,7 +622,7 @@ async def _call_openai(
 
 async def _call_anthropic(
     system_prompt: str,
-    user_message: str,
+    user_message: Turns,
     settings: Settings,
     model: str,
     max_tokens: int | None,
@@ -615,7 +635,7 @@ async def _call_anthropic(
             model=model,
             **_anthropic_options(max_tokens, thinking_budget),
             system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
+            messages=_turns(user_message),
         )
     except Exception as exc:
         _raise_provider_http_error("Anthropic", exc, _ANTHROPIC_ERRORS)

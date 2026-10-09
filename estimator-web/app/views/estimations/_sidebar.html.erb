@@ -1,6 +1,20 @@
-<%# Barra lateral equivalente a la de Streamlit: contexto del prompt, ejemplos few-shot y última llamada. %>
+<%# Barra lateral equivalente a la de Streamlit: metadatos del proyecto, contexto del prompt, ejemplos few-shot y última llamada. %>
 <% preview = @sidebar[:preview] %>
 <% metrics = @sidebar[:metrics] %>
+<% metadata = @sidebar[:metadata] || {} %>
+
+<h2>Metadatos del proyecto</h2>
+<% if metadata["project_name"].present? || metadata["assumed_team_size"].present? || Array(metadata["mentioned_technologies"]).any? || metadata["agreed_scope"].present? %>
+  <dl id="project-metadata">
+    <div><dt>Nombre</dt><dd id="metadata-name"><%= metadata["project_name"].presence || "—" %></dd></div>
+    <div><dt>Equipo supuesto</dt><dd id="metadata-team"><%= metadata["assumed_team_size"].presence || "—" %></dd></div>
+    <div><dt>Tecnologías</dt><dd id="metadata-technologies"><%= Array(metadata["mentioned_technologies"]).join(", ").presence || "—" %></dd></div>
+    <div><dt>Alcance acordado</dt><dd id="metadata-scope"><%= metadata["agreed_scope"].presence || "—" %></dd></div>
+  </dl>
+<% else %>
+  <p class="hint" id="no-project-metadata">Aún no hay datos del proyecto: se irán recogiendo durante la conversación.</p>
+<% end %>
+<%= button_to "Nueva conversación", conversation_path, method: :post, id: "new-conversation" %>
 
 <h2>Contexto del prompt</h2>
 <% if preview %>

@@ -1,9 +1,15 @@
-// Equivalente de EstimationForm (Rails): constantes, validación y lectura del .txt.
+// Equivalente de EstimationForm (Rails): constantes, validación, lectura del .txt y adjuntos.
 
 export const MIN_DESCRIPTION = 20;
 export const MAX_DESCRIPTION = 80_000;
 // 80 000 caracteres ocupan como mucho ~320 KB en UTF-8.
 export const MAX_UPLOAD_BYTES = 400_000;
+
+// Adjuntos PDF/Word de la conversación: los mismos límites que aplica la API.
+export const MAX_ATTACHMENTS = 5;
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const ATTACHMENT_EXTENSIONS = [".pdf", ".docx"] as const;
+export const ATTACHMENT_ACCEPT = ".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 export const PROJECT_TYPES = ["mobile_app", "web_saas", "internal_tool", "data_pipeline"] as const;
 export const DETAIL_LEVELS = ["summary", "medium", "detailed"] as const;
@@ -16,12 +22,17 @@ export interface FormValues {
   detail_level: string;
   output_format: string;
   prompt_version: string;
+  /** Documentos PDF o Word cuyo texto la API añade a la transcripción. */
+  attachments: File[];
 }
 
 export const DESCRIPTION_MESSAGE = `La descripción debe tener entre ${MIN_DESCRIPTION} y ${MAX_DESCRIPTION} caracteres.`;
 export const NOT_TXT_MESSAGE = "El archivo debe ser de texto plano (.txt).";
 export const TOO_BIG_MESSAGE = `El archivo supera el máximo de ${MAX_UPLOAD_BYTES / 1000} KB.`;
 export const NOT_UTF8_MESSAGE = "El archivo debe estar codificado en UTF-8.";
+export const ATTACHMENT_TYPE_MESSAGE = "Los adjuntos deben ser PDF (.pdf) o Word (.docx).";
+export const ATTACHMENT_SIZE_MESSAGE = `Cada adjunto puede pesar como máximo ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB.`;
+export const ATTACHMENT_COUNT_MESSAGE = `Se admiten como máximo ${MAX_ATTACHMENTS} adjuntos.`;
 
 export function defaultForm(): FormValues {
   return {
@@ -30,6 +41,7 @@ export function defaultForm(): FormValues {
     detail_level: "medium",
     output_format: OUTPUT_FORMATS[0],
     prompt_version: PROMPT_VERSIONS[0],
+    attachments: [],
   };
 }
 
@@ -43,6 +55,18 @@ export function apiAttributes(form: FormValues) {
   };
 }
 
+/** Cuerpo `multipart/form-data` de `POST /sessions/{id}/estimate`: transcripción, opciones y adjuntos. */
+export function sessionFormData(form: FormValues): FormData {
+  const data = new FormData();
+  data.set("transcript", form.description.trim());
+  data.set("project_type", form.project_type);
+  data.set("detail_level", form.detail_level);
+  data.set("output_format", form.output_format);
+  data.set("prompt_version", form.prompt_version);
+  for (const file of form.attachments) data.append("attachments", file, file.name);
+  return data;
+}
+
 /** Devuelve la lista de mensajes de error (vacía si el formulario es válido). */
 export function validateForm(form: FormValues): string[] {
   const errors: string[] = [];
@@ -51,7 +75,20 @@ export function validateForm(form: FormValues): string[] {
   if (!(OUTPUT_FORMATS as readonly string[]).includes(form.output_format)) errors.push("El formato de salida no es válido.");
   if (!(PROMPT_VERSIONS as readonly string[]).includes(form.prompt_version)) errors.push("La versión del prompt no es válida.");
   const length = Array.from(form.description.trim()).length;
-  if (length < MIN_DESCRIPTION || length > MAX_DESCRIPTION) errors.push(DESCRIPTION_MESSAGE);
+  // Con adjuntos el mensaje puede ser corto: la API valida la longitud de la transcripción más los adjuntos.
+  const tooShort = form.attachments.length === 0 && length < MIN_DESCRIPTION;
+  if (tooShort || length > MAX_DESCRIPTION) errors.push(DESCRIPTION_MESSAGE);
+  errors.push(...attachmentErrors(form.attachments));
+  return errors;
+}
+
+export function attachmentErrors(files: File[]): string[] {
+  const errors: string[] = [];
+  if (files.length > MAX_ATTACHMENTS) errors.push(ATTACHMENT_COUNT_MESSAGE);
+  if (files.some((file) => !ATTACHMENT_EXTENSIONS.some((extension) => file.name.toLowerCase().endsWith(extension)))) {
+    errors.push(ATTACHMENT_TYPE_MESSAGE);
+  }
+  if (files.some((file) => file.size > MAX_ATTACHMENT_BYTES)) errors.push(ATTACHMENT_SIZE_MESSAGE);
   return errors;
 }
 

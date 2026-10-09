@@ -8,8 +8,9 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
-    # El JSON de una transcripción de 80 000 caracteres ocupa como mucho ~330 KB.
-    client_max_body_size 1m;
+    # El JSON de una transcripción de 80 000 caracteres ocupa como mucho ~330 KB, pero las
+    # estimaciones de sesión admiten hasta 5 adjuntos de 10 MB (multipart): 5 x 10 MB + texto.
+    client_max_body_size 55m;
     server_tokens off;
 
     add_header X-Content-Type-Options "nosniff" always;

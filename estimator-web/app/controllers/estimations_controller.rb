@@ -1,17 +1,30 @@
 class EstimationsController < ApplicationController
+  include ConversationSession
+
   rescue_from EstimatorApi::Error, with: :render_api_error
 
   def new
     @form = EstimationForm.new
+    # La conversación se abre al cargar la página y se conserva en la sesión de Rails. Si la API no
+    # responde ahora, el envío del formulario lo reintenta.
+    begin
+      ensure_conversation(api)
+    rescue EstimatorApi::Error
+      nil
+    end
     load_sidebar(@form.api_attributes, @form.prompt_version)
   end
 
   def create
     @form = EstimationForm.new(form_params)
     @form.load_upload(params.dig(:estimation_form, :upload))
+    @form.load_attachments(params.dig(:estimation_form, :attachments))
     return render_form_errors unless @form.errors.empty? && @form.valid?
 
-    response = api.create_estimation(@form.api_attributes, prompt_version: @form.prompt_version)
+    response = api.create_session_estimation(
+      ensure_conversation(api), @form.session_fields, attachments: @form.attachments
+    )
+    remember_metadata(response["project_metadata"])
     if (id = response["estimation_id"])
       redirect_to estimation_path(id)
     else
@@ -20,6 +33,12 @@ class EstimationsController < ApplicationController
       load_sidebar(@form.api_attributes, @form.prompt_version, response["metrics"])
       render :show
     end
+  rescue EstimatorApi::SessionExpired
+    # La API perdió la sesión: se abre otra, se avisa y el formulario conserva lo escrito.
+    start_conversation(api)
+    @notice = EstimatorApi::SESSION_EXPIRED_MESSAGE
+    load_sidebar(@form.api_attributes, @form.prompt_version)
+    render :new
   rescue EstimatorApi::Error => error
     @form.errors.add(:base, error.message)
     render_form_errors
@@ -42,6 +61,7 @@ class EstimationsController < ApplicationController
   private
 
   def form_params
+    # `upload` y `attachments` son archivos: se leen aparte con `load_upload` y `load_attachments`.
     params.fetch(:estimation_form, {}).permit(:description, :project_type, :detail_level, :output_format, :prompt_version)
   end
 
@@ -60,7 +80,7 @@ class EstimationsController < ApplicationController
     rescue EstimatorApi::Error
       nil
     end
-    @sidebar = { preview: preview, metrics: metrics, prompt_version: prompt_version }
+    @sidebar = { preview: preview, metrics: metrics, prompt_version: prompt_version, metadata: conversation_metadata }
   end
 
   def render_form_errors

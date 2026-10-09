@@ -13,8 +13,14 @@ class EstimationsControllerTest < ActionDispatch::IntegrationTest
     Rack::Test::UploadedFile.new(StringIO.new(content.dup), "text/plain", original_filename: name)
   end
 
+  # Campos de texto de un cuerpo multipart (WebMock lo entrega como binario: se lee como UTF-8).
+  def multipart_fields(request)
+    body = request.body.dup.force_encoding(Encoding::UTF_8)
+    body.scan(/name="([^"]+)"\r\n(?:Content-Type: [^\r\n]*\r\n)?\r\n(.*?)\r\n--/m).to_h
+  end
+
   def stub_estimate(body = estimate_body, status: 200)
-    stub_request(:post, "#{API}/api/v1/estimate").with(query: { prompt_version: "v3" })
+    stub_request(:post, SESSION_ESTIMATE_URL)
       .to_return(json_response(body, status: status))
   end
 
@@ -43,9 +49,12 @@ class EstimationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_redirected_to estimation_path(7)
     assert_requested stub
-    assert_requested(:post, "#{API}/api/v1/estimate", query: { prompt_version: "v3" }, body: {
-      description: DESCRIPTION, project_type: "web_saas", detail_level: "medium", output_format: "phases_table"
-    })
+    assert_requested(:post, SESSION_ESTIMATE_URL) do |req|
+      assert_match %r{\Amultipart/form-data; boundary=}, req.headers["Content-Type"]
+      fields = multipart_fields(req)
+      fields["transcript"] == DESCRIPTION && fields.values_at("project_type", "detail_level", "output_format", "prompt_version") ==
+        %w[web_saas medium phases_table v3]
+    end
   end
 
   test "without estimation_id (history disabled) the result is rendered directly" do
@@ -67,9 +76,8 @@ class EstimationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_redirected_to estimation_path(7)
     sent = nil
-    assert_requested(:post, "#{API}/api/v1/estimate", query: { prompt_version: "v3" }) { |req| sent = req.body }
-    # WebMock entrega el cuerpo como binario: se interpreta como UTF-8 antes de comparar.
-    assert_equal transcript, JSON.parse(sent.dup.force_encoding(Encoding::UTF_8))["description"]
+    assert_requested(:post, SESSION_ESTIMATE_URL) { |req| sent = multipart_fields(req) }
+    assert_equal transcript, sent["transcript"]
   end
 
   test "an 80000 character transcription is accepted" do
@@ -132,7 +140,7 @@ class EstimationsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "an unreachable API shows a sanitized message and keeps the form" do
-    stub_request(:post, "#{API}/api/v1/estimate").with(query: { prompt_version: "v3" })
+    stub_request(:post, SESSION_ESTIMATE_URL)
       .to_raise(Faraday::ConnectionFailed.new("Failed to open TCP connection to estimator-api.test:8000"))
 
     post estimations_path, params: params
@@ -145,7 +153,7 @@ class EstimationsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "a server error never shows the raw API body" do
-    stub_request(:post, "#{API}/api/v1/estimate").with(query: { prompt_version: "v3" })
+    stub_request(:post, SESSION_ESTIMATE_URL)
       .to_return(status: 502, body: "Traceback (most recent call last): openai key sk-secret")
 
     post estimations_path, params: params

@@ -14,10 +14,13 @@ import structlog
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, StrictUndefined
 
 from app.schemas import EstimationRequest
+from app.services.sessions import ProjectMetadata
 
 logger = structlog.get_logger(__name__)
 
 ESTIMATION_PROMPTS_DIR = Path(__file__).parent / "estimation"
+# Plantillas de las llamadas auxiliares de las sesiones (no son versiones de la estimación).
+SESSION_PROMPTS_DIR = Path(__file__).parent / "sessions"
 DEFAULT_PROMPT_VERSION = "v3"
 # Contrato de salida JSON compartido (`estimation/output_contract.j2`). Las versiones que no lo
 # incluyen en su `system.j2` lo reciben al final del prompt de sistema.
@@ -56,6 +59,18 @@ def _environment(version: str) -> Environment:
     )
 
 
+@lru_cache
+def _session_environment() -> Environment:
+    return Environment(
+        loader=FileSystemLoader(SESSION_PROMPTS_DIR),
+        undefined=StrictUndefined,
+        trim_blocks=True,
+        lstrip_blocks=True,
+        autoescape=False,
+        keep_trailing_newline=False,
+    )
+
+
 def _validated(version: str) -> str:
     # Comprobar el formato antes de tocar el disco impide rutas como "../v1".
     if not _VERSION_PATTERN.match(version) or version not in available_versions():
@@ -83,17 +98,50 @@ def prompt_hash(system: str, user: str) -> str:
     return hashlib.sha256(f"{system}\0{user}".encode("utf-8")).hexdigest()
 
 
-def render_estimation_prompt(
-    request: EstimationRequest, version: str = DEFAULT_PROMPT_VERSION
-) -> tuple[str, str]:
-    """Devuelve `(system, user)` listos para enviar al modelo como mensajes separados."""
+def render_system_prompt(
+    request: EstimationRequest,
+    version: str = DEFAULT_PROMPT_VERSION,
+    project_metadata: ProjectMetadata | None = None,
+) -> str:
+    """Prompt de sistema. Con `project_metadata` (aunque esté vacío) incluye el bloque
+    `<project_metadata>` de las sesiones; sin él, el prompt es el de siempre."""
     env = _environment(_validated(version))
     context = request.model_dump(mode="json")
+    context["project_metadata"] = project_metadata.model_dump(mode="json") if project_metadata else None
     system = _render(env, "system.j2", context)
     if OUTPUT_CONTRACT_MARKER not in system:
         contract = _render(env, "output_contract.j2", context)
         system = system + "\n\n" + contract
-    user = _render(env, "user.j2", context)
+    return system
+
+
+def render_user_prompt(request: EstimationRequest, version: str = DEFAULT_PROMPT_VERSION) -> str:
+    env = _environment(_validated(version))
+    context = request.model_dump(mode="json")
+    context["project_metadata"] = None
+    return _render(env, "user.j2", context)
+
+
+def render_metadata_extraction_prompt(
+    current: ProjectMetadata, user_message: str, estimation_summary: str
+) -> tuple[str, str]:
+    """`(system, user)` de la llamada adicional que actualiza los metadatos del proyecto."""
+    env = _session_environment()
+    context = {
+        "current_metadata": current.model_dump(mode="json"),
+        "user_message": user_message,
+        "estimation_summary": estimation_summary,
+    }
+    return _render(env, "metadata_system.j2", context), _render(env, "metadata_user.j2", context)
+
+
+def render_estimation_prompt(
+    request: EstimationRequest, version: str = DEFAULT_PROMPT_VERSION
+) -> tuple[str, str]:
+    """Devuelve `(system, user)` listos para enviar al modelo como mensajes separados."""
+    context = request.model_dump(mode="json")
+    system = render_system_prompt(request, version)
+    user = render_user_prompt(request, version)
     logger.info(
         "prompt_rendered",
         prompt_version=version,

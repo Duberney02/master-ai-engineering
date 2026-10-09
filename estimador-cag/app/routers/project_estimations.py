@@ -60,8 +60,12 @@ async def estimate(
     estimation_id = await history.save(request, outcome, requested_at)
     _log_completed(outcome, streamed=False)
     return EstimationResponse(
-        result=outcome.result, prompt_version=outcome.prompt_version, cached=outcome.cached,
-        cache_source=outcome.cache_source, estimation_id=estimation_id, metrics=outcome.metrics(),
+        result=outcome.result,
+        prompt_version=outcome.prompt_version,
+        cached=outcome.cached,
+        cache_source=outcome.cache_source,
+        estimation_id=estimation_id,
+        metrics=outcome.metrics(),
     )
 
 
@@ -108,6 +112,11 @@ async def estimate_stream(
             logger.error("structured_stream_failed", error_type=type(exc).__name__)
             yield _event("error", {"status_code": 502, "message": "Estimation stream failed"})
 
-    return StreamingResponse(events(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-cache", "X-Accel-Buffering": "no",
-    })
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

@@ -46,9 +46,7 @@ class ReferenceProject(BaseModel):
 
 
 class EstimationRequest(BaseModel):
-    description: str = Field(
-        min_length=MIN_DESCRIPTION_CHARS, max_length=MAX_DESCRIPTION_CHARS
-    )
+    description: str = Field(min_length=MIN_DESCRIPTION_CHARS, max_length=MAX_DESCRIPTION_CHARS)
     project_type: ProjectType
     detail_level: DetailLevel
     output_format: OutputFormat

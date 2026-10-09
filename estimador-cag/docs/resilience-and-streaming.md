@@ -118,8 +118,16 @@ por tipo, sin claves, prompts ni mensajes internos de excepciones.
 import structlog
 
 logger = structlog.get_logger(__name__)
-logger.info("llm_completed", provider="openai", model="demo", input_tokens=100,
-            output_tokens=50, cost_usd=None, latency_ms=125, cache_hit=False)
+logger.info(
+    "llm_completed",
+    provider="openai",
+    model="demo",
+    input_tokens=100,
+    output_tokens=50,
+    cost_usd=None,
+    latency_ms=125,
+    cache_hit=False,
+)
 ```
 
 No introducir información sensible en el nombre/texto del evento ni en los

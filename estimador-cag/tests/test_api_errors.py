@@ -4,16 +4,30 @@ import httpx
 import pytest
 from anthropic import (
     APITimeoutError as AnthropicTimeout,
+)
+from anthropic import (
     AuthenticationError as AnthropicAuthError,
+)
+from anthropic import (
     BadRequestError as AnthropicBadRequest,
+)
+from anthropic import (
     RateLimitError as AnthropicRateLimit,
 )
 from fastapi.testclient import TestClient
 from openai import (
     APITimeoutError as OpenAITimeout,
+)
+from openai import (
     AuthenticationError as OpenAIAuthError,
+)
+from openai import (
     BadRequestError as OpenAIBadRequest,
+)
+from openai import (
     NotFoundError as OpenAINotFound,
+)
+from openai import (
     RateLimitError as OpenAIRateLimit,
 )
 
@@ -77,7 +91,9 @@ def test_openai_errors_map_to_safe_http_responses(monkeypatch, mocker, exc, stat
     assert "traceback" not in resp.text.lower()
 
 
-@pytest.mark.parametrize("exc, status", ANTHROPIC_CASES, ids=lambda x: type(x).__name__ if isinstance(x, Exception) else x)
+@pytest.mark.parametrize(
+    "exc, status", ANTHROPIC_CASES, ids=lambda x: type(x).__name__ if isinstance(x, Exception) else x
+)
 def test_anthropic_errors_map_to_safe_http_responses(monkeypatch, mocker, exc, status):
     patch_anthropic(mocker, exc)
     resp = _client(monkeypatch, "anthropic").post(

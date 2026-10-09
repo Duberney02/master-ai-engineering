@@ -111,8 +111,12 @@ class SemanticCache:
         s = self.settings
         # La construcción de redisvl abre una conexión síncrona: fuera del event loop.
         return await asyncio.to_thread(
-            self._cache_factory, s.redis_url, index_name(s), s.embedding_dimensions,
-            s.semantic_cache_ttl, s.cache_timeout,
+            self._cache_factory,
+            s.redis_url,
+            index_name(s),
+            s.embedding_dimensions,
+            s.semantic_cache_ttl,
+            s.cache_timeout,
         )
 
     async def lookup(self, request: EstimationRequest, prompt_version: str) -> CachedEstimation | None:
@@ -124,7 +128,9 @@ class SemanticCache:
             vector = await self._embed(semantic_text(request))
             cache = await self._cache()
             hits = await cache.acheck(
-                vector=vector, num_results=1, filter_expression=_filter_expression(values),
+                vector=vector,
+                num_results=1,
+                filter_expression=_filter_expression(values),
                 distance_threshold=1 - self.settings.semantic_cache_threshold,
             )
         except Exception as exc:
@@ -150,8 +156,10 @@ class SemanticCache:
             vector = await self._embed(semantic_text(request))
             cache = await self._cache()
             await cache.astore(
-                prompt=semantic_text(request), response=entry.model_dump_json(),
-                vector=vector, filters=values,
+                prompt=semantic_text(request),
+                response=entry.model_dump_json(),
+                vector=vector,
+                filters=values,
             )
         except Exception as exc:
             logger.warning("semantic_cache_unavailable", operation="store", error_type=type(exc).__name__)

@@ -21,6 +21,10 @@ logger = structlog.get_logger(__name__)
 ESTIMATION_PROMPTS_DIR = Path(__file__).parent / "estimation"
 # Plantillas de las llamadas auxiliares de las sesiones (no son versiones de la estimación).
 SESSION_PROMPTS_DIR = Path(__file__).parent / "sessions"
+# Plantillas versionadas de las tareas auxiliares: `auxiliary/<tarea>/<vN>/{system,user}.j2`.
+AUXILIARY_PROMPTS_DIR = Path(__file__).parent / "auxiliary"
+AUXILIARY_TASKS = ("summary", "anchors", "critic")
+DEFAULT_AUXILIARY_VERSION = "v1"
 DEFAULT_PROMPT_VERSION = "v3"
 # Contrato de salida JSON compartido (`estimation/output_contract.j2`). Las versiones que no lo
 # incluyen en su `system.j2` lo reciben al final del prompt de sistema.
@@ -35,9 +39,7 @@ class UnknownPromptVersionError(ValueError):
 def available_versions() -> list[str]:
     """Versiones presentes en disco, ordenadas numéricamente (v1, v2, …, v10)."""
     versions = [
-        path.name
-        for path in ESTIMATION_PROMPTS_DIR.iterdir()
-        if path.is_dir() and _VERSION_PATTERN.match(path.name)
+        path.name for path in ESTIMATION_PROMPTS_DIR.iterdir() if path.is_dir() and _VERSION_PATTERN.match(path.name)
     ]
     return sorted(versions, key=lambda v: int(v[1:]))
 
@@ -47,10 +49,12 @@ def _environment(version: str) -> Environment:
     # Un loader por versión: `{% include "examples.j2" %}` resuelve dentro de la misma versión
     # y, si no existe allí, en el directorio común.
     return Environment(
-        loader=ChoiceLoader([
-            FileSystemLoader(ESTIMATION_PROMPTS_DIR / version),
-            FileSystemLoader(ESTIMATION_PROMPTS_DIR),  # parciales compartidos entre versiones
-        ]),
+        loader=ChoiceLoader(
+            [
+                FileSystemLoader(ESTIMATION_PROMPTS_DIR / version),
+                FileSystemLoader(ESTIMATION_PROMPTS_DIR),  # parciales compartidos entre versiones
+            ]
+        ),
         undefined=StrictUndefined,
         trim_blocks=True,
         lstrip_blocks=True,
@@ -68,6 +72,43 @@ def _session_environment() -> Environment:
         lstrip_blocks=True,
         autoescape=False,
         keep_trailing_newline=False,
+    )
+
+
+@lru_cache
+def _auxiliary_environment(task: str, version: str) -> Environment:
+    return Environment(
+        loader=FileSystemLoader(AUXILIARY_PROMPTS_DIR / task / version),
+        undefined=StrictUndefined,
+        trim_blocks=True,
+        lstrip_blocks=True,
+        autoescape=False,
+        keep_trailing_newline=False,
+    )
+
+
+def available_auxiliary_versions(task: str) -> list[str]:
+    """Versiones de la plantilla auxiliar `task`, ordenadas numéricamente."""
+    if task not in AUXILIARY_TASKS:
+        raise UnknownPromptVersionError(f"Unknown auxiliary prompt task: {task!r}")
+    directory = AUXILIARY_PROMPTS_DIR / task
+    versions = [p.name for p in directory.iterdir() if p.is_dir() and _VERSION_PATTERN.match(p.name)]
+    return sorted(versions, key=lambda v: int(v[1:]))
+
+
+def render_auxiliary_template(task: str, name: str, context: dict, version: str = DEFAULT_AUXILIARY_VERSION) -> str:
+    """Renderiza `auxiliary/<task>/<version>/<name>.j2`; tarea o versión inexistentes lanzan
+    `UnknownPromptVersionError` y una variable ausente del contexto falla (StrictUndefined)."""
+    if not _VERSION_PATTERN.match(version) or version not in available_auxiliary_versions(task):
+        raise UnknownPromptVersionError(f"Unknown {task} prompt version: {version!r}")
+    return _render(_auxiliary_environment(task, version), f"{name}.j2", context)
+
+
+def render_auxiliary_prompt(task: str, context: dict, version: str = DEFAULT_AUXILIARY_VERSION) -> tuple[str, str]:
+    """`(system, user)` de una tarea auxiliar (resumen, anclas, crítico)."""
+    return (
+        render_auxiliary_template(task, "system", context, version),
+        render_auxiliary_template(task, "user", context, version),
     )
 
 
@@ -102,12 +143,15 @@ def render_system_prompt(
     request: EstimationRequest,
     version: str = DEFAULT_PROMPT_VERSION,
     project_metadata: ProjectMetadata | None = None,
+    audience: str = "default",
 ) -> str:
     """Prompt de sistema. Con `project_metadata` (aunque esté vacío) incluye el bloque
-    `<project_metadata>` de las sesiones; sin él, el prompt es el de siempre."""
+    `<project_metadata>` de las sesiones; sin él, el prompt es el de siempre. `audience` solo lo
+    usan las versiones adaptadas a la audiencia (`v4` y posteriores)."""
     env = _environment(_validated(version))
     context = request.model_dump(mode="json")
     context["project_metadata"] = project_metadata.model_dump(mode="json") if project_metadata else None
+    context["audience"] = audience
     system = _render(env, "system.j2", context)
     if OUTPUT_CONTRACT_MARKER not in system:
         contract = _render(env, "output_contract.j2", context)
@@ -135,9 +179,7 @@ def render_metadata_extraction_prompt(
     return _render(env, "metadata_system.j2", context), _render(env, "metadata_user.j2", context)
 
 
-def render_estimation_prompt(
-    request: EstimationRequest, version: str = DEFAULT_PROMPT_VERSION
-) -> tuple[str, str]:
+def render_estimation_prompt(request: EstimationRequest, version: str = DEFAULT_PROMPT_VERSION) -> tuple[str, str]:
     """Devuelve `(system, user)` listos para enviar al modelo como mensajes separados."""
     context = request.model_dump(mode="json")
     system = render_system_prompt(request, version)

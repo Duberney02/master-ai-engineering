@@ -52,6 +52,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --group dev
 
+      - name: Lint (Ruff)
+        run: uv run ruff check .
+
       - name: Run tests
         # Suite completa (sin llamadas reales a OpenAI/Anthropic: los SDK están simulados):
         # - test_project_structure.py -> estructura de carpetas/módulos y archivos de Docker
@@ -68,6 +71,11 @@ jobs:
         # - test_history.py / test_history_postgres.py -> historial (SQLite en memoria y PostgreSQL real)
         # - test_sessions.py / test_attachments.py / test_llm_messages.py -> ventana de turnos, metadatos, PDF/Word y mensajes multi-turno
         # - test_sessions_api.py       -> sesiones de extremo a extremo con httpx.AsyncClient (metadatos, adjuntos, MAX_TURNS)
+        # - test_memory_api.py / test_compression.py / test_anchors.py / test_context.py -> resumen acumulativo y anclas
+        # - test_audience.py / test_session_state_api.py -> audiencia (tier) y GET /sessions/{id}
+        # - test_critic_*.py / test_boss.py / test_acb*.py -> Actor-Critic-Boss y estimate-acb
+        # - tests/evals/               -> dataset de referencia, métricas y runner
+        # - test_cache_fakeredis.py    -> caché de completions con FakeRedis (ida y vuelta, serialización, TTL)
         run: uv run pytest -v
 
   docker:

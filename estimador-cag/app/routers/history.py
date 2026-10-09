@@ -26,9 +26,7 @@ async def list_estimations(
     response_model=EstimationDetail,
     responses={404: {"description": "La estimación no existe."}, **_UNAVAILABLE},
 )
-async def get_estimation(
-    estimation_id: int, history: EstimationHistory = Depends(get_history)
-) -> EstimationDetail:
+async def get_estimation(estimation_id: int, history: EstimationHistory = Depends(get_history)) -> EstimationDetail:
     try:
         detail = await history.get(estimation_id)
     except HistoryUnavailable as exc:

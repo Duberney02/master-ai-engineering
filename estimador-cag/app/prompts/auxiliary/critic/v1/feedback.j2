@@ -1,0 +1,12 @@
+Un revisor independiente ha evaluado tu estimación anterior (veredicto: {{ verdict }}) y ha encontrado problemas que debes corregir.
+{% if explanation %}
+
+Motivo: {{ explanation }}
+{% endif %}
+
+Defectos detectados:
+{% for issue in issues %}
+- [{{ issue.severity }}] {{ issue.category }} en `{{ issue.affected_field }}`: {{ issue.description }} Corrección sugerida: {{ issue.suggested_fix }}
+{% endfor %}
+
+Genera de nuevo la estimación completa corrigiendo estos defectos, sin perder lo que ya era correcto. Mantén el idioma español y devuelve únicamente el objeto JSON completo con el contrato de salida.

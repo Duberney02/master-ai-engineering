@@ -23,10 +23,15 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator
 
+from app.services.context import compose_messages
+
 Message = dict[str, str]
 
 # Turnos (pares usuario+asistente) que conserva y envía una sesión por defecto.
 MAX_TURNS = 6
+# Pares ancla que conserva una sesión fuera de la ventana y turnos retirados pendientes de comprimir.
+MAX_ANCHORS = 8
+MAX_RETIRED = 50
 
 MAX_TECHNOLOGIES = 30
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f  ]")
@@ -79,9 +84,7 @@ class ProjectMetadata(BaseModel):
         return list(seen.values())
 
     def is_empty(self) -> bool:
-        return not (
-            self.project_name or self.assumed_team_size or self.mentioned_technologies or self.agreed_scope
-        )
+        return not (self.project_name or self.assumed_team_size or self.mentioned_technologies or self.agreed_scope)
 
     def merge(self, update: "ProjectMetadata") -> "ProjectMetadata":
         """Combina hechos nuevos con los conocidos: los valores nuevos no nulos sustituyen a los
@@ -97,12 +100,26 @@ class ProjectMetadata(BaseModel):
         )
 
 
-class ConversationHistory:
-    """Turnos recientes como pares completos usuario+asistente, con ventana deslizante.
+@dataclass(frozen=True)
+class AnchorTurn:
+    """Par usuario/asistente conservado literalmente fuera de la ventana por contener un compromiso."""
 
-    Al superar `max_turns` se descartan los pares más antiguos enteros (nunca un mensaje suelto, para
-    que la conversación siga alternando roles). El system prompt no forma parte de los pares: se
-    conserva siempre y se antepone en cada lista de mensajes.
+    user: str
+    assistant: str
+    rules: tuple[str, ...] = ()
+
+
+class ConversationHistory:
+    """Estructura del historial: turnos recientes, resumen acumulativo y anclas.
+
+    Solo guarda datos; decidir qué es un ancla (`app.services.anchors`) y cómo se comprime lo que sale
+    de la ventana (`app.services.compression`) son responsabilidades de otros componentes.
+
+    Los turnos recientes son pares completos usuario+asistente con ventana deslizante: al superar
+    `max_turns` el par más antiguo sale de la ventana entero (nunca un mensaje suelto, para que la
+    conversación siga alternando roles) y pasa a la cola `retired`, que la política de compresión vacía
+    tras cada turno. Si nadie la vacía queda acotada (`MAX_RETIRED`). El system prompt no forma parte de
+    los pares: se conserva siempre y se antepone en cada lista de mensajes.
     """
 
     def __init__(self, max_turns: int = MAX_TURNS, system_prompt: str = ""):
@@ -110,7 +127,10 @@ class ConversationHistory:
             raise ValueError("max_turns must be at least 1")
         self.max_turns = max_turns
         self.system_prompt = system_prompt
+        self.summary = ""
         self._turns: deque[tuple[str, str]] = deque()
+        self._retired: deque[tuple[str, str]] = deque(maxlen=MAX_RETIRED)
+        self._anchors: list[AnchorTurn] = []
 
     def __len__(self) -> int:
         return len(self._turns)
@@ -119,10 +139,27 @@ class ConversationHistory:
     def turns(self) -> list[tuple[str, str]]:
         return list(self._turns)
 
+    @property
+    def anchors(self) -> list[AnchorTurn]:
+        return list(self._anchors)
+
     def add_turn(self, user: str, assistant: str) -> None:
         self._turns.append((user, assistant))
         while len(self._turns) > self.max_turns:
-            self._turns.popleft()
+            self._retired.append(self._turns.popleft())
+
+    def drain_retired(self) -> list[tuple[str, str]]:
+        """Turnos que han salido de la ventana desde la última llamada, del más antiguo al más reciente."""
+        retired = list(self._retired)
+        self._retired.clear()
+        return retired
+
+    def add_anchor(self, anchor: AnchorTurn) -> None:
+        """Añade un ancla sin duplicados; al superar `MAX_ANCHORS` se descarta la más antigua."""
+        if any((a.user, a.assistant) == (anchor.user, anchor.assistant) for a in self._anchors):
+            return
+        self._anchors.append(anchor)
+        del self._anchors[:-MAX_ANCHORS]
 
     def messages(self, *, reserve: int = 0) -> list[Message]:
         """System prompt (si hay) y los últimos `max_turns - reserve` turnos. `reserve` deja hueco
@@ -143,23 +180,33 @@ class Session:
     session_id: str
     history: ConversationHistory
     metadata: ProjectMetadata = field(default_factory=ProjectMetadata)
+    # Última audiencia resuelta y nombre de la regla que la decidió (ver `app.services.audience`).
+    audience: str | None = None
+    audience_rule: str | None = None
     last_used: float = field(default_factory=time.monotonic)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     def to_messages_list(
         self, render_system: Callable[[ProjectMetadata], str], user_message: str | None = None
     ) -> list[Message]:
-        """Mensajes para el LLM: system prompt regenerado con los metadatos actuales, turnos
-        recientes dentro de la ventana y, si se indica, el mensaje de usuario en curso.
+        """Mensajes para el LLM: system prompt regenerado con los metadatos actuales (y el resumen
+        acumulativo), anclas, turnos recientes dentro de la ventana y, si se indica, el mensaje de
+        usuario en curso (ver `app.services.context.compose_messages`).
 
-        Con mensaje en curso solo se envían `max_turns - 1` turnos previos: el total de turnos que ve
-        el modelo, contando el actual, nunca supera `max_turns`.
+        Con mensaje en curso solo se envían `max_turns - 1` turnos previos: el total de turnos recientes
+        que ve el modelo, contando el actual, nunca supera `max_turns`. Las anclas van fuera de la ventana.
         """
-        self.history.system_prompt = render_system(self.metadata)
-        messages = self.history.messages(reserve=1 if user_message is not None else 0)
-        if user_message is not None:
-            messages.append({"role": "user", "content": user_message})
-        return messages
+        history = self.history
+        history.system_prompt = render_system(self.metadata)
+        keep = history.max_turns - (1 if user_message is not None else 0)
+        recent = history.turns[-keep:] if keep > 0 else []
+        return compose_messages(
+            history.system_prompt,
+            history.summary,
+            [(a.user, a.assistant) for a in history.anchors],
+            recent,
+            user_message,
+        )
 
     def record_turn(self, user: str, assistant: str, metadata: ProjectMetadata) -> None:
         """Confirma un turno completado: lo añade al historial y sustituye los metadatos."""

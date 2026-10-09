@@ -64,8 +64,7 @@ class EstimationRequest(BaseModel):
         gt=0,
         le=MAX_OUTPUT_TOKENS,
         description=(
-            "Límite de tokens de salida de la estimación. Por defecto: el del proveedor "
-            "(OpenAI) o 4096 (Anthropic)."
+            "Límite de tokens de salida de la estimación. Por defecto: el del proveedor (OpenAI) o 4096 (Anthropic)."
         ),
     )
     evaluate: bool = Field(
@@ -105,9 +104,7 @@ class UsageInfo(BaseModel):
 class EstimationEvaluation(BaseModel):
     """Evaluación estructural (sin llamadas al LLM) contra el formato exigido por el prompt."""
 
-    sections: dict[str, bool] = Field(
-        description="Encabezados obligatorios presentes (título y secciones ###)."
-    )
+    sections: dict[str, bool] = Field(description="Encabezados obligatorios presentes (título y secciones ###).")
     project_cost_match: bool | None = None
     declared_project_cost_eur: float | None = None
     sections_in_order: bool

@@ -70,13 +70,18 @@ class PipelineOutcome:
 
     def metrics(self) -> CallMetrics:
         return CallMetrics(
-            model=self.model, provider=self.provider, finish_reason=self.finish_reason,
+            model=self.model,
+            provider=self.provider,
+            finish_reason=self.finish_reason,
             usage=StreamUsage(
-                input_tokens=self.input_tokens, output_tokens=self.output_tokens,
+                input_tokens=self.input_tokens,
+                output_tokens=self.output_tokens,
                 total_tokens=self.input_tokens + self.output_tokens,
             ),
-            latency_ms=self.latency_ms, cache_hit=self.cached or self.completion_cache_hit,
-            estimated_cost_usd=self.estimated_cost_usd, request_cost_usd=self.request_cost_usd,
+            latency_ms=self.latency_ms,
+            cache_hit=self.cached or self.completion_cache_hit,
+            estimated_cost_usd=self.estimated_cost_usd,
+            request_cost_usd=self.request_cost_usd,
         )
 
 
@@ -116,9 +121,7 @@ class EstimationPipeline:
         if not input_checked:
             await self.check_input(request, prompt_version)
 
-        key = make_result_key(
-            request, prompt_version, self.settings.llm_provider, self.settings.effective_model()
-        )
+        key = make_result_key(request, prompt_version, self.settings.llm_provider, self.settings.effective_model())
         raw = await self.exact_cache.get(key)
         entry = self._valid(CachedEstimation.parse(raw) if raw is not None else None)
         if entry is not None:
@@ -131,9 +134,7 @@ class EstimationPipeline:
             return self._cached(entry, prompt_version, started, "semantic")
 
         outcome = await self._generate_validated(request, prompt_version, started)
-        entry = CachedEstimation(
-            result=outcome.result, model=outcome.model, provider=outcome.provider
-        )
+        entry = CachedEstimation(result=outcome.result, model=outcome.model, provider=outcome.provider)
         await self.exact_cache.set(key, entry.model_dump(mode="json"))
         await self.semantic_cache.store(request, prompt_version, entry)
         return outcome
@@ -151,12 +152,14 @@ class EstimationPipeline:
         return entry
 
     @staticmethod
-    def _cached(
-        entry: CachedEstimation, prompt_version: str, started: float, source: CacheSource
-    ) -> PipelineOutcome:
+    def _cached(entry: CachedEstimation, prompt_version: str, started: float, source: CacheSource) -> PipelineOutcome:
         return PipelineOutcome(
-            result=entry.result, prompt_version=prompt_version, cached=True, cache_source=source,
-            model=entry.model, provider=entry.provider,
+            result=entry.result,
+            prompt_version=prompt_version,
+            cached=True,
+            cache_source=source,
+            model=entry.model,
+            provider=entry.provider,
             latency_ms=int((time.monotonic() - started) * 1000),
         )
 
@@ -174,8 +177,11 @@ class EstimationPipeline:
                 result = apply_out_of_scope_filter(validate_text(completion.text))
             except ResultValidationError as exc:
                 logger.warning(
-                    "estimation_validation_failed", attempt=attempt, max_attempts=max_attempts,
-                    prompt_version=prompt_version, error=str(exc),
+                    "estimation_validation_failed",
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    prompt_version=prompt_version,
+                    error=str(exc),
                 )
                 message = (
                     f"{user}\n\nRespuesta anterior:\n{completion.text[:_PREVIOUS_ANSWER_LIMIT]}\n\n"
@@ -183,8 +189,7 @@ class EstimationPipeline:
                 )
                 continue
             return self._outcome(result, prompt_version, completions, started)
-        logger.error("estimation_validation_exhausted", attempts=max_attempts,
-                     prompt_version=prompt_version)
+        logger.error("estimation_validation_exhausted", attempts=max_attempts, prompt_version=prompt_version)
         raise HTTPException(status_code=502, detail="LLM returned an invalid estimation")
 
     @staticmethod
@@ -193,8 +198,12 @@ class EstimationPipeline:
     ) -> PipelineOutcome:
         last = completions[-1]
         return PipelineOutcome(
-            result=result, prompt_version=prompt_version, cached=False,
-            model=last.model, provider=last.provider, finish_reason=last.finish_reason,
+            result=result,
+            prompt_version=prompt_version,
+            cached=False,
+            model=last.model,
+            provider=last.provider,
+            finish_reason=last.finish_reason,
             input_tokens=sum(c.input_tokens for c in completions),
             output_tokens=sum(c.output_tokens for c in completions),
             latency_ms=int((time.monotonic() - started) * 1000),
@@ -208,4 +217,3 @@ class EstimationPipeline:
 def get_pipeline() -> EstimationPipeline:
     """Dependencia de FastAPI; las pruebas la sustituyen con `app.dependency_overrides`."""
     return EstimationPipeline(get_settings())
-

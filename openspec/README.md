@@ -4,7 +4,16 @@ OpenSpec es el flujo SDD, no una dependencia del servidor Python. Configuración
 verificada con CLI **1.13.2**, Node **24.14.1** y esquema `spec-driven`.
 Los seis skills Codex están versionados en `.agents/skills/`.
 
-Para otra máquina (Node 20.19 o posterior):
+En este repositorio no hace falta instalar Node ni el CLI en el host: el Compose de verificación
+(`docker-compose.verify.yml`, imagen en `openspec/Dockerfile`) lo ejecuta en un contenedor con la versión fijada:
+
+```sh
+docker compose -f docker-compose.verify.yml run --rm openspec list
+docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
+docker compose -f docker-compose.verify.yml run --rm openspec archive <cambio> --yes
+```
+
+Para otra máquina sin Docker (Node 20.19 o posterior):
 
 ```sh
 npm install -g @fission-ai/openspec@1.13.2
@@ -33,8 +42,11 @@ Los cambios completados están en `changes/archive/`:
 `2026-09-29-estimador-structured-prompts`,
 `2026-10-05-estimador-structured-result-guardrails-cache`,
 `2026-10-06-estimador-historial-web-transcripciones-largas`,
-`2026-10-06-estimador-web-react` y
-`2026-10-06-estimador-validar-antes-de-cachear`.
+`2026-10-06-estimador-web-react`,
+`2026-10-06-estimador-validar-antes-de-cachear`,
+`2026-10-07-estimador-memoria-conversacional` y, de la sesión 5, `2026-10-09-estimador-memoria-resumen-anclas`,
+`2026-10-09-estimador-audiencia-adaptativa`, `2026-10-09-estimador-actor-critic-boss`,
+`2026-10-09-estimador-evaluacion-referencia` y `2026-10-09-estimador-practicas-complementarias`.
 
 Las especificaciones actuales viven en `specs/`; los cambios en curso y su
 evidencia viven en `changes/`. Tras revisar un cambio completado puede archivarse

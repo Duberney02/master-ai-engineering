@@ -56,7 +56,8 @@ def safe_filename(name: str | None) -> str:
     base = _DASH_RUNS.sub("-", _SPACES.sub(" ", base)).strip()
     if len(base) > MAX_FILENAME_CHARS:
         stem, dot, ext = base.rpartition(".")
-        base = (stem[: MAX_FILENAME_CHARS - len(ext) - 1] + dot + ext) if dot and len(ext) < 10 else base[:MAX_FILENAME_CHARS]
+        keeps_extension = dot and len(ext) < 10
+        base = (stem[: MAX_FILENAME_CHARS - len(ext) - 1] + dot + ext) if keeps_extension else base[:MAX_FILENAME_CHARS]
     return base or "attachment"
 
 

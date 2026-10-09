@@ -6,8 +6,13 @@ import pytest
 
 from app.services.llm_service import generate_from_messages
 from tests._fakes import (
-    anthropic_response, anthropic_settings, openai_response, openai_settings,
-    patch_anthropic, patch_openai, patch_settings,
+    anthropic_response,
+    anthropic_settings,
+    openai_response,
+    openai_settings,
+    patch_anthropic,
+    patch_openai,
+    patch_settings,
 )
 
 MESSAGES = [

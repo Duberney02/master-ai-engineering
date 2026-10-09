@@ -41,15 +41,14 @@ async def test_docx_paragraphs_and_tables_are_extracted_in_document_order():
 
 async def test_several_attachments_follow_the_transcript_in_the_order_received():
     extracted = await _extract(
-        ("uno.pdf", make_pdf("primero")), ("dos.docx", make_docx(["segundo"])),
+        ("uno.pdf", make_pdf("primero")),
+        ("dos.docx", make_docx(["segundo"])),
     )
 
     text = combine_text("  Transcripción de la reunión  ", extracted)
 
     assert text == (
-        "Transcripción de la reunión\n\n"
-        "--- attachment: uno.pdf ---\nprimero\n\n"
-        "--- attachment: dos.docx ---\nsegundo"
+        "Transcripción de la reunión\n\n--- attachment: uno.pdf ---\nprimero\n\n--- attachment: dos.docx ---\nsegundo"
     )
 
 

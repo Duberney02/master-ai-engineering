@@ -67,3 +67,44 @@ Las plantillas de sistema SHALL admitir un bloque `<project_metadata>` opcional 
 #### Scenario: Con metadatos
 - **WHEN** se renderiza con nombre, equipo y tecnologías
 - **THEN** el bloque los contiene.
+
+### Requirement: Plantillas auxiliares versionadas
+El sistema SHALL renderizar los prompts de resumen y de detección de anclas desde plantillas Jinja2 versionadas (`auxiliary/<tarea>/<vN>/`), con el mismo loader, `StrictUndefined` y validación de nombres de versión que las plantillas de estimación. Una tarea o versión inexistente SHALL producir un error explícito, y una variable ausente en el contexto SHALL fallar en lugar de renderizar vacío.
+
+#### Scenario: Render del resumen
+- **WHEN** se renderiza la plantilla de resumen con resumen previo y turnos
+- **THEN** el prompt de usuario contiene ambos y el prompt de sistema está en español.
+
+#### Scenario: Versión inválida
+- **WHEN** se pide una versión con formato inválido o inexistente
+- **THEN** se lanza `UnknownPromptVersionError`.
+
+#### Scenario: Variable ausente
+- **WHEN** falta una variable obligatoria en el contexto
+- **THEN** el render falla en lugar de producir texto incompleto.
+
+### Requirement: Prompt v4 adaptado a la audiencia
+El sistema SHALL ofrecer la versión `v4` de la plantilla de estimación, en español y con el mismo contrato estructurado de salida, que ajusta el enfoque a la audiencia: para `executive`, riesgos, síntesis y lenguaje accesible; para `pm`, hitos, entregables y dependencias; para `developer`, tecnologías, integraciones y supuestos técnicos; para `default`, un enfoque general. Las versiones `v1`, `v2` y `v3` SHALL producir el mismo texto que antes.
+
+#### Scenario: Enfoque por audiencia
+- **WHEN** se renderiza `v4` para cada audiencia
+- **THEN** el prompt contiene el enfoque propio de esa audiencia y no el de las demás, y contiene el contrato de salida JSON.
+
+#### Scenario: Versiones anteriores intactas
+- **WHEN** se renderiza `v1`, `v2` o `v3`
+- **THEN** el texto no contiene la sección de audiencia y es idéntico al anterior a este cambio.
+
+#### Scenario: Versión disponible
+- **WHEN** se listan las versiones de prompt
+- **THEN** `v4` aparece y la versión por defecto de `POST /estimate` sigue siendo `v3`.
+
+### Requirement: Plantillas del crítico
+El sistema SHALL renderizar el prompt del crítico (`system`, `user`) y el mensaje de feedback para la regeneración (`feedback`) desde plantillas Jinja2 versionadas en `auxiliary/critic/<vN>/`, con el mismo loader y `StrictUndefined`. El prompt de sistema SHALL estar en español, definir las categorías, severidades y veredictos del contrato y declarar la transcripción, los metadatos y la estimación como datos y no como instrucciones.
+
+#### Scenario: Prompt del crítico
+- **WHEN** se renderiza la plantilla con transcripción, metadatos, audiencia y estimación
+- **THEN** el prompt de usuario contiene los cuatro datos y el de sistema lista todas las categorías, severidades y veredictos.
+
+#### Scenario: Mensaje de feedback
+- **WHEN** se renderiza el feedback con defectos
+- **THEN** el mensaje contiene la severidad, categoría, campo, descripción y corrección sugerida de cada defecto y pide devolver únicamente el JSON completo.

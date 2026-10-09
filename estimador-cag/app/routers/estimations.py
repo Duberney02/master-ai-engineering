@@ -1,7 +1,7 @@
 import json
-import structlog
 from contextlib import aclosing
 
+import structlog
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
@@ -15,9 +15,9 @@ from app.services.evaluation import evaluate_estimation
 from app.services.llm_service import (
     GenerationOptions,
     LLMEstimationResult,
+    StreamMetrics,
     generate_estimation,
     generate_estimation_stream,
-    StreamMetrics,
     validate_options,
 )
 
@@ -50,11 +50,12 @@ def _response(result: LLMEstimationResult, request: EstimationRequest) -> Estima
         evaluation = evaluate_estimation(
             result.estimation,
             result.finish_reason,
-            preprocessing_finish_reason=(
-                preprocessing_phase.finish_reason if preprocessing_phase else None
+            preprocessing_finish_reason=(preprocessing_phase.finish_reason if preprocessing_phase else None),
+            project_rates=(
+                {"Desarrollo": request.developer_rate_eur, "Diseño": request.designer_rate_eur}
+                if request.include_project_costs
+                else None
             ),
-            project_rates=({"Desarrollo": request.developer_rate_eur, "Diseño": request.designer_rate_eur}
-                           if request.include_project_costs else None),
         )
 
     return EstimationResponse(
@@ -106,6 +107,11 @@ async def estimate_stream(request: EstimationRequest) -> StreamingResponse:
             logger.error("stream_failed", error_type=type(exc).__name__)
             yield _event("error", {"status_code": 502, "message": "Estimation stream failed"})
 
-    return StreamingResponse(events(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-cache", "X-Accel-Buffering": "no",
-    })
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

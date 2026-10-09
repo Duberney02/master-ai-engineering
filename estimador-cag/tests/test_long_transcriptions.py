@@ -26,10 +26,14 @@ from tests._fakes import openai_response, openai_settings, patch_openai, patch_s
 SENTENCE = "El portal de clientes permitirá consultar facturas y abrir incidencias. "
 PAYLOAD = {"project_type": "web_saas", "detail_level": "medium", "output_format": "phases_table"}
 RESULT = {
-    "summary": "Portal mediano.", "confidence_pct": 70, "total_duration_weeks": 10,
+    "summary": "Portal mediano.",
+    "confidence_pct": 70,
+    "total_duration_weeks": 10,
     "total_cost_eur": 20000,
-    "phases": [{"name": "Diseño", "description": "UX", "duration_weeks": 2, "cost_eur": 4000},
-               {"name": "Desarrollo", "description": "App", "duration_weeks": 8, "cost_eur": 16000}],
+    "phases": [
+        {"name": "Diseño", "description": "UX", "duration_weeks": 2, "cost_eur": 4000},
+        {"name": "Desarrollo", "description": "App", "duration_weeks": 8, "cost_eur": 16000},
+    ],
 }
 
 
@@ -119,7 +123,9 @@ def test_low_confidence_long_transcript_is_corrected_and_reported_out_of_scope(c
     low = {**RESULT, "confidence_pct": 15, "summary": "Sin alcance claro."}
     fixed = {**low, "summary": "Out of scope: la reunión no define el alcance."}
     create = patch_openai(
-        mocker, openai_response(json.dumps(low)), openai_response(json.dumps(fixed)),
+        mocker,
+        openai_response(json.dumps(low)),
+        openai_response(json.dumps(fixed)),
     )
 
     resp = client.post("/api/v1/estimate", json={**PAYLOAD, "description": transcript(60_000)})
@@ -197,9 +203,7 @@ async def test_short_text_is_a_single_chunk(mocker):
 
 # --- Caché semántica y textos largos --------------------------------------------------------------
 
-ENTRY = CachedEstimation(
-    result=EstimationResult.model_validate(RESULT), model="gpt-4o-mini", provider="openai"
-)
+ENTRY = CachedEstimation(result=EstimationResult.model_validate(RESULT), model="gpt-4o-mini", provider="openai")
 
 
 class _Backend:
@@ -225,7 +229,8 @@ class _Embedder:
 
 def _semantic(backend, embedder, **settings):
     return SemanticCache(
-        openai_settings(redis_url="redis://x", **settings), embedder,
+        openai_settings(redis_url="redis://x", **settings),
+        embedder,
         cache_factory=lambda *args: backend,
     )
 

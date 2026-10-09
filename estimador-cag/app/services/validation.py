@@ -44,9 +44,7 @@ def parse_result(value: dict) -> EstimationResult:
     try:
         return EstimationResult.model_validate(value)
     except ValidationError as exc:
-        details = "; ".join(
-            f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()[:5]
-        )
+        details = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()[:5])
         raise ResultValidationError(f"El JSON no cumple el esquema ({details}).") from None
 
 
@@ -99,7 +97,4 @@ def apply_out_of_scope_filter(result: EstimationResult) -> EstimationResult:
 
 
 def correction_message(error: str) -> str:
-    return (
-        "Tu respuesta anterior no es válida: "
-        f"{error}\nCorrígela y devuelve únicamente el objeto JSON completo."
-    )
+    return f"Tu respuesta anterior no es válida: {error}\nCorrígela y devuelve únicamente el objeto JSON completo."

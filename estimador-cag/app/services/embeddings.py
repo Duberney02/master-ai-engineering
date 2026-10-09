@@ -18,11 +18,13 @@ class OpenAIEmbedder:
 
     async def embed(self, text: str) -> list[float]:
         settings = self.settings
-        client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.llm_timeout,
-                             max_retries=settings.llm_retries)
+        client = AsyncOpenAI(
+            api_key=settings.openai_api_key, timeout=settings.llm_timeout, max_retries=settings.llm_retries
+        )
         try:
             response = await client.embeddings.create(
-                model=settings.embedding_model, input=text,
+                model=settings.embedding_model,
+                input=text,
                 dimensions=settings.embedding_dimensions,
             )
             return list(response.data[0].embedding)

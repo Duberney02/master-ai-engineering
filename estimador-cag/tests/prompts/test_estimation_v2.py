@@ -30,9 +30,11 @@ def test_v2_respects_format_and_detail():
 
 
 def test_v2_user_prompt_keeps_description_block_and_references():
-    request = make_request(reference_projects=[
-        {"name": "Intranet", "description": "Portal de empleados", "actual_hours": 300},
-    ])
+    request = make_request(
+        reference_projects=[
+            {"name": "Intranet", "description": "Portal de empleados", "actual_hours": 300},
+        ]
+    )
     _, user = render_estimation_prompt(request, version="v2")
 
     assert f"<project_description>\n{request.description}\n</project_description>" in user

@@ -72,9 +72,7 @@ async def test_anthropic_default_max_tokens_is_4096(mocker):
 async def test_model_and_max_tokens_overrides_reach_openai(mocker):
     patch_settings(mocker, openai_settings())
     create = patch_openai(mocker, openai_response(ESTIMATION, model="gpt-4o"))
-    result = await generate_estimation(
-        LONG_TRANSCRIPTION, GenerationOptions(model="gpt-4o", max_tokens=1234)
-    )
+    result = await generate_estimation(LONG_TRANSCRIPTION, GenerationOptions(model="gpt-4o", max_tokens=1234))
     assert create.call_args.kwargs["model"] == "gpt-4o"
     assert create.call_args.kwargs["max_completion_tokens"] == 1234
     assert result.model == "gpt-4o"
@@ -83,9 +81,7 @@ async def test_model_and_max_tokens_overrides_reach_openai(mocker):
 async def test_model_and_max_tokens_overrides_reach_anthropic(mocker):
     patch_settings(mocker, anthropic_settings())
     create = patch_anthropic(mocker, anthropic_response(ESTIMATION, model="claude-opus-4-8"))
-    await generate_estimation(
-        LONG_TRANSCRIPTION, GenerationOptions(model="claude-opus-4-8", max_tokens=900)
-    )
+    await generate_estimation(LONG_TRANSCRIPTION, GenerationOptions(model="claude-opus-4-8", max_tokens=900))
     assert create.call_args.kwargs["model"] == "claude-opus-4-8"
     assert create.call_args.kwargs["max_tokens"] == 900
 
@@ -94,9 +90,7 @@ async def test_example_options_shape_the_system_prompt(mocker):
     patch_settings(mocker, openai_settings())
     create = patch_openai(mocker, openai_response(ESTIMATION), openai_response(ESTIMATION))
 
-    await generate_estimation(
-        LONG_TRANSCRIPTION, GenerationOptions(num_examples=4, example_format="json")
-    )
+    await generate_estimation(LONG_TRANSCRIPTION, GenerationOptions(num_examples=4, example_format="json"))
     assert '"desglose_de_tareas"' in _system(create, 0)
 
     await generate_estimation(LONG_TRANSCRIPTION, GenerationOptions(use_examples=False))
@@ -126,9 +120,7 @@ async def test_inline_cleaning_adds_instructions_but_keeps_a_single_call(mocker)
     patch_settings(mocker, openai_settings())
     create = patch_openai(mocker, openai_response(ESTIMATION))
 
-    result = await generate_estimation(
-        LONG_TRANSCRIPTION, GenerationOptions(preprocessing="inline_cleaning")
-    )
+    result = await generate_estimation(LONG_TRANSCRIPTION, GenerationOptions(preprocessing="inline_cleaning"))
 
     assert create.await_count == 1
     assert "Transcript Preparation" in _system(create)
@@ -178,16 +170,20 @@ async def test_two_phase_reports_usage_per_phase_and_aggregates_totals(mocker):
         openai_response(REQUIREMENTS, prompt_tokens=300, completion_tokens=40, finish_reason="length"),
         openai_response(ESTIMATION, prompt_tokens=2000, completion_tokens=900),
     )
-    result = await generate_estimation(
-        LONG_TRANSCRIPTION, GenerationOptions(preprocessing="two_phase")
-    )
+    result = await generate_estimation(LONG_TRANSCRIPTION, GenerationOptions(preprocessing="two_phase"))
     pre, est = result.phases
     assert (pre.phase, pre.input_tokens, pre.output_tokens, pre.total_tokens) == (
-        "preprocessing", 300, 40, 340,
+        "preprocessing",
+        300,
+        40,
+        340,
     )
     assert pre.finish_reason == "length"
     assert (est.phase, est.input_tokens, est.output_tokens, est.total_tokens) == (
-        "estimation", 2000, 900, 2900,
+        "estimation",
+        2000,
+        900,
+        2900,
     )
     assert result.input_tokens == 2300
     assert result.output_tokens == 940
@@ -203,9 +199,7 @@ async def test_two_phase_works_with_anthropic(mocker):
         anthropic_response(REQUIREMENTS, input_tokens=200, output_tokens=30),
         anthropic_response(ESTIMATION, input_tokens=1500, output_tokens=700),
     )
-    result = await generate_estimation(
-        LONG_TRANSCRIPTION, GenerationOptions(preprocessing="two_phase")
-    )
+    result = await generate_estimation(LONG_TRANSCRIPTION, GenerationOptions(preprocessing="two_phase"))
     assert create.call_args_list[0].kwargs["system"] == EXTRACTION_SYSTEM_PROMPT
     assert create.call_args_list[0].kwargs["max_tokens"] == EXTRACTION_MAX_TOKENS
     assert REQUIREMENTS in create.call_args_list[1].kwargs["messages"][0]["content"]

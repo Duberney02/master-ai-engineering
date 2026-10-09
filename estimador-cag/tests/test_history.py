@@ -15,19 +15,27 @@ from app.services.pipeline import PipelineOutcome, get_pipeline
 from tests._fakes import openai_settings, patch_settings
 
 RESULT = {
-    "summary": "Proyecto mediano.", "confidence_pct": 70, "total_duration_weeks": 10,
+    "summary": "Proyecto mediano.",
+    "confidence_pct": 70,
+    "total_duration_weeks": 10,
     "total_cost_eur": 20000,
-    "phases": [{"name": "Diseño", "description": "UX", "duration_weeks": 2, "cost_eur": 4000},
-               {"name": "Desarrollo", "description": "App", "duration_weeks": 8, "cost_eur": 16000}],
+    "phases": [
+        {"name": "Diseño", "description": "UX", "duration_weeks": 2, "cost_eur": 4000},
+        {"name": "Desarrollo", "description": "App", "duration_weeks": 8, "cost_eur": 16000},
+    ],
 }
 LOW_CONFIDENCE = {
-    "summary": "Out of scope: faltan objetivos.", "confidence_pct": 10, "total_duration_weeks": 1,
+    "summary": "Out of scope: faltan objetivos.",
+    "confidence_pct": 10,
+    "total_duration_weeks": 1,
     "total_cost_eur": 0,
     "phases": [{"name": "No estimable", "description": "", "duration_weeks": 1, "cost_eur": 0}],
 }
 PAYLOAD = {
     "description": "Aplicación móvil para que los vecinos de un municipio reporten incidencias.",
-    "project_type": "mobile_app", "detail_level": "medium", "output_format": "phases_table",
+    "project_type": "mobile_app",
+    "detail_level": "medium",
+    "output_format": "phases_table",
 }
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 
@@ -38,17 +46,18 @@ def _request(**overrides) -> EstimationRequest:
 
 def _outcome(result=RESULT, *, cache_source="none", version="v3") -> PipelineOutcome:
     return PipelineOutcome(
-        result=EstimationResult.model_validate(result), prompt_version=version,
-        cached=cache_source != "none", cache_source=cache_source, model="gpt-4o-mini",
+        result=EstimationResult.model_validate(result),
+        prompt_version=version,
+        cached=cache_source != "none",
+        cache_source=cache_source,
+        model="gpt-4o-mini",
         provider="openai",
     )
 
 
 def _engine():
     # StaticPool: una única conexión, imprescindible para que SQLite en memoria conserve las tablas.
-    return create_async_engine(
-        "sqlite+aiosqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
-    )
+    return create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
 
 
 @pytest.fixture
@@ -59,8 +68,7 @@ async def history():
 
 
 async def test_saved_estimation_is_returned_with_all_fields(history):
-    request = _request(reference_projects=[
-        {"name": "App vecinal", "description": "Incidencias", "actual_hours": 300}])
+    request = _request(reference_projects=[{"name": "App vecinal", "description": "Incidencias", "actual_hours": 300}])
 
     started = datetime.now(timezone.utc) - timedelta(seconds=5)
     saved_id = await history.save(request, _outcome(cache_source="semantic"), started)
@@ -86,16 +94,12 @@ async def test_long_transcription_is_stored_in_full(history):
 
 async def test_list_is_newest_first_limited_and_without_full_description(history):
     for index in range(12):
-        await history.save(
-            _request(description=f"{index} " + "x" * 400), _outcome(), NOW + timedelta(minutes=index)
-        )
+        await history.save(_request(description=f"{index} " + "x" * 400), _outcome(), NOW + timedelta(minutes=index))
 
     recent = await history.list_recent(10)
 
     assert len(recent) == 10
-    assert [item.requested_at for item in recent] == sorted(
-        (item.requested_at for item in recent), reverse=True
-    )
+    assert [item.requested_at for item in recent] == sorted((item.requested_at for item in recent), reverse=True)
     assert recent[0].description_excerpt.startswith("11 ")
     assert len(recent[0].description_excerpt) == 200
     assert not hasattr(recent[0], "description")
@@ -129,9 +133,7 @@ async def test_save_failure_is_swallowed_and_logged_without_user_data(mocker):
     broken = EstimationHistory(openai_settings(database_url="postgresql+asyncpg://u:secret@db/x"))
     mocker.patch.object(history_module, "create_async_engine", side_effect=OSError("db down"))
     warnings = []
-    mocker.patch.object(
-        history_module.logger, "warning", lambda event, **kw: warnings.append((event, kw))
-    )
+    mocker.patch.object(history_module.logger, "warning", lambda event, **kw: warnings.append((event, kw)))
 
     assert await broken.save(_request(), _outcome(), NOW) is None
     assert warnings == [("history_save_failed", {"error_type": "OSError"})]
@@ -193,8 +195,15 @@ def test_list_endpoint_orders_and_validates_limit(api):
     assert listing.status_code == 200 and len(listing.json()) == 2
     assert listing.json()[0]["id"] > listing.json()[1]["id"]
     assert set(listing.json()[0]) >= {
-        "id", "requested_at", "project_type", "confidence_pct", "total_cost_eur",
-        "total_duration_weeks", "cache_source", "out_of_scope", "description_excerpt",
+        "id",
+        "requested_at",
+        "project_type",
+        "confidence_pct",
+        "total_cost_eur",
+        "total_duration_weeks",
+        "cache_source",
+        "out_of_scope",
+        "description_excerpt",
     }
     assert "description" not in listing.json()[0]
     assert api.get("/api/v1/estimations?limit=0").status_code == 422
@@ -278,9 +287,16 @@ def test_history_endpoints_return_503_when_not_configured(mocker):
 
 def _metrics_outcome() -> PipelineOutcome:
     return PipelineOutcome(
-        result=EstimationResult.model_validate(RESULT), prompt_version="v3", cached=False,
-        model="gpt-4o-mini", provider="openai", input_tokens=1200, output_tokens=340,
-        latency_ms=2500, estimated_cost_usd=0.0004, request_cost_usd=0.0004,
+        result=EstimationResult.model_validate(RESULT),
+        prompt_version="v3",
+        cached=False,
+        model="gpt-4o-mini",
+        provider="openai",
+        input_tokens=1200,
+        output_tokens=340,
+        latency_ms=2500,
+        estimated_cost_usd=0.0004,
+        request_cost_usd=0.0004,
     )
 
 
@@ -289,8 +305,14 @@ def test_outcome_metrics_sum_tokens_and_flag_cache_hits():
 
     assert metrics.usage.total_tokens == 1540 and metrics.cache_hit is False
     assert metrics.latency_ms == 2500 and metrics.request_cost_usd == 0.0004
-    cached = PipelineOutcome(result=EstimationResult.model_validate(RESULT), prompt_version="v3",
-                             cached=True, cache_source="exact", model="m", provider="openai")
+    cached = PipelineOutcome(
+        result=EstimationResult.model_validate(RESULT),
+        prompt_version="v3",
+        cached=True,
+        cache_source="exact",
+        model="m",
+        provider="openai",
+    )
     assert cached.metrics().cache_hit is True and cached.metrics().usage.total_tokens == 0
 
 

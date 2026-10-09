@@ -61,8 +61,12 @@ def _events(url: str, body: dict, params: dict | None = None) -> Iterator[tuple[
     """Cede los eventos SSE de la API traduciendo los fallos HTTP a `EstimationStreamError`."""
     try:
         with httpx.stream(
-            "POST", url, params=params, json=body,
-            headers={"Accept": "text/event-stream"}, timeout=_TIMEOUT,
+            "POST",
+            url,
+            params=params,
+            json=body,
+            headers={"Accept": "text/event-stream"},
+            timeout=_TIMEOUT,
         ) as response:
             if response.status_code == 400:
                 response.read()
@@ -98,7 +102,9 @@ def _stream(url: str, body: dict, metrics: dict, params: dict | None = None) -> 
 
 
 def request_structured_estimation(
-    request: EstimationRequest, base_url: str, prompt_version: str = PROMPT_VERSIONS[0],
+    request: EstimationRequest,
+    base_url: str,
+    prompt_version: str = PROMPT_VERSIONS[0],
 ) -> tuple[EstimationResult, EstimationStreamMetadata]:
     """Pide una estimación y devuelve el resultado validado con las métricas de la llamada.
 
@@ -108,7 +114,8 @@ def request_structured_estimation(
     result = metadata = None
     completed = False
     for event, value in _events(
-        base_url.rstrip("/") + "/api/v1/estimate/stream", request.model_dump(mode="json"),
+        base_url.rstrip("/") + "/api/v1/estimate/stream",
+        request.model_dump(mode="json"),
         {"prompt_version": prompt_version},
     ):
         try:
@@ -172,8 +179,11 @@ def request_session_estimation(
         response = httpx.post(
             f"{base_url.rstrip('/')}/api/v1/sessions/{session_id}/estimate",
             data={
-                "transcript": transcript, "project_type": project_type, "detail_level": detail_level,
-                "output_format": output_format, "prompt_version": prompt_version,
+                "transcript": transcript,
+                "project_type": project_type,
+                "detail_level": detail_level,
+                "output_format": output_format,
+                "prompt_version": prompt_version,
             },
             files=files or None,
             timeout=_TIMEOUT,
@@ -200,5 +210,6 @@ def request_session_estimation(
 def stream_estimation(transcription: str, base_url: str, metrics: dict) -> Iterator[str]:
     yield from _stream(
         base_url.rstrip("/") + "/api/v1/transcription/estimate/stream",
-        {"transcription": transcription}, metrics,
+        {"transcription": transcription},
+        metrics,
     )

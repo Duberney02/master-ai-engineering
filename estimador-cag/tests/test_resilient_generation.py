@@ -1,6 +1,5 @@
 import asyncio
 import json
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import httpx
@@ -11,14 +10,25 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.services.cache import EstimationCache, make_key
 from app.services.llm_service import (
-    GenerationOptions, StreamMetrics, generate_estimation, generate_estimation_stream,
+    GenerationOptions,
+    StreamMetrics,
+    generate_estimation,
+    generate_estimation_stream,
     generate_from_prompts,
 )
-from app.services.llm_wrapper import Completion, LLMWrapper
+from app.services.llm_wrapper import LLMWrapper
 from tests._fakes import (
-    LONG_TRANSCRIPTION, openai_settings, anthropic_settings, patch_settings,
-    openai_response, anthropic_response, patch_openai, patch_anthropic,
-    openai_stream_chunks, patch_openai_stream, patch_anthropic_stream, anthropic_final_message,
+    LONG_TRANSCRIPTION,
+    anthropic_final_message,
+    anthropic_response,
+    openai_response,
+    openai_settings,
+    openai_stream_chunks,
+    patch_anthropic,
+    patch_anthropic_stream,
+    patch_openai,
+    patch_openai_stream,
+    patch_settings,
 )
 
 
@@ -50,8 +60,8 @@ async def test_cache_preserves_usage_but_request_cost_is_zero(mocker, memory):
     first = await generate_estimation(LONG_TRANSCRIPTION)
     second = await generate_estimation(LONG_TRANSCRIPTION)
     assert call.await_count == 1
-    assert first.estimated_cost_usd == second.estimated_cost_usd == .002
-    assert first.request_cost_usd == .002
+    assert first.estimated_cost_usd == second.estimated_cost_usd == 0.002
+    assert first.request_cost_usd == 0.002
     assert second.request_cost_usd == 0
     assert second.cache_hit and second.total_tokens == 1500
     assert second.phases[0].provider == "openai"
@@ -61,12 +71,14 @@ async def test_two_phase_partial_cache_cost_and_aggregation(mocker, memory):
     patch_settings(mocker, priced())
     call = patch_openai(mocker, openai_response("Requisitos"), openai_response("Uno"), openai_response("Dos"))
     await generate_estimation(LONG_TRANSCRIPTION, GenerationOptions(preprocessing="two_phase"))
-    result = await generate_estimation(LONG_TRANSCRIPTION, GenerationOptions(preprocessing="two_phase", max_tokens=1200))
+    result = await generate_estimation(
+        LONG_TRANSCRIPTION, GenerationOptions(preprocessing="two_phase", max_tokens=1200)
+    )
     assert call.await_count == 3
     assert result.phases[0].cache_hit and not result.phases[1].cache_hit
     assert result.total_tokens == 300 and not result.cache_hit
-    assert result.estimated_cost_usd == .0004
-    assert result.request_cost_usd == .0002
+    assert result.estimated_cost_usd == 0.0004
+    assert result.request_cost_usd == 0.0002
 
 
 @pytest.mark.parametrize("reason", ["length", "unknown", "content_filter"])
@@ -137,7 +149,9 @@ async def test_redis_ttl_is_applied_and_expiry_is_a_miss(mocker):
 
 
 def fallback_settings():
-    return priced(anthropic_api_key="test", fallback_provider="anthropic", fallback_model="claude-haiku-4-5", llm_retries=0)
+    return priced(
+        anthropic_api_key="test", fallback_provider="anthropic", fallback_model="claude-haiku-4-5", llm_retries=0
+    )
 
 
 async def test_timeout_invokes_real_alternate_adapter(mocker):
@@ -154,7 +168,11 @@ async def test_timeout_invokes_real_alternate_adapter(mocker):
 async def test_no_fallback_for_override_or_auth_failure(mocker, explicit):
     patch_settings(mocker, fallback_settings())
     req = httpx.Request("POST", "https://example.test")
-    error = APITimeoutError(request=req) if explicit else AuthenticationError("secret", response=httpx.Response(401, request=req), body={})
+    error = (
+        APITimeoutError(request=req)
+        if explicit
+        else AuthenticationError("secret", response=httpx.Response(401, request=req), body={})
+    )
     patch_openai(mocker, error)
     alternate = patch_anthropic(mocker, anthropic_response("No debe ocurrir"))
     with pytest.raises(HTTPException):
@@ -170,15 +188,17 @@ async def test_stream_cache_reused_by_normal_response_preserves_finish_and_token
     result = await generate_estimation(LONG_TRANSCRIPTION)
     assert call.await_count == 1
     assert result.cache_hit and result.total_tokens == 150 and result.finish_reason == "stop"
-    assert result.estimated_cost_usd == .0002 and result.request_cost_usd == 0
+    assert result.estimated_cost_usd == 0.0002 and result.request_cost_usd == 0
 
 
 async def test_stream_failure_after_text_never_falls_back_or_caches(mocker, memory):
     patch_settings(mocker, fallback_settings())
     chunks = openai_stream_chunks(["Parcial"])
+
     async def broken():
         yield chunks[0]
         raise APITimeoutError(request=httpx.Request("POST", "https://example.test"))
+
     call = patch_openai_stream(mocker, [])
     call.return_value = broken()
     alternate = patch_anthropic_stream(mocker, ["No mezclar"], anthropic_final_message("No mezclar"))
@@ -202,18 +222,23 @@ async def test_stream_fallback_before_text(mocker):
 async def test_generator_close_releases_provider_and_does_not_cache(mocker, memory):
     patch_settings(mocker, priced())
     closed = asyncio.Event()
+
     async def source():
         try:
             yield openai_stream_chunks(["partial"])[0]
         finally:
             closed.set()
+
     provider_stream = source()
+
     # OpenAI AsyncStream.close is explicit; model it instead of relying on GC.
     class Stream:
         def __aiter__(self):
             return provider_stream
+
         async def close(self):
             await provider_stream.aclose()
+
     call = patch_openai_stream(mocker, [])
     call.return_value = Stream()
     stream = generate_estimation_stream(LONG_TRANSCRIPTION, StreamMetrics())
@@ -225,19 +250,25 @@ async def test_generator_close_releases_provider_and_does_not_cache(mocker, memo
 async def test_stream_task_cancellation_closes_sdk_and_does_not_cache(mocker, memory):
     patch_settings(mocker, priced())
     started, closed = asyncio.Event(), asyncio.Event()
+
     class Stream:
         def __aiter__(self):
             return self
+
         async def __anext__(self):
             started.set()
             await asyncio.Event().wait()
+
         async def close(self):
             closed.set()
+
     call = patch_openai_stream(mocker, [])
     call.return_value = Stream()
+
     async def consume():
         async for _ in generate_estimation_stream(LONG_TRANSCRIPTION, StreamMetrics()):
             pass
+
     task = asyncio.create_task(consume())
     await asyncio.wait_for(started.wait(), 1)
     task.cancel()
@@ -275,6 +306,7 @@ async def test_sdk_timeout_retries_and_close_are_configured(mocker):
     patch_settings(mocker, priced(llm_timeout=12, llm_retries=1))
     patch_openai(mocker, openai_response("Respuesta"))
     from app.services import llm_service
+
     llm_service.AsyncOpenAI.return_value.close = AsyncMock()
     await generate_estimation(LONG_TRANSCRIPTION)
     assert llm_service.AsyncOpenAI.call_args.kwargs["timeout"] == 12
@@ -283,6 +315,7 @@ async def test_sdk_timeout_retries_and_close_are_configured(mocker):
 
 
 # --- Validar antes de cachear: solo se guardan las respuestas que el llamador acepta ---
+
 
 def _accept_only_good(text: str) -> bool:
     return text == "buena"

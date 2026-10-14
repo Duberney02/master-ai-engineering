@@ -22,6 +22,10 @@ from tests._fakes import openai_response, openai_settings, patch_settings
 TRANSCRIPT = "Reunión con el cliente: queremos un portal para gestionar pedidos y facturas."
 FORM = {"project_type": "web_saas", "detail_level": "medium", "output_format": "phases_table"}
 EXTRACTION_MARKER = "extractor de datos"
+SUMMARY_MARKER = "encargado de la memoria"
+ANCHOR_MARKER = "Eres un clasificador"
+CRITIC_MARKER = "revisor independiente"
+AUXILIARY_MARKERS = (EXTRACTION_MARKER, SUMMARY_MARKER, ANCHOR_MARKER, CRITIC_MARKER)
 
 
 def estimation(summary="Proyecto mediano.", extra_phase=None, confidence=70) -> dict:
@@ -32,7 +36,9 @@ def estimation(summary="Proyecto mediano.", extra_phase=None, confidence=70) -> 
     if extra_phase:
         phases.append(extra_phase)
     return {
-        "summary": summary, "confidence_pct": confidence, "phases": phases,
+        "summary": summary,
+        "confidence_pct": confidence,
+        "phases": phases,
         "total_duration_weeks": sum(p["duration_weeks"] for p in phases),
         "total_cost_eur": sum(p["cost_eur"] for p in phases),
     }
@@ -44,6 +50,8 @@ class ScriptedLLM:
     def __init__(self, mocker):
         self.calls: list[list[dict]] = []
         self.metadata: list[str | dict] = []
+        self.summaries: list[str] = []
+        self.critic: list[str | dict] = []
         self.estimations: list[str | dict] = []
         self.estimate = lambda user_message: estimation()
 
@@ -58,8 +66,15 @@ class ScriptedLLM:
     async def __call__(self, **kwargs):
         messages = kwargs["messages"]
         self.calls.append(messages)
-        if EXTRACTION_MARKER in messages[0]["content"]:
+        system = messages[0]["content"]
+        if EXTRACTION_MARKER in system:
             payload = self.metadata.pop(0) if self.metadata else {}
+        elif SUMMARY_MARKER in system:
+            payload = self.summaries.pop(0) if self.summaries else "Resumen de la conversación."
+        elif CRITIC_MARKER in system:
+            payload = self.critic.pop(0) if self.critic else {"verdict": "accept", "issues": [], "confidence": 0.9}
+        elif ANCHOR_MARKER in system:
+            payload = {"is_anchor": False, "rules": []}
         elif self.estimations:
             payload = self.estimations.pop(0)
         else:
@@ -68,7 +83,11 @@ class ScriptedLLM:
 
     @property
     def estimation_calls(self) -> list[list[dict]]:
-        return [c for c in self.calls if EXTRACTION_MARKER not in c[0]["content"]]
+        return [c for c in self.calls if not any(m in c[0]["content"] for m in AUXILIARY_MARKERS)]
+
+    @property
+    def summary_calls(self) -> list[list[dict]]:
+        return [c for c in self.calls if SUMMARY_MARKER in c[0]["content"]]
 
     @property
     def metadata_calls(self) -> list[list[dict]]:
@@ -135,10 +154,12 @@ async def test_estimate_returns_a_validated_result_with_session_state(client, ll
     body = response.json()
     assert EstimationResult.model_validate(body["result"]).total_cost_eur == 20000
     assert body["session_id"] == session_id and body["turn_count"] == 1 and body["max_turns"] == MAX_TURNS
-    assert body["prompt_version"] == "v3" and body["cached"] is False
+    assert body["prompt_version"] == "v4" and body["cached"] is False
     assert body["project_metadata"] == {
-        "project_name": "Orion", "assumed_team_size": None,
-        "mentioned_technologies": ["FastAPI"], "agreed_scope": None,
+        "project_name": "Orion",
+        "assumed_team_size": None,
+        "mentioned_technologies": ["FastAPI"],
+        "agreed_scope": None,
     }
     # Dos llamadas: la estimación y la extracción de metadatos, ambas contabilizadas en las métricas.
     assert len(llm.calls) == 2
@@ -149,19 +170,27 @@ async def test_two_requests_in_one_session_update_project_metadata(client, llm):
     session_id = await new_session(client)
     llm.metadata += [
         {"project_name": "Orion", "mentioned_technologies": ["FastAPI", "PostgreSQL"]},
-        {"assumed_team_size": 4, "mentioned_technologies": ["postgresql", "Kafka"], "agreed_scope": "Panel de administración"},
+        {
+            "assumed_team_size": 4,
+            "mentioned_technologies": ["postgresql", "Kafka"],
+            "agreed_scope": "Panel de administración",
+        },
     ]
 
     first = await estimate(client, session_id, "Queremos el portal Orion con FastAPI y PostgreSQL para pedidos.")
     second = await estimate(client, session_id, "Seremos cuatro personas, añadimos Kafka y un panel de administración.")
 
     assert first.json()["project_metadata"] == {
-        "project_name": "Orion", "assumed_team_size": None,
-        "mentioned_technologies": ["FastAPI", "PostgreSQL"], "agreed_scope": None,
+        "project_name": "Orion",
+        "assumed_team_size": None,
+        "mentioned_technologies": ["FastAPI", "PostgreSQL"],
+        "agreed_scope": None,
     }
     assert second.json()["project_metadata"] == {
-        "project_name": "Orion", "assumed_team_size": 4,
-        "mentioned_technologies": ["FastAPI", "PostgreSQL", "Kafka"], "agreed_scope": "Panel de administración",
+        "project_name": "Orion",
+        "assumed_team_size": 4,
+        "mentioned_technologies": ["FastAPI", "PostgreSQL", "Kafka"],
+        "agreed_scope": "Panel de administración",
     }
     assert second.json()["turn_count"] == 2
     # El system prompt de cada estimación se regenera con los hechos conocidos hasta ese momento.
@@ -190,7 +219,8 @@ async def test_pdf_attachment_reaches_the_llm_and_influences_the_estimation(clie
     kafka_phase = {"name": "Integración con Kafka", "description": "Eventos", "duration_weeks": 3, "cost_eur": 7000}
     llm.estimate = lambda user: (
         estimation("Incluye la integración pedida en el PDF.", kafka_phase, confidence=85)
-        if "Kafka" in user else estimation()
+        if "Kafka" in user
+        else estimation()
     )
     pdf = ("requisitos.pdf", make_pdf("Requisito: integrar con Kafka los eventos de pedidos"), "application/pdf")
     session_id = await new_session(client)
@@ -212,8 +242,11 @@ async def test_pdf_attachment_reaches_the_llm_and_influences_the_estimation(clie
 async def test_several_attachments_are_combined_in_order(client, llm):
     files = [
         ("uno.pdf", make_pdf("Primer documento"), "application/pdf"),
-        ("dos.docx", make_docx(["Segundo documento"]),
-         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        (
+            "dos.docx",
+            make_docx(["Segundo documento"]),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
     ]
 
     response = await estimate(client, await new_session(client), files=files)
@@ -227,8 +260,9 @@ async def test_several_attachments_are_combined_in_order(client, llm):
 async def test_attachments_alone_are_enough_without_a_transcript(client, llm):
     text = "Requisitos del portal de clientes: pedidos, facturas e incidencias."
 
-    response = await estimate(client, await new_session(client), transcript="",
-                              files=[("req.pdf", make_pdf(text), "application/pdf")])
+    response = await estimate(
+        client, await new_session(client), transcript="", files=[("req.pdf", make_pdf(text), "application/pdf")]
+    )
 
     assert response.status_code == 200
 
@@ -310,6 +344,7 @@ async def test_invalid_metadata_extraction_keeps_the_estimate_and_previous_metad
 
 async def test_provider_failure_during_metadata_extraction_does_not_fail_the_estimate(client, mocker):
     patch_settings(mocker, openai_settings(moderation_enabled=False, llm_retries=0))
+
     async def create(**kwargs):
         if EXTRACTION_MARKER in kwargs["messages"][0]["content"]:
             raise RuntimeError("fallo del proveedor")
@@ -339,7 +374,8 @@ async def test_concurrent_requests_in_one_session_are_serialized(client, llm):
     session_id = await new_session(client)
 
     first, second = await asyncio.gather(
-        estimate(client, session_id, TRANSCRIPT + " Mensaje A."), estimate(client, session_id, TRANSCRIPT + " Mensaje B."),
+        estimate(client, session_id, TRANSCRIPT + " Mensaje A."),
+        estimate(client, session_id, TRANSCRIPT + " Mensaje B."),
     )
 
     assert sorted([first.json()["turn_count"], second.json()["turn_count"]]) == [1, 2]
@@ -415,7 +451,8 @@ async def test_invalid_typed_parameters_are_422(client, llm, form, status):
 
 async def test_missing_project_type_is_422(client, llm):
     response = await client.post(
-        f"/api/v1/sessions/{await new_session(client)}/estimate", data={"transcript": TRANSCRIPT},
+        f"/api/v1/sessions/{await new_session(client)}/estimate",
+        data={"transcript": TRANSCRIPT},
     )
 
     assert response.status_code == 422
@@ -428,8 +465,9 @@ async def test_unsupported_attachment_is_415(client, llm):
 
 
 async def test_attachment_with_a_mismatched_content_is_415(client, llm):
-    response = await estimate(client, await new_session(client),
-                              files=[("falso.pdf", b"no soy un pdf", "application/pdf")])
+    response = await estimate(
+        client, await new_session(client), files=[("falso.pdf", b"no soy un pdf", "application/pdf")]
+    )
 
     assert response.status_code == 415
 
@@ -438,8 +476,9 @@ async def test_oversized_attachment_is_413(client, llm, monkeypatch):
     monkeypatch.setattr("app.services.attachments.MAX_ATTACHMENT_BYTES", 100)
     monkeypatch.setattr("app.routers.sessions.MAX_ATTACHMENT_BYTES", 100)
 
-    response = await estimate(client, await new_session(client),
-                              files=[("grande.pdf", make_pdf("x" * 500), "application/pdf")])
+    response = await estimate(
+        client, await new_session(client), files=[("grande.pdf", make_pdf("x" * 500), "application/pdf")]
+    )
 
     assert response.status_code == 413
 
@@ -447,8 +486,9 @@ async def test_oversized_attachment_is_413(client, llm, monkeypatch):
 async def test_too_many_attachments_is_413(client, llm):
     pdf = make_pdf("texto del adjunto de la reunión")
 
-    response = await estimate(client, await new_session(client),
-                              files=[(f"{n}.pdf", pdf, "application/pdf") for n in range(6)])
+    response = await estimate(
+        client, await new_session(client), files=[(f"{n}.pdf", pdf, "application/pdf") for n in range(6)]
+    )
 
     assert response.status_code == 413 and llm.calls == []
 

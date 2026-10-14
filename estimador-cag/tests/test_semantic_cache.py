@@ -10,13 +10,18 @@ from app.services.semantic_cache import SemanticCache, attributes, index_name, s
 from tests._fakes import anthropic_settings, openai_settings
 
 RESULT = EstimationResult(
-    summary="Proyecto pequeño.", confidence_pct=80, total_duration_weeks=4, total_cost_eur=8000,
+    summary="Proyecto pequeño.",
+    confidence_pct=80,
+    total_duration_weeks=4,
+    total_cost_eur=8000,
     phases=[{"name": "Desarrollo", "duration_weeks": 4, "cost_eur": 8000}],
 )
 ENTRY = CachedEstimation(result=RESULT, model="gpt-4o-mini", provider="openai")
 BASE = {
     "description": "Aplicación móvil para que los vecinos reporten incidencias urbanas.",
-    "project_type": "mobile_app", "detail_level": "medium", "output_format": "phases_table",
+    "project_type": "mobile_app",
+    "detail_level": "medium",
+    "output_format": "phases_table",
 }
 
 
@@ -69,7 +74,8 @@ def backend(monkeypatch):
 
 def _cache(backend, embedder=None, **settings) -> SemanticCache:
     return SemanticCache(
-        openai_settings(redis_url="redis://x", **settings), embedder or FakeEmbedder(),
+        openai_settings(redis_url="redis://x", **settings),
+        embedder or FakeEmbedder(),
         cache_factory=lambda *args: backend,
     )
 
@@ -142,9 +148,7 @@ async def test_off_mode_never_touches_embeddings_or_redis(backend, mode):
 async def test_disabled_without_redis_or_openai_key(backend):
     embedder = FakeEmbedder()
     no_redis = SemanticCache(openai_settings(), embedder, cache_factory=lambda *a: backend)
-    no_key = SemanticCache(
-        anthropic_settings(redis_url="redis://x"), embedder, cache_factory=lambda *a: backend
-    )
+    no_key = SemanticCache(anthropic_settings(redis_url="redis://x"), embedder, cache_factory=lambda *a: backend)
     for cache in (no_redis, no_key):
         assert not cache.enabled
         assert await cache.lookup(_request(), "v3") is None
@@ -163,24 +167,20 @@ async def test_redis_failure_is_a_miss(backend):
     def broken(*args):
         raise ConnectionError("redis down")
 
-    cache = SemanticCache(
-        openai_settings(redis_url="redis://x"), FakeEmbedder(), cache_factory=broken
-    )
+    cache = SemanticCache(openai_settings(redis_url="redis://x"), FakeEmbedder(), cache_factory=broken)
     assert await cache.lookup(_request(), "v3") is None
     await cache.store(_request(), "v3", ENTRY)
 
 
 async def test_corrupt_cached_payload_is_a_miss(backend):
-    backend.entries.append({"response": "{no json", "vector": [1.0, 0.0],
-                            "filters": attributes(_request(), "v3")})
+    backend.entries.append({"response": "{no json", "vector": [1.0, 0.0], "filters": attributes(_request(), "v3")})
     assert await _cache(backend).lookup(_request(), "v3") is None
     backend.entries[0]["response"] = '{"result": {"summary": "x"}}'
     assert await _cache(backend).lookup(_request(), "v3") is None
 
 
 def test_semantic_text_includes_reference_projects():
-    request = _request(reference_projects=[
-        {"name": "App vecinal", "description": "Incidencias", "actual_hours": 300}])
+    request = _request(reference_projects=[{"name": "App vecinal", "description": "Incidencias", "actual_hours": 300}])
     assert "App vecinal (300 h)" in semantic_text(request)
 
 

@@ -54,15 +54,18 @@ def test_hash_changes_with_version():
     )
 
 
-@pytest.mark.parametrize("overrides", [
-    {"description": "demasiado corta"},
-    {"description": "x" * 80_001},
-    {"project_type": "desktop_app"},
-    {"detail_level": "extreme"},
-    {"output_format": "json"},
-    {"reference_projects": [{"name": "A", "description": "B", "actual_hours": 0}]},
-    {"reference_projects": [{"name": "A", "description": "B", "actual_hours": 10}] * 6},
-])
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"description": "demasiado corta"},
+        {"description": "x" * 80_001},
+        {"project_type": "desktop_app"},
+        {"detail_level": "extreme"},
+        {"output_format": "json"},
+        {"reference_projects": [{"name": "A", "description": "B", "actual_hours": 0}]},
+        {"reference_projects": [{"name": "A", "description": "B", "actual_hours": 10}] * 6},
+    ],
+)
 def test_request_validation(overrides):
     with pytest.raises(ValidationError):
         make_request(**overrides)
@@ -70,7 +73,9 @@ def test_request_validation(overrides):
 
 def test_reference_projects_are_optional():
     request = EstimationRequest(
-        description=DESCRIPTION, project_type="data_pipeline",
-        detail_level="summary", output_format="narrative",
+        description=DESCRIPTION,
+        project_type="data_pipeline",
+        detail_level="summary",
+        output_format="narrative",
     )
     assert request.reference_projects is None

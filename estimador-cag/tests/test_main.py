@@ -7,8 +7,10 @@ def client(monkeypatch) -> TestClient:
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fixture")
     from app.config import get_settings
+
     get_settings.cache_clear()
     from app.main import app
+
     with TestClient(app) as c:
         yield c
 

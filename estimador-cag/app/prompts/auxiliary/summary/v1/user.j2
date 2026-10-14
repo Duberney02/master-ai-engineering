@@ -1,0 +1,22 @@
+Actualiza el resumen de la conversación con los turnos retirados.
+
+<previous_summary>
+{% if previous_summary %}
+{{ previous_summary }}
+{% else %}
+(sin resumen previo)
+{% endif %}
+</previous_summary>
+
+<turns>
+{% for turn in turns %}
+<turn number="{{ loop.index }}">
+<user_message>
+{{ turn.user }}
+</user_message>
+<assistant_message>
+{{ turn.assistant }}
+</assistant_message>
+</turn>
+{% endfor %}
+</turns>

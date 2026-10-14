@@ -2,8 +2,8 @@
 
 import hashlib
 import json
-import structlog
 
+import structlog
 from pydantic import BaseModel, ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -25,10 +25,14 @@ def make_key(**payload) -> str:
 
 def make_result_key(request: EstimationRequest, prompt_version: str, provider: str, model: str) -> str:
     """Clave de la caché exacta de resultados validados (distinta de la de completions)."""
-    return "estimation:v2:" + _digest({
-        "request": request.model_dump(mode="json"), "prompt_version": prompt_version,
-        "provider": provider, "model": model,
-    })
+    return "estimation:v2:" + _digest(
+        {
+            "request": request.model_dump(mode="json"),
+            "prompt_version": prompt_version,
+            "provider": provider,
+            "model": model,
+        }
+    )
 
 
 class CachedEstimation(BaseModel):

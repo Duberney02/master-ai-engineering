@@ -185,9 +185,7 @@ async def test_stream_openai_populates_metrics(mocker):
 @pytest.mark.asyncio
 async def test_stream_anthropic_yields_deltas_and_metrics(mocker):
     patch_settings(mocker, anthropic_settings())
-    final = anthropic_final_message(
-        "Hola mundo", model="claude-haiku-4-5", input_tokens=150, output_tokens=40
-    )
+    final = anthropic_final_message("Hola mundo", model="claude-haiku-4-5", input_tokens=150, output_tokens=40)
     patch_anthropic_stream(mocker, ["Hola ", "mundo"], final)
 
     metrics = StreamMetrics()
@@ -383,9 +381,7 @@ def test_sending_message_shows_estimation(mocker):
     patch_openai_stream(mocker, openai_stream_chunks(["## Estimación: Demo"]))
     at = _fresh_app(mocker).run()
 
-    at.chat_input[0].set_value(
-        "Transcripción de prueba suficientemente larga para pasar validación"
-    ).run()
+    at.chat_input[0].set_value("Transcripción de prueba suficientemente larga para pasar validación").run()
 
     assert at.exception == []
     assert len(at.chat_message) == 2
@@ -415,9 +411,7 @@ def test_sidebar_shows_prompt_examples_and_metrics(mocker):
         openai_stream_chunks(["## Estimación: Demo"], prompt_tokens=111, completion_tokens=22),
     )
     at = _fresh_app(mocker).run()
-    at.chat_input[0].set_value(
-        "Transcripción de prueba suficientemente larga para pasar validación"
-    ).run()
+    at.chat_input[0].set_value("Transcripción de prueba suficientemente larga para pasar validación").run()
 
     assert at.exception == []
     prompt_text_areas = [ta.value for ta in at.sidebar.text_area]

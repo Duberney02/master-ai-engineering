@@ -59,9 +59,7 @@ def test_configurable_window():
 def test_reserve_leaves_room_for_the_turn_in_flight():
     history = _history(6)
 
-    assert _contents(history.messages(reserve=1)) == ["SYSTEM"] + [
-        c for n in range(2, 7) for c in (f"u{n}", f"a{n}")
-    ]
+    assert _contents(history.messages(reserve=1)) == ["SYSTEM"] + [c for n in range(2, 7) for c in (f"u{n}", f"a{n}")]
     assert _contents(_history(1, max_turns=1).messages(reserve=1)) == ["SYSTEM"]
 
 
@@ -126,7 +124,10 @@ def test_new_metadata_is_empty():
 
     assert metadata.is_empty()
     assert metadata.model_dump() == {
-        "project_name": None, "assumed_team_size": None, "mentioned_technologies": [], "agreed_scope": None,
+        "project_name": None,
+        "assumed_team_size": None,
+        "mentioned_technologies": [],
+        "agreed_scope": None,
     }
 
 
@@ -166,16 +167,25 @@ def test_null_technologies_become_an_empty_list():
 
 def test_merge_unions_lists_and_new_values_replace_old_ones_but_never_erase_facts():
     known = ProjectMetadata(
-        project_name="Orion", assumed_team_size=3, mentioned_technologies=["FastAPI"], agreed_scope="MVP",
+        project_name="Orion",
+        assumed_team_size=3,
+        mentioned_technologies=["FastAPI"],
+        agreed_scope="MVP",
     )
     update = ProjectMetadata(
-        project_name=None, assumed_team_size=5, mentioned_technologies=["fastapi", "Kafka"], agreed_scope=None,
+        project_name=None,
+        assumed_team_size=5,
+        mentioned_technologies=["fastapi", "Kafka"],
+        agreed_scope=None,
     )
 
     merged = known.merge(update)
 
     assert merged == ProjectMetadata(
-        project_name="Orion", assumed_team_size=5, mentioned_technologies=["FastAPI", "Kafka"], agreed_scope="MVP",
+        project_name="Orion",
+        assumed_team_size=5,
+        mentioned_technologies=["FastAPI", "Kafka"],
+        agreed_scope="MVP",
     )
     assert known.assumed_team_size == 3  # el original no cambia
 

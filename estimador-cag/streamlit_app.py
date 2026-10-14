@@ -90,8 +90,7 @@ def _show_result(result: dict) -> None:
     st.dataframe(
         pd.DataFrame(
             [
-                {"Fase": p.name, "Descripción": p.description,
-                 "Semanas": p.duration_weeks, "Coste (EUR)": p.cost_eur}
+                {"Fase": p.name, "Descripción": p.description, "Semanas": p.duration_weeks, "Coste (EUR)": p.cost_eur}
                 for p in data.phases
             ]
         ),
@@ -103,7 +102,11 @@ SUMMARY_PREVIEW_CHARS = 600
 
 
 def _request_summary(
-    text: str, project_type: str, detail_level: str, output_format: str, prompt_version: str,
+    text: str,
+    project_type: str,
+    detail_level: str,
+    output_format: str,
+    prompt_version: str,
     attachment_names: list[str],
 ) -> str:
     shown = text
@@ -173,9 +176,7 @@ with st.form("estimation_form"):
             "Los mensajes siguientes se interpretan dentro de la misma conversación."
         ),
     )
-    transcript_file = st.file_uploader(
-        "…o carga una transcripción (.txt, sustituye a la descripción)", type="txt"
-    )
+    transcript_file = st.file_uploader("…o carga una transcripción (.txt, sustituye a la descripción)", type="txt")
     attachments = st.file_uploader(
         "Adjuntos (PDF o Word, varios a la vez; su texto se añade a la transcripción)",
         type=["pdf", "docx"],
@@ -186,9 +187,7 @@ with st.form("estimation_form"):
     detail_level = left.selectbox(
         "Nivel de detalle", [d.value for d in DetailLevel], index=DEFAULT_DETAIL_INDEX, format_func=_label
     )
-    output_format = right.selectbox(
-        "Formato de salida", [f.value for f in OutputFormat], format_func=_label
-    )
+    output_format = right.selectbox("Formato de salida", [f.value for f in OutputFormat], format_func=_label)
     prompt_version = st.selectbox("Versión del prompt", PROMPT_VERSIONS)
     submitted = st.form_submit_button("Estimar")
 
@@ -220,8 +219,10 @@ if submitted:
         else:
             # Opciones tipadas y longitud, con las mismas reglas que el servicio.
             EstimationRequest(
-                description=text, project_type=project_type,
-                detail_level=detail_level, output_format=output_format,
+                description=text,
+                project_type=project_type,
+                detail_level=detail_level,
+                output_format=output_format,
             )
     except ValueError as exc:
         # ValidationError de pydantic es una subclase de ValueError.
@@ -230,8 +231,10 @@ if submitted:
         st.session_state.last_metrics = None
         st.session_state.last_prompt = (
             EstimationRequest(
-                description=PREVIEW_DESCRIPTION, project_type=project_type,
-                detail_level=detail_level, output_format=output_format,
+                description=PREVIEW_DESCRIPTION,
+                project_type=project_type,
+                detail_level=detail_level,
+                output_format=output_format,
             ),
             prompt_version,
         )
@@ -248,9 +251,14 @@ if submitted:
             try:
                 with st.spinner("Estimando… las transcripciones largas pueden tardar un par de minutos."):
                     response = request_session_estimation(
-                        api_url, st.session_state.session_id, transcript=text, attachments=files,
-                        project_type=project_type, detail_level=detail_level,
-                        output_format=output_format, prompt_version=prompt_version,
+                        api_url,
+                        st.session_state.session_id,
+                        transcript=text,
+                        attachments=files,
+                        project_type=project_type,
+                        detail_level=detail_level,
+                        output_format=output_format,
+                        prompt_version=prompt_version,
                     )
             except SessionExpiredError:
                 # El servidor perdió la sesión (reinicio o caducidad): se abre otra y se avisa.
@@ -267,12 +275,11 @@ if submitted:
                 elapsed = time.monotonic() - started
                 _show_result(result)
                 st.caption(f"Tiempo: {elapsed:.1f} s")
-                st.session_state.messages.append(
-                    {"role": "assistant", "result": result, "elapsed": elapsed}
-                )
+                st.session_state.messages.append({"role": "assistant", "result": result, "elapsed": elapsed})
                 st.session_state.last_metrics = (
                     response.metrics.model_dump() | {"prompt_version": response.prompt_version}
-                    if response.metrics else None
+                    if response.metrics
+                    else None
                 )
                 st.session_state.project_metadata = response.project_metadata.model_dump()
 
@@ -289,8 +296,7 @@ _show_project_metadata(st.session_state.project_metadata)
 st.sidebar.header("Contexto del prompt")
 st.sidebar.text_area("System prompt", value=system_prompt, height=300, disabled=True)
 st.sidebar.caption(
-    f"Plantillas {prompt_request_version} de esta versión del cliente, "
-    "renderizadas para la última solicitud."
+    f"Plantillas {prompt_request_version} de esta versión del cliente, renderizadas para la última solicitud."
 )
 
 st.sidebar.subheader("Ejemplos few-shot")

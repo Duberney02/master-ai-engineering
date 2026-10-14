@@ -54,3 +54,5 @@ class EstimationDetail(BaseModel):
     model: str
     provider: str
     metrics: CallMetrics | None = None
+    conversation_id: str | None = None
+    metadata_snapshot: dict | None = None

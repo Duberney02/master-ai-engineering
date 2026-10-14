@@ -2,9 +2,11 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from anthropic import APITimeoutError as AnthropicTimeout, AuthenticationError as AnthropicAuthError
+from anthropic import APITimeoutError as AnthropicTimeout
+from anthropic import AuthenticationError as AnthropicAuthError
 from fastapi import HTTPException
-from openai import APITimeoutError as OpenAITimeout, AuthenticationError as OpenAIAuthError
+from openai import APITimeoutError as OpenAITimeout
+from openai import AuthenticationError as OpenAIAuthError
 
 from app.config import Settings
 from app.context.examples import ESTIMATION_EXAMPLES
@@ -54,6 +56,7 @@ def test_prompt_is_substantial():
 # ---------------------------------------------------------------------------
 # Task 5: async dispatch tests
 # ---------------------------------------------------------------------------
+
 
 def _openai_settings() -> Settings:
     return Settings(
@@ -148,6 +151,7 @@ async def test_generate_estimation_raises_502_on_empty_response(mocker):
 async def test_generate_estimation_raises_502_on_openai_auth_error(mocker):
     mocker.patch("app.services.llm_service.get_settings", return_value=_openai_settings())
     import httpx
+
     req = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
     resp = httpx.Response(401, request=req)
     exc = OpenAIAuthError("invalid key", response=resp, body={})
@@ -163,6 +167,7 @@ async def test_generate_estimation_raises_502_on_openai_auth_error(mocker):
 async def test_generate_estimation_raises_504_on_openai_timeout(mocker):
     mocker.patch("app.services.llm_service.get_settings", return_value=_openai_settings())
     import httpx
+
     req = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
     exc = OpenAITimeout(request=req)
     mock_client = MagicMock()
@@ -177,6 +182,7 @@ async def test_generate_estimation_raises_504_on_openai_timeout(mocker):
 async def test_generate_estimation_raises_502_on_anthropic_auth_error(mocker):
     mocker.patch("app.services.llm_service.get_settings", return_value=_anthropic_settings())
     import httpx
+
     req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     resp = httpx.Response(401, request=req)
     exc = AnthropicAuthError("invalid key", response=resp, body={})
@@ -192,6 +198,7 @@ async def test_generate_estimation_raises_502_on_anthropic_auth_error(mocker):
 async def test_generate_estimation_raises_504_on_anthropic_timeout(mocker):
     mocker.patch("app.services.llm_service.get_settings", return_value=_anthropic_settings())
     import httpx
+
     req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     exc = AnthropicTimeout(request=req)
     mock_client = MagicMock()

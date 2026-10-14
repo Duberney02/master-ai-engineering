@@ -14,13 +14,19 @@ from tests._fakes import openai_settings
 
 REQUEST = EstimationRequest(
     description="Aplicación móvil para que los vecinos de un municipio reporten incidencias.",
-    project_type="mobile_app", detail_level="medium", output_format="phases_table",
+    project_type="mobile_app",
+    detail_level="medium",
+    output_format="phases_table",
 )
 RESULT = {
-    "summary": "Proyecto mediano.", "confidence_pct": 70, "total_duration_weeks": 10,
+    "summary": "Proyecto mediano.",
+    "confidence_pct": 70,
+    "total_duration_weeks": 10,
     "total_cost_eur": 20000,
-    "phases": [{"name": "Diseño", "duration_weeks": 2, "cost_eur": 4000},
-               {"name": "Desarrollo", "duration_weeks": 8, "cost_eur": 16000}],
+    "phases": [
+        {"name": "Diseño", "duration_weeks": 2, "cost_eur": 4000},
+        {"name": "Desarrollo", "duration_weeks": 8, "cost_eur": 16000},
+    ],
 }
 GOOD = json.dumps(RESULT)
 ENTRY = CachedEstimation(result=EstimationResult.model_validate(RESULT), model="m", provider="openai")
@@ -74,9 +80,16 @@ class FakeGenerate:
     async def __call__(self, system, user):
         self.rec.events.append("generate")
         self.calls.append((system, user))
-        return Completion(text=self.texts.pop(0), model="gpt-4o-mini", provider="openai",
-                          finish_reason="stop", input_tokens=100, output_tokens=50,
-                          estimated_cost_usd=0.001, request_cost_usd=0.001)
+        return Completion(
+            text=self.texts.pop(0),
+            model="gpt-4o-mini",
+            provider="openai",
+            finish_reason="stop",
+            input_tokens=100,
+            output_tokens=50,
+            estimated_cost_usd=0.001,
+            request_cost_usd=0.001,
+        )
 
 
 def _pipeline(rec, *texts, exact=None, semantic=None, violation=None, **settings):
@@ -84,8 +97,11 @@ def _pipeline(rec, *texts, exact=None, semantic=None, violation=None, **settings
     semantic = semantic or FakeSemantic(rec)
     generate = FakeGenerate(rec, *texts)
     pipeline = EstimationPipeline(
-        openai_settings(**settings), guardrails=FakeGuardrails(rec, violation),
-        exact_cache=exact, semantic_cache=semantic, generate=generate,
+        openai_settings(**settings),
+        guardrails=FakeGuardrails(rec, violation),
+        exact_cache=exact,
+        semantic_cache=semantic,
+        generate=generate,
     )
     return pipeline, exact, semantic, generate
 
@@ -96,9 +112,7 @@ async def test_stages_run_in_order_and_result_is_stored_in_both_caches():
 
     outcome = await pipeline.run(REQUEST, "v3")
 
-    assert rec.events == [
-        "guardrails", "exact_get", "semantic_lookup", "generate", "exact_set", "semantic_store"
-    ]
+    assert rec.events == ["guardrails", "exact_get", "semantic_lookup", "generate", "exact_set", "semantic_store"]
     assert outcome.cached is False and outcome.prompt_version == "v3"
     assert outcome.cache_source == "none"
     assert outcome.result.total_cost_eur == 20000
@@ -245,6 +259,7 @@ class MemoryCompletionCache:
 
 async def test_invalid_completions_are_not_cached_so_a_later_request_can_recover(mocker):
     from fastapi import HTTPException  # noqa: F811
+
     from tests._fakes import openai_response, patch_openai, patch_settings
 
     settings = openai_settings()
@@ -252,12 +267,15 @@ async def test_invalid_completions_are_not_cached_so_a_later_request_can_recover
     mocker.patch("app.services.llm_wrapper.EstimationCache", return_value=memory)
     patch_settings(mocker, settings)
     call = patch_openai(
-        mocker, *[openai_response(BAD_SUM)] * settings.validation_max_attempts,
+        mocker,
+        *[openai_response(BAD_SUM)] * settings.validation_max_attempts,
         openai_response(GOOD),
     )
     rec = Recorder()
     pipeline = EstimationPipeline(
-        settings, guardrails=FakeGuardrails(rec), exact_cache=FakeExact(rec),
+        settings,
+        guardrails=FakeGuardrails(rec),
+        exact_cache=FakeExact(rec),
         semantic_cache=FakeSemantic(rec),
     )
 

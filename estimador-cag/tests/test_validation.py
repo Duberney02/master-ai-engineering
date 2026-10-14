@@ -75,16 +75,12 @@ def test_confidence_30_is_in_scope():
 
 
 def test_out_of_scope_filter_builds_zero_cost_one_week_placeholder():
-    result = EstimationResult.model_validate(
-        _payload(confidence_pct=10, summary="Out of scope: faltan requisitos.")
-    )
+    result = EstimationResult.model_validate(_payload(confidence_pct=10, summary="Out of scope: faltan requisitos."))
 
     filtered = apply_out_of_scope_filter(result)
 
     assert filtered.summary == "Out of scope: faltan requisitos."
-    assert [(p.name, p.cost_eur, p.duration_weeks) for p in filtered.phases] == [
-        ("No estimable", 0, 1)
-    ]
+    assert [(p.name, p.cost_eur, p.duration_weeks) for p in filtered.phases] == [("No estimable", 0, 1)]
     assert filtered.total_cost_eur == 0 and filtered.total_duration_weeks == 1
     assert filtered.out_of_scope
     assert validate_text(filtered.model_dump_json())  # sigue siendo un resultado válido

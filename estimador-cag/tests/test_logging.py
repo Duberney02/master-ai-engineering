@@ -6,7 +6,7 @@ import structlog
 
 from app.logging_config import configure_logging
 from app.services.llm_service import generate_estimation
-from tests._fakes import openai_settings, patch_settings, patch_openai, openai_response
+from tests._fakes import openai_response, openai_settings, patch_openai, patch_settings
 
 
 @pytest.fixture(autouse=True)
@@ -31,8 +31,12 @@ def test_structlog_production_json_keeps_typed_fields_and_context(capsys):
     configure_logging("production", "INFO")
     with structlog.contextvars.bound_contextvars(request_id="req-1"):
         structlog.get_logger("app.test").info(
-            "llm_completed", model="demo", input_tokens=42,
-            cost_usd=0.001, cache_hit=False, latency_ms=12,
+            "llm_completed",
+            model="demo",
+            input_tokens=42,
+            cost_usd=0.001,
+            cache_hit=False,
+            latency_ms=12,
         )
     event = json.loads(capsys.readouterr().err)
     assert event["event"] == "llm_completed"
@@ -49,8 +53,11 @@ def test_structlog_filters_sensitive_fields_and_exception_text(capsys):
         raise RuntimeError("exception-secret")
     except RuntimeError:
         structlog.get_logger("app.test").error(
-            "llm_call_failed", error_type="RuntimeError", exc_info=True,
-            api_key="api-secret", transcription="private-transcript",
+            "llm_call_failed",
+            error_type="RuntimeError",
+            exc_info=True,
+            api_key="api-secret",
+            transcription="private-transcript",
         )
     output = capsys.readouterr().err
     event = json.loads(output)

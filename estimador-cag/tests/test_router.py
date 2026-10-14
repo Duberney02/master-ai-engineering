@@ -196,19 +196,25 @@ def test_num_examples_boundaries_are_accepted(rich_client, n):
 
 
 def test_response_exposes_finish_reason_phases_and_extracted_requirements(rich_client):
-    data = rich_client.post(
-        "/estimate", json={"transcription": TRANSCRIPTION, "preprocessing": "two_phase"}
-    ).json()
+    data = rich_client.post("/estimate", json={"transcription": TRANSCRIPTION, "preprocessing": "two_phase"}).json()
     assert data["finish_reason"] == "stop"
     assert data["preprocessing"] == "two_phase"
     assert data["extracted_requirements"] == "### Requisitos funcionales\n- Pagos"
     assert data["usage"]["total_tokens"] == 3240
     pre, est = data["usage"]["phases"]
     assert pre == {
-        "phase": "preprocessing", "model": "gpt-4o-mini", "finish_reason": "stop",
-        "input_tokens": 300, "output_tokens": 40, "total_tokens": 340, "latency_ms": 400,
-        "provider": "", "cache_hit": False, "estimated_cost_usd": None,
-        "request_cost_usd": None, "usage_available": True,
+        "phase": "preprocessing",
+        "model": "gpt-4o-mini",
+        "finish_reason": "stop",
+        "input_tokens": 300,
+        "output_tokens": 40,
+        "total_tokens": 340,
+        "latency_ms": 400,
+        "provider": "",
+        "cache_hit": False,
+        "estimated_cost_usd": None,
+        "request_cost_usd": None,
+        "usage_available": True,
     }
     assert est["phase"] == "estimation" and est["total_tokens"] == 2900
 
@@ -221,9 +227,7 @@ def test_evaluation_is_included_by_default(rich_client):
 
 
 def test_evaluation_can_be_disabled(rich_client):
-    data = rich_client.post(
-        "/estimate", json={"transcription": TRANSCRIPTION, "evaluate": False}
-    ).json()
+    data = rich_client.post("/estimate", json={"transcription": TRANSCRIPTION, "evaluate": False}).json()
     assert data["evaluation"] is None
 
 

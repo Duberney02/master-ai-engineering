@@ -77,10 +77,41 @@ def _normalize(text: str) -> str:
 
 # Longitud del IBAN por país (el candidato puede arrastrar palabras detrás del número).
 _IBAN_LENGTHS = {
-    "AD": 24, "AT": 20, "BE": 16, "BG": 22, "CH": 21, "CY": 28, "CZ": 24, "DE": 22, "DK": 18,
-    "EE": 20, "ES": 24, "FI": 18, "FR": 27, "GB": 22, "GR": 27, "HR": 21, "HU": 28, "IE": 22,
-    "IS": 26, "IT": 27, "LI": 21, "LT": 20, "LU": 20, "LV": 21, "MC": 27, "MT": 31, "NL": 18,
-    "NO": 15, "PL": 28, "PT": 25, "RO": 24, "SE": 24, "SI": 19, "SK": 24, "SM": 27,
+    "AD": 24,
+    "AT": 20,
+    "BE": 16,
+    "BG": 22,
+    "CH": 21,
+    "CY": 28,
+    "CZ": 24,
+    "DE": 22,
+    "DK": 18,
+    "EE": 20,
+    "ES": 24,
+    "FI": 18,
+    "FR": 27,
+    "GB": 22,
+    "GR": 27,
+    "HR": 21,
+    "HU": 28,
+    "IE": 22,
+    "IS": 26,
+    "IT": 27,
+    "LI": 21,
+    "LT": 20,
+    "LU": 20,
+    "LV": 21,
+    "MC": 27,
+    "MT": 31,
+    "NL": 18,
+    "NO": 15,
+    "PL": 28,
+    "PT": 25,
+    "RO": 24,
+    "SE": 24,
+    "SI": 19,
+    "SK": 24,
+    "SM": 27,
 }
 
 
@@ -151,8 +182,9 @@ class InputGuardrails:
         if not settings.openai_api_key:
             logger.warning("moderation_skipped", reason="no_openai_key")
             return False
-        client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.llm_timeout,
-                             max_retries=settings.llm_retries)
+        client = AsyncOpenAI(
+            api_key=settings.openai_api_key, timeout=settings.llm_timeout, max_retries=settings.llm_retries
+        )
         try:
             response = await client.moderations.create(model=settings.moderation_model, input=_chunks(text))
             return any(result.flagged for result in response.results)

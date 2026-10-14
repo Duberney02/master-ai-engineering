@@ -1,10 +1,10 @@
 """Políticas comunes; los adaptadores SDK se inyectan y permanecen asíncronos."""
 
-import structlog
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import aclosing
 
+import structlog
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
@@ -56,11 +56,21 @@ class LLMWrapper:
         if allow_fallback and self.settings.fallback_provider:
             yield self.settings.fallback_provider, self.settings.fallback_model
 
-    def key(self, system: str, user: "str | list[dict[str, str]]", model: str, max_tokens: int | None,
-            thinking_budget: int | None, allow_fallback: bool) -> str:
+    def key(
+        self,
+        system: str,
+        user: "str | list[dict[str, str]]",
+        model: str,
+        max_tokens: int | None,
+        thinking_budget: int | None,
+        allow_fallback: bool,
+    ) -> str:
         return make_key(
-            system=system, user=user, targets=list(self.targets(model, allow_fallback)),
-            max_tokens=max_tokens, thinking_budget=thinking_budget,
+            system=system,
+            user=user,
+            targets=list(self.targets(model, allow_fallback)),
+            max_tokens=max_tokens,
+            thinking_budget=thinking_budget,
             temperature=0.3 if self.settings.llm_provider == "openai" else None,
         )
 
@@ -75,15 +85,20 @@ class LLMWrapper:
             logger.warning("cache_accept_failed")
             return False
 
-    async def _cached(
-        self, key: str, accept: Callable[[str], bool] | None = None
-    ) -> Completion | None:
+    async def _cached(self, key: str, accept: Callable[[str], bool] | None = None) -> Completion | None:
         raw = await self.cache.get(key)
         if raw is None:
             return None
         try:
-            required = {"text", "model", "provider", "finish_reason", "input_tokens",
-                        "output_tokens", "usage_available"}
+            required = {
+                "text",
+                "model",
+                "provider",
+                "finish_reason",
+                "input_tokens",
+                "output_tokens",
+                "usage_available",
+            }
             if not required.issubset(raw):
                 return None
             result = Completion.model_validate(raw, strict=True)
@@ -105,11 +120,19 @@ class LLMWrapper:
 
     @staticmethod
     def _cacheable(result: Completion) -> bool:
-        return bool(result.text.strip() and result.model and result.provider in {"openai", "anthropic"}
-                    and result.finish_reason in SUCCESS_REASONS and result.usage_available)
+        return bool(
+            result.text.strip()
+            and result.model
+            and result.provider in {"openai", "anthropic"}
+            and result.finish_reason in SUCCESS_REASONS
+            and result.usage_available
+        )
 
     async def _finish(
-        self, key: str, result: Completion, started: float,
+        self,
+        key: str,
+        result: Completion,
+        started: float,
         accept: Callable[[str], bool] | None = None,
     ) -> Completion:
         result.latency_ms = int((time.monotonic() - started) * 1000)
@@ -120,17 +143,29 @@ class LLMWrapper:
         if self._cacheable(result) and self._accepted(accept, result.text):
             await self.cache.set(key, result.model_dump())
         logger.info(
-            "llm_completed", provider=result.provider, model=result.model,
-            input_tokens=result.input_tokens, output_tokens=result.output_tokens,
-            cost_usd=result.request_cost_usd, latency_ms=result.latency_ms,
-            finish_reason=result.finish_reason, cache_hit=False,
+            "llm_completed",
+            provider=result.provider,
+            model=result.model,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            cost_usd=result.request_cost_usd,
+            latency_ms=result.latency_ms,
+            finish_reason=result.finish_reason,
+            cache_hit=False,
         )
         return result
 
-    async def complete(self, system: str, user: "str | list[dict[str, str]]", model: str, max_tokens: int | None,
-                       thinking_budget: int | None, allow_fallback: bool,
-                       call: Callable[[str, str], Awaitable[Completion]],
-                       accept: Callable[[str], bool] | None = None) -> Completion:
+    async def complete(
+        self,
+        system: str,
+        user: "str | list[dict[str, str]]",
+        model: str,
+        max_tokens: int | None,
+        thinking_budget: int | None,
+        allow_fallback: bool,
+        call: Callable[[str, str], Awaitable[Completion]],
+        accept: Callable[[str], bool] | None = None,
+    ) -> Completion:
         key = self.key(system, user, model, max_tokens, thinking_budget, allow_fallback)
         cached = await self._cached(key, accept)
         if cached is not None:
@@ -148,9 +183,17 @@ class LLMWrapper:
                 logger.warning("llm_fallback", provider=provider, model=target_model)
         raise RuntimeError("No provider configured")
 
-    async def stream(self, system: str, user: str, model: str, max_tokens: int | None,
-                     thinking_budget: int | None, allow_fallback: bool, result: Completion,
-                     call: Callable[[str, str, Completion], AsyncIterator[str]]) -> AsyncIterator[str]:
+    async def stream(
+        self,
+        system: str,
+        user: str,
+        model: str,
+        max_tokens: int | None,
+        thinking_budget: int | None,
+        allow_fallback: bool,
+        result: Completion,
+        call: Callable[[str, str, Completion], AsyncIterator[str]],
+    ) -> AsyncIterator[str]:
         key = self.key(system, user, model, max_tokens, thinking_budget, allow_fallback)
         cached = await self._cached(key)
         if cached is not None:

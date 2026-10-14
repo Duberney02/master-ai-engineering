@@ -5,12 +5,42 @@ import logging
 import structlog
 
 # Solo metadatos operativos: nunca prompts, credenciales ni excepciones crudas.
-SAFE_FIELDS = frozenset({
-    "event", "timestamp", "level", "logger", "environment", "provider", "model",
-    "input_tokens", "output_tokens", "total_tokens", "cost_usd", "latency_ms",
-    "finish_reason", "cache_hit", "error_type", "preprocessing", "example_format",
-    "num_examples", "use_examples", "max_tokens", "transcription_chars", "request_id",
-})
+SAFE_FIELDS = frozenset(
+    {
+        "event",
+        "timestamp",
+        "level",
+        "logger",
+        "environment",
+        "provider",
+        "model",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "cost_usd",
+        "latency_ms",
+        "finish_reason",
+        "cache_hit",
+        "error_type",
+        "preprocessing",
+        "example_format",
+        "num_examples",
+        "use_examples",
+        "max_tokens",
+        "transcription_chars",
+        "request_id",
+        "anchor_rules",
+        "source",
+        "summarized_turns",
+        "audience",
+        "audience_rule",
+        "iteration",
+        "verdict",
+        "decision",
+        "attempt",
+        "max_attempts",
+    }
+)
 
 
 def _operational_fields(logger, method_name, event_dict):

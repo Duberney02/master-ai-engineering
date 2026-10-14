@@ -112,12 +112,15 @@ def test_unknown_prompt_version_is_422_without_calling_provider(client, mocker, 
     create.assert_not_awaited()
 
 
-@pytest.mark.parametrize("overrides", [
-    {"description": "corta"},
-    {"project_type": "desktop_app"},
-    {"output_format": "json"},
-    {"detail_level": None},
-])
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"description": "corta"},
+        {"project_type": "desktop_app"},
+        {"output_format": "json"},
+        {"detail_level": None},
+    ],
+)
 def test_invalid_body_is_422_without_calling_provider(client, mocker, overrides):
     create = patch_openai(mocker, openai_response(MODEL_JSON))
 
@@ -129,9 +132,11 @@ def test_invalid_body_is_422_without_calling_provider(client, mocker, overrides)
 
 def test_reference_projects_reach_the_user_message(client, mocker):
     create = patch_openai(mocker, openai_response(MODEL_JSON))
-    payload = PAYLOAD | {"reference_projects": [
-        {"name": "App de turismo", "description": "Rutas y avisos", "actual_hours": 510},
-    ]}
+    payload = PAYLOAD | {
+        "reference_projects": [
+            {"name": "App de turismo", "description": "Rutas y avisos", "actual_hours": 510},
+        ]
+    }
 
     assert client.post("/api/v1/estimate", json=payload).status_code == 200
     assert "App de turismo (510 h reales)" in create.await_args.kwargs["messages"][1]["content"]
@@ -175,9 +180,7 @@ def test_low_confidence_returns_placeholder_phase(client, mocker):
 
     assert result["out_of_scope"] is True
     assert result["summary"].startswith("Out of scope:")
-    assert [(p["name"], p["cost_eur"], p["duration_weeks"]) for p in result["phases"]] == [
-        ("No estimable", 0, 1)
-    ]
+    assert [(p["name"], p["cost_eur"], p["duration_weeks"]) for p in result["phases"]] == [("No estimable", 0, 1)]
     assert (result["total_cost_eur"], result["total_duration_weeks"]) == (0, 1)
 
 
@@ -223,8 +226,12 @@ def test_transcription_flow_moved_under_its_own_prefix(client, mocker):
 def test_openapi_documents_both_flows(client):
     paths = client.get("/openapi.json").json()["paths"]
 
-    assert {"/api/v1/estimate", "/api/v1/estimate/stream", "/api/v1/transcription/estimate",
-            "/api/v1/transcription/estimate/stream"} <= set(paths)
+    assert {
+        "/api/v1/estimate",
+        "/api/v1/estimate/stream",
+        "/api/v1/transcription/estimate",
+        "/api/v1/transcription/estimate/stream",
+    } <= set(paths)
     params = {p["name"] for p in paths["/api/v1/estimate"]["post"]["parameters"]}
     assert params == {"prompt_version"}
     assert "400" in paths["/api/v1/estimate"]["post"]["responses"]
@@ -250,7 +257,8 @@ def test_stream_emits_result_then_typed_metadata_then_done(client, mocker):
     assert meta.cache_hit is False
     system, user = render_estimation_prompt(EstimationRequest(**PAYLOAD), "v3")
     assert create.await_args.kwargs["messages"] == [
-        {"role": "system", "content": system}, {"role": "user", "content": user},
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
     ]
 
 
@@ -265,11 +273,14 @@ def test_stream_with_v2_and_anthropic(mocker):
     assert events[1][1]["prompt_version"] == "v2" and events[1][1]["provider"] == "anthropic"
 
 
-@pytest.mark.parametrize("query, body, status", [
-    ("?prompt_version=v9", PAYLOAD, 422),
-    ("", PAYLOAD | {"description": "corta"}, 422),
-    ("", PAYLOAD | {"description": PAYLOAD["description"] + " ana@example.com"}, 400),
-])
+@pytest.mark.parametrize(
+    "query, body, status",
+    [
+        ("?prompt_version=v9", PAYLOAD, 422),
+        ("", PAYLOAD | {"description": "corta"}, 422),
+        ("", PAYLOAD | {"description": PAYLOAD["description"] + " ana@example.com"}, 400),
+    ],
+)
 def test_stream_rejects_invalid_input_before_streaming(client, mocker, query, body, status):
     create = patch_openai(mocker, openai_response(MODEL_JSON))
 

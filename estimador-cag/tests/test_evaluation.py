@@ -105,8 +105,11 @@ def test_total_row_inside_table_is_not_counted_as_a_task():
 
 
 def test_unparseable_hours_cells_are_reported():
-    text = _replace(WELL_FORMED, "| 1 | Diseño | Wireframes y flujos UX (5 pantallas principales) | 24 |",
-                    "| 1 | Diseño | Wireframes y flujos UX (5 pantallas principales) | varias |")
+    text = _replace(
+        WELL_FORMED,
+        "| 1 | Diseño | Wireframes y flujos UX (5 pantallas principales) | 24 |",
+        "| 1 | Diseño | Wireframes y flujos UX (5 pantallas principales) | varias |",
+    )
     ev = evaluate_estimation(text, "stop")
     assert ev.table_rows == 18
     assert any("no interpretable" in i for i in ev.issues)

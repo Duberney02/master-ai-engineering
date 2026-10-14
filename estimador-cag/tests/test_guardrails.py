@@ -18,8 +18,11 @@ BASE = "Aplicación móvil para que los vecinos reporten incidencias urbanas en 
 
 def _request(description: str = BASE, reference_projects=None) -> EstimationRequest:
     return EstimationRequest(
-        description=description, project_type="mobile_app", detail_level="medium",
-        output_format="phases_table", reference_projects=reference_projects,
+        description=description,
+        project_type="mobile_app",
+        detail_level="medium",
+        output_format="phases_table",
+        reference_projects=reference_projects,
     )
 
 

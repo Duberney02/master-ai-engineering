@@ -195,9 +195,7 @@ def _openai(**kw) -> Settings:
 
 
 def _anthropic(**kw) -> Settings:
-    return Settings(
-        llm_provider="anthropic", anthropic_api_key="sk-ant-test", _env_file=None, **kw
-    )
+    return Settings(llm_provider="anthropic", anthropic_api_key="sk-ant-test", _env_file=None, **kw)
 
 
 def test_openai_requires_key():
@@ -898,9 +896,7 @@ async def generate_estimation(transcription: str) -> LLMEstimationResult:
     return result
 
 
-async def _call_openai(
-    system_prompt: str, transcription: str, settings: Settings
-) -> LLMEstimationResult:
+async def _call_openai(system_prompt: str, transcription: str, settings: Settings) -> LLMEstimationResult:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     try:
         response = await client.chat.completions.create(
@@ -939,9 +935,7 @@ async def _call_openai(
     )
 
 
-async def _call_anthropic(
-    system_prompt: str, transcription: str, settings: Settings
-) -> LLMEstimationResult:
+async def _call_anthropic(system_prompt: str, transcription: str, settings: Settings) -> LLMEstimationResult:
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     try:
         response = await client.messages.create(
@@ -1141,9 +1135,7 @@ class EstimationResponse(BaseModel):
 
 @router.post("/estimate", response_model=EstimationResponse)
 async def estimate(request: EstimationRequest) -> EstimationResponse:
-    logger.debug(
-        "Received estimation request transcription_chars=%d", len(request.transcription)
-    )
+    logger.debug("Received estimation request transcription_chars=%d", len(request.transcription))
     result: LLMEstimationResult = await generate_estimation(request.transcription)
     return EstimationResponse(
         estimation=result.estimation,
@@ -1199,8 +1191,10 @@ def client(monkeypatch) -> TestClient:
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fixture")
     from app.config import get_settings
+
     get_settings.cache_clear()
     from app.main import app
+
     with TestClient(app) as c:
         yield c
 

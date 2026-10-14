@@ -14,7 +14,9 @@ from app.services.sessions import ProjectMetadata
 
 REQUEST = EstimationRequest(
     description="Portal de clientes para consultar facturas y abrir incidencias de soporte.",
-    project_type="web_saas", detail_level="medium", output_format="phases_table",
+    project_type="web_saas",
+    detail_level="medium",
+    output_format="phases_table",
 )
 
 
@@ -38,7 +40,9 @@ def test_empty_metadata_renders_an_empty_block(version):
 
 def test_known_facts_appear_inside_the_block():
     metadata = ProjectMetadata(
-        project_name="Orion", assumed_team_size=4, mentioned_technologies=["FastAPI", "Kafka"],
+        project_name="Orion",
+        assumed_team_size=4,
+        mentioned_technologies=["FastAPI", "Kafka"],
         agreed_scope="Portal y panel de administración",
     )
 
@@ -52,8 +56,11 @@ def test_known_facts_appear_inside_the_block():
 
 
 def test_partial_metadata_only_lists_known_facts():
-    block = render_system_prompt(REQUEST, "v3", ProjectMetadata(project_name="Orion")).split(
-        "<project_metadata>\n")[1].split("</project_metadata>")[0]
+    block = (
+        render_system_prompt(REQUEST, "v3", ProjectMetadata(project_name="Orion"))
+        .split("<project_metadata>\n")[1]
+        .split("</project_metadata>")[0]
+    )
 
     assert block == "- Nombre del proyecto: Orion\n"
 
@@ -77,7 +84,8 @@ def test_metadata_markup_cannot_close_the_block():
 def test_extraction_prompt_carries_current_facts_message_and_estimation():
     system, user = render_metadata_extraction_prompt(
         ProjectMetadata(project_name="Orion", mentioned_technologies=["FastAPI"]),
-        "Somos un equipo de 5 y usaremos Kafka.", "Proyecto mediano con integración.",
+        "Somos un equipo de 5 y usaremos Kafka.",
+        "Proyecto mediano con integración.",
     )
 
     assert "únicamente con un objeto JSON válido" in system

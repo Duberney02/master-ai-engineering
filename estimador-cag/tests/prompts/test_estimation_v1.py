@@ -8,8 +8,7 @@ from app.prompts.loader import render_estimation_prompt as _render
 from app.schemas import EstimationRequest
 
 DESCRIPTION = (
-    "Aplicación web para que una red de bibliotecas gestione préstamos, "
-    "reservas y avisos de devolución por correo."
+    "Aplicación web para que una red de bibliotecas gestione préstamos, reservas y avisos de devolución por correo."
 )
 PER_PHASE_ASSUMPTIONS = "Para cada fase, lista explícitamente las asunciones"
 
@@ -29,7 +28,7 @@ def make_request(**overrides) -> EstimationRequest:
 
 
 def test_user_prompt_wraps_description_literally():
-    description = "Portal <interno> con \"comillas\", {llaves} y\nun salto de línea para RRHH."
+    description = 'Portal <interno> con "comillas", {llaves} y\nun salto de línea para RRHH.'
     _, user = render_estimation_prompt(make_request(description=description))
 
     block = re.search(r"<project_description>\n(.*)\n</project_description>", user, re.S)
@@ -71,13 +70,15 @@ def test_system_includes_three_examples():
 
 
 def test_reference_projects_are_listed_when_present():
-    request = make_request(reference_projects=[
-        {"name": "Portal de socios", "description": "Altas y cuotas", "actual_hours": 640},
-        {"name": "Agenda de salas", "description": "Reservas internas", "actual_hours": 212.5},
-    ])
+    request = make_request(
+        reference_projects=[
+            {"name": "Portal de socios", "description": "Altas y cuotas", "actual_hours": 640},
+            {"name": "Agenda de salas", "description": "Reservas internas", "actual_hours": 212.5},
+        ]
+    )
     _, user = render_estimation_prompt(request)
 
-    block = user[user.index("<reference_projects>"):user.index("</reference_projects>")]
+    block = user[user.index("<reference_projects>") : user.index("</reference_projects>")]
     assert "Portal de socios (640 h reales): Altas y cuotas" in block
     assert "Agenda de salas (212.5 h reales): Reservas internas" in block
 
@@ -93,9 +94,13 @@ def test_reference_block_absent_without_projects(references):
 @pytest.mark.parametrize("detail_level", ["summary", "medium", "detailed"])
 @pytest.mark.parametrize("output_format", ["phases_table", "line_items", "narrative"])
 def test_every_combination_renders_without_leftover_markup(project_type, detail_level, output_format):
-    system, user = render_estimation_prompt(make_request(
-        project_type=project_type, detail_level=detail_level, output_format=output_format,
-    ))
+    system, user = render_estimation_prompt(
+        make_request(
+            project_type=project_type,
+            detail_level=detail_level,
+            output_format=output_format,
+        )
+    )
 
     for text in (system, user):
         assert "{{" not in text and "{%" not in text

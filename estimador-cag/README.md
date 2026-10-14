@@ -101,16 +101,22 @@ POST /api/v1/sessions/{session_id}/estimate        (multipart/form-data)
        │   transcript          texto del turno (opcional si hay adjuntos)
        │   attachments         0..5 archivos PDF (.pdf) o Word (.docx), de hasta 10 MB
        │   project_type, detail_level, output_format   (como /api/v1/estimate; project_type es obligatorio)
-       │   reference_projects  lista JSON opcional · prompt_version (por defecto v3)
+       │   reference_projects  lista JSON opcional · tier opcional (executive|pm|developer|default)
+       │   prompt_version      opcional (por defecto CONVERSATION_PROMPT_VERSION = v4)
        ▼
 1. Adjuntos → extracción local (pypdf / python-docx) → "--- attachment: nombre.pdf ---" + texto
 2. Guardrails de entrada sobre el texto combinado (PII, prompt injection, moderación)  → 400 {reason, message}
-3. Session.to_messages_list(): system prompt regenerado con <project_metadata> + turnos recientes + mensaje actual
-4. LLM con validación y corrección automática (mismas reglas que /api/v1/estimate)       → 502 si se agotan los intentos
-5. Segunda llamada al LLM, con un prompt específico, que devuelve los metadatos actualizados (JSON validado)
-6. Se confirma el turno en la sesión (historial + metadatos) y se guarda en el historial PostgreSQL si está activo
+3. Audiencia: `tier` explícito o reglas ordenadas sobre la transcripción y los metadatos
+4. Mensajes: system prompt (+ resumen acumulativo) + anclas + turnos recientes + mensaje actual
+5. LLM con validación y corrección automática (mismas reglas que /api/v1/estimate)       → 502 si se agotan los intentos
+6. Segunda llamada al LLM, con un prompt específico, que devuelve los metadatos actualizados (JSON validado)
+7. Se confirma el turno (historial + metadatos + audiencia), se ejecuta la política de compresión de la memoria y
+   se guarda en el historial PostgreSQL (con su conversation_id y el snapshot de metadatos) si está activo
        ▼
-{result, prompt_version, project_metadata, turn_count, max_turns, metrics, estimation_id, ...}
+{result, prompt_version, project_metadata, turn_count, max_turns, audience, audience_rule, metrics, estimation_id, ...}
+
+GET  /api/v1/sessions/{session_id}                 → estado de la sesión (sin llamar al LLM)
+POST /api/v1/sessions/{session_id}/estimate-acb    → mismo contrato que /estimate + traza de auditoría (ver más abajo)
 ```
 
 ```bash
@@ -137,6 +143,83 @@ PostgreSQL). Se pierden al reiniciar el servicio y no se comparten entre proceso
 ejecutarse como un único proceso (como hace Docker Compose). El crecimiento está acotado por `SESSION_MAX_COUNT`
 (200; se expulsa primero lo caducado y luego lo menos reciente), `SESSION_TTL_SECONDS` (6 h de inactividad) y la
 ventana de turnos. Los clientes detectan el `404` y abren una conversación nueva.
+
+#### Memoria con resumen acumulativo y anclas
+
+Lo que sale de la ventana reciente no se pierde sin más. Tras completar cada turno, una **política de compresión**
+(`app/services/compression.py`) trabaja con los turnos que acaban de salir de la ventana:
+
+- Los pares usuario/asistente con **compromisos relevantes** (contrato, alcance cerrado, presupuesto acordado, fecha
+  límite, restricción legal o regulatoria) pasan a ser **anclas**: se conservan literalmente, fuera de la ventana y
+  hasta un máximo de 8 (se descarta la más antigua). No cuentan para `MAX_TURNS`.
+- El resto se combina con el **resumen anterior** mediante una llamada al LLM (`SUMMARY_MODEL`) y sustituye al resumen.
+  Si el resumidor falla o devuelve vacío, se conserva el resumen anterior y la estimación no falla.
+- Los mensajes del estimador se componen con `compose_messages` (`app/services/context.py`): prompt de sistema
+  actualizado (con el resumen en un bloque `<conversation_summary>` de datos) + anclas + turnos recientes + mensaje actual.
+
+Las tres piezas son independientes: la **estructura** (`ConversationHistory`), el **detector** (`app/services/anchors.py`) y
+la **política**. El detector es heurístico (`ANCHOR_DETECTION_MODE=heuristic`, reglas con nombre `contract`,
+`closed_scope`, `agreed_budget`, `deadline`, `legal_regulatory`; solo evalúa el mensaje del usuario) o por LLM
+(`llm`, con las reglas como respaldo si falla). Se registra el nombre de las reglas que identificaron cada ancla
+(`anchor_detected`), nunca el texto. La memoria sigue siendo del proceso: no se persiste ni se restaura al reiniciar.
+Lo que sí se persiste (si hay `DATABASE_URL`) es cada estimación con su `conversation_id` y el snapshot de metadatos
+(`EstimationHistory.latest_for_conversation`); las bases creadas antes reciben las columnas nuevas automáticamente.
+
+#### Audiencia (`tier`) y prompt v4
+
+La audiencia decide el enfoque del prompt **v4**: `executive` (riesgos, síntesis, lenguaje accesible), `pm` (hitos,
+entregables, dependencias), `developer` (tecnologías, integraciones, supuestos técnicos) y `default`. Se resuelve con
+reglas ordenadas (`app/services/audience.py`): confidencialidad o contexto regulatorio → `executive`; al menos 3
+términos técnicos distintos (contando las tecnologías de los metadatos) → `developer`; equipo de 5 o menos en los
+metadatos → `pm`; si no, `default`. El parámetro `tier` **prevalece** sobre las reglas (`audience_rule = "explicit"`).
+La sesión conserva la última audiencia y la regla (`GET /api/v1/sessions/{id}` → `last_audience`, `last_audience_rule`).
+`GET /sessions/{id}` devuelve además `recent_message_count`, `max_turns`, `project_metadata`, `anchored_message_count` y
+`summary_length`. Cambio de comportamiento: el prompt por defecto de las sesiones es ahora `v4`
+(`CONVERSATION_PROMPT_VERSION=v3` o `prompt_version=v3` conservan el anterior); `/api/v1/estimate` sigue en `v3`.
+
+#### Estimación revisada: Actor–Critic–Boss (`estimate-acb`)
+
+`POST /api/v1/sessions/{id}/estimate-acb` acepta el mismo formulario que `/estimate` y ejecuta:
+
+1. **Actor** — genera la estimación (mismas validaciones y corrección automática).
+2. **Crítico** — un revisor independiente (`CRITIC_MODEL`, plantillas `auxiliary/critic/v1`) recibe transcripción,
+   metadatos, audiencia y estimación y devuelve un `CriticFeedback` (veredicto `accept` / `needs_iteration` / `reject`,
+   defectos con categoría, severidad, campo, descripción y corrección, y confianza). `needs_iteration` exige un defecto
+   `critical` o `major`; `reject` exige explicación. No recibe la sesión: no puede modificarla.
+3. **Boss** — decide **en código** (sin LLM): aceptar; regenerar incorporando el feedback al prompt (hasta
+   `BOSS_MAX_ITERATIONS` generaciones, 3 por defecto); o devolver el último borrador **con reservas** si se rechaza o se
+   agotan las iteraciones. Si el crítico falla, se devuelve el borrador con reservas, no un error.
+
+La sesión guarda **un solo turno** (el resultado final) y el historial PostgreSQL, una sola estimación. La respuesta
+añade `audit_trace`: por iteración `{iteration, critic_verdict, critic_confidence, defects{critical,major,minor,categories},
+boss_decision}`, más `total_iterations`, `final_decision` (`accepted` | `returned_with_reservations`) y `reservations`.
+Coste: como mínimo una llamada de revisión extra por estimación.
+
+#### Evaluación de referencia
+
+`evals/` contiene un dataset versionado de 16 casos (`evals/datasets/reference_v1.json`: SaaS, móvil, herramientas
+internas, pipelines, entradas vagas, adversariales, regulatorias y plazos exigentes), tres métricas deterministas
+(`schema_adherence`, `cost_bounds`, `content_recall`) y un runner. Cada caso usa una sesión nueva; el proceso termina con
+código 1 si algún caso no aprueba (2 si el uso es incorrecto):
+
+```bash
+# desde la raíz del repositorio; para un proveedor real exporta antes su clave (OPENAI_API_KEY o ANTHROPIC_API_KEY)
+docker compose -f docker-compose.verify.yml run --rm api-eval --list
+docker compose -f docker-compose.verify.yml run --rm -e OPENAI_API_KEY api-eval --mode actor --limit 4     --output /app/evals/reports/actor.json
+docker compose -f docker-compose.verify.yml run --rm -e OPENAI_API_KEY api-eval --mode acb --case saas-01
+docker compose -f docker-compose.verify.yml run --rm api-eval --base-url http://host.docker.internal:8000   # API ya desplegada
+```
+
+Sin clave real (la del servicio es ficticia) los casos que llegan al proveedor terminan en error y el proceso devuelve 1;
+el caso adversarial `adversarial-01` lo rechazan los guardrails locales y aprueba sin red. `evals/reports/` está ignorado por git.
+
+El reporte JSON incluye por caso `latency_ms`, `metrics`, `passed`, `estimation`, `prompt_version` y `acb_final_decision`,
+además de los errores y de los totales (`evaluated`, `passed`, `failed`, `errors`). Los rangos del dataset son una primera
+calibración: conviene revisarlos con una ejecución real. La evaluación estructural previa (`evaluation.py`) no cambia.
+
+Evaluación de librerías (Instructor, LiteLLM) y decisión de no adoptarlas por ahora:
+[`docs/evaluacion-instructor-litellm.md`](./docs/evaluacion-instructor-litellm.md). La primitiva propia basada en Pydantic es
+`app/services/structured.py`.
 
 #### Estrategia de adjuntos: extracción local frente a envío directo al proveedor
 
@@ -196,7 +279,7 @@ estimador-cag/
 │   ├── config.py            — BaseSettings + lru_cache + validación por proveedor
 │   ├── routers/
 │   │   ├── project_estimations.py — POST /api/v1/estimate (contrato estructurado)
-│   │   ├── sessions.py     — POST /api/v1/sessions[/{id}/estimate] (memoria conversacional)
+│   │   ├── sessions.py     — /api/v1/sessions: crear, estado, estimate y estimate-acb
 │   │   └── estimations.py  — POST /api/v1/transcription/estimate[/stream]
 │   ├── schemas/
 │   │   ├── project_estimation.py — contrato estructurado (compartido con Streamlit)
@@ -210,12 +293,17 @@ estimador-cag/
 │   │   └── sessions/       — prompts de la extracción de metadatos
 │   ├── services/
 │   │   ├── sessions.py     — ConversationHistory, ProjectMetadata, Session, SessionStore (en memoria)
-│   │   ├── session_estimation.py — orquestación de un turno (mensajes, validación, metadatos)
+│   │   ├── session_estimation.py — un turno: borrador (draft) y confirmación (commit)
+│   │   ├── context.py · anchors.py · compression.py · summarizer.py — memoria: composición, anclas, política, resumen
+│   │   ├── audience.py     — resolución de la audiencia (reglas ordenadas / tier)
+│   │   ├── critic.py · boss.py · acb.py — Actor–Critic–Boss
+│   │   ├── structured.py   — generación estructurada con modelos Pydantic
 │   │   ├── attachments.py  — extracción local de PDF y Word
 │   │   ├── llm_service.py  — prompts, preprocesamiento, dispatch OpenAI/Anthropic
 │   │   └── evaluation.py   — evaluación estructural de la estimación
 │   └── context/
 │       └── examples.py     — catálogo CAG (5 ejemplos estructurados) y formatos
+├── evals/                  — dataset de referencia, métricas deterministas y runner (no va en la imagen)
 ├── tests/
 ├── Dockerfile              — imagen multietapa, usuario sin privilegios, health check
 ├── docker-compose.yml      — entorno de desarrollo (hot reload)
@@ -252,8 +340,12 @@ cp .env.example .env
 | `LLM_MODEL` | Modelo a usar | `gpt-4o-mini` |
 | `OPENAI_API_KEY` | API key de OpenAI | — (requerida si provider=openai) |
 | `ANTHROPIC_API_KEY` | API key de Anthropic | — (requerida si provider=anthropic) |
-| `APP_ENV` | Entorno | `development` |
-| `LOG_LEVEL` | Nivel de logging | `DEBUG` |
+| `APP_ENV` | Entorno: `development`, `test`, `staging` o `production` (otro valor impide arrancar) | `development` |
+| `LOG_LEVEL` | Nivel de logging: `DEBUG`, `INFO`, `WARNING`, `ERROR` o `CRITICAL` | `DEBUG` |
+| `ESTIMATOR_MODEL` / `METADATA_MODEL` / `SUMMARY_MODEL` / `CRITIC_MODEL` | Modelo por tarea (estimación, extracción de metadatos, resumen y detector de anclas, crítico). Sin valor, `LLM_MODEL` | vacío |
+| `ANCHOR_DETECTION_MODE` | Detección de anclas de memoria: `heuristic` o `llm` | `heuristic` |
+| `CONVERSATION_PROMPT_VERSION` | Versión del prompt de las sesiones si la solicitud no envía `prompt_version` | `v4` |
+| `BOSS_MAX_ITERATIONS` | Máximo de generaciones del actor en `estimate-acb` (1-5) | `3` |
 | `ALLOWED_MODELS` | Lista (separada por comas) de modelos que una solicitud puede pedir con `model`. Vacío = sin restricción | vacío |
 | `SESSION_MAX_TURNS` | Turnos (pares usuario+asistente) que conserva cada sesión (`MAX_TURNS`) | `6` |
 | `SESSION_TTL_SECONDS` | Inactividad tras la que caduca una sesión | `21600` |
@@ -587,7 +679,18 @@ Documentación interactiva en `http://localhost:8000/docs`.
 ## Tests
 
 Todas las validaciones se ejecutan en contenedores Docker (el código y los tests se montan en el contenedor; las
-dependencias de desarrollo viven en la imagen):
+dependencias de desarrollo viven en la imagen). Desde la **raíz del repositorio**, `docker-compose.verify.yml` agrupa
+los servicios de verificación (reutilizan la etapa `test` de este Dockerfile; nada se instala en el host):
+
+```bash
+docker compose -f docker-compose.verify.yml run --rm api-test                       # pytest -q (suite completa)
+docker compose -f docker-compose.verify.yml run --rm api-test -k acb                # filtra pruebas
+docker compose -f docker-compose.verify.yml run --rm api-lint check .               # Ruff (config en pyproject.toml)
+docker compose -f docker-compose.verify.yml run --rm api-uv lock                    # regenera uv.lock
+docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
+```
+
+Equivalente desde esta carpeta, sin Compose:
 
 ```bash
 docker build --target test -t estimador-cag:test .      # una vez, o al cambiar pyproject.toml / uv.lock

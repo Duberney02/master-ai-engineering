@@ -41,8 +41,10 @@ async def estimation_prompt(
 ) -> PromptPreview:
     EstimationPipeline.validate_version(prompt_version)
     request = EstimationRequest(
-        description=_PREVIEW_DESCRIPTION, project_type=project_type,
-        detail_level=detail_level, output_format=output_format,
+        description=_PREVIEW_DESCRIPTION,
+        project_type=project_type,
+        detail_level=detail_level,
+        output_format=output_format,
     )
     system_prompt, _ = render_estimation_prompt(request, version=prompt_version)
     return PromptPreview(

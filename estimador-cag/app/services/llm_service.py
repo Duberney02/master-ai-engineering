@@ -1,37 +1,62 @@
 from __future__ import annotations
 
 import inspect
-import structlog
 import time
-from contextlib import aclosing
 from collections.abc import AsyncIterator, Callable
+from contextlib import aclosing
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+import structlog
 from anthropic import (
     APIConnectionError as AnthropicConnectionError,
+)
+from anthropic import (
     APITimeoutError as AnthropicTimeout,
+)
+from anthropic import (
     AsyncAnthropic,
+)
+from anthropic import (
     AuthenticationError as AnthropicAuthError,
+)
+from anthropic import (
     BadRequestError as AnthropicBadRequest,
+)
+from anthropic import (
     NotFoundError as AnthropicNotFound,
+)
+from anthropic import (
     RateLimitError as AnthropicRateLimit,
 )
 from fastapi import HTTPException
 from openai import (
     APIConnectionError as OpenAIConnectionError,
+)
+from openai import (
     APITimeoutError as OpenAITimeout,
+)
+from openai import (
     AsyncOpenAI,
+)
+from openai import (
     AuthenticationError as OpenAIAuthError,
+)
+from openai import (
     BadRequestError as OpenAIBadRequest,
+)
+from openai import (
     NotFoundError as OpenAINotFound,
+)
+from openai import (
     RateLimitError as OpenAIRateLimit,
 )
 
 from app.config import Settings, get_settings
 from app.context.examples import ExampleFormat, format_examples, select_examples
 from app.schemas.estimation import DEFAULT_NUM_EXAMPLES, Phase, PreprocessingMode
-from app.services.llm_wrapper import Completion as _Completion, LLMWrapper, ProviderFailure, total_cost
+from app.services.llm_wrapper import Completion as _Completion
+from app.services.llm_wrapper import LLMWrapper, ProviderFailure, total_cost
 
 logger = structlog.get_logger(__name__)
 
@@ -173,10 +198,7 @@ def build_system_prompt(
     rendered = format_examples(examples, example_format)
 
     if rendered:
-        rule_6 = (
-            "6. **Use historical examples as calibration references**, do not copy them "
-            "mechanically."
-        )
+        rule_6 = "6. **Use historical examples as calibration references**, do not copy them mechanically."
         examples_section = f"""
 ## Historical Reference Examples
 
@@ -289,8 +311,10 @@ def validate_options(options: GenerationOptions) -> None:
 
 def _prompt(options: GenerationOptions) -> str:
     prompt = build_system_prompt(
-        example_format=options.example_format, num_examples=options.num_examples,
-        use_examples=options.use_examples, inline_cleaning=options.preprocessing == "inline_cleaning",
+        example_format=options.example_format,
+        num_examples=options.num_examples,
+        use_examples=options.use_examples,
+        inline_cleaning=options.preprocessing == "inline_cleaning",
     )
     if options.include_project_costs:
         prompt += f"""
@@ -312,22 +336,25 @@ def _result(completion, phases, options, extracted, start) -> LLMEstimationResul
     input_tokens = sum(p.input_tokens for p in phases)
     output_tokens = sum(p.output_tokens for p in phases)
     return LLMEstimationResult(
-        estimation=completion.text, model=completion.model, provider=completion.provider,
-        input_tokens=input_tokens, output_tokens=output_tokens,
+        estimation=completion.text,
+        model=completion.model,
+        provider=completion.provider,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
         total_tokens=input_tokens + output_tokens,
         estimated_cost_usd=total_cost([p.estimated_cost_usd for p in phases]),
         request_cost_usd=total_cost([p.request_cost_usd for p in phases]),
         cache_hit=all(p.cache_hit for p in phases),
         generated_at=datetime.now(tz=timezone.utc),
         latency_ms=int((time.monotonic() - start) * 1000),
-        finish_reason=completion.finish_reason, preprocessing=options.preprocessing,
-        extracted_requirements=extracted, phases=phases,
+        finish_reason=completion.finish_reason,
+        preprocessing=options.preprocessing,
+        extracted_requirements=extracted,
+        phases=phases,
     )
 
 
-async def generate_estimation(
-    transcription: str, options: GenerationOptions | None = None
-) -> LLMEstimationResult:
+async def generate_estimation(transcription: str, options: GenerationOptions | None = None) -> LLMEstimationResult:
     options = options or GenerationOptions()
     settings = get_settings()
     model = _resolve_model(settings, options)
@@ -350,7 +377,11 @@ async def generate_estimation(
 
     if options.preprocessing == "two_phase":
         extraction = await _complete(
-            settings, EXTRACTION_SYSTEM_PROMPT, transcription, model, EXTRACTION_MAX_TOKENS,
+            settings,
+            EXTRACTION_SYSTEM_PROMPT,
+            transcription,
+            model,
+            EXTRACTION_MAX_TOKENS,
             allow_fallback=options.model is None,
         )
         extracted = extraction.text
@@ -394,7 +425,11 @@ async def generate_estimation_stream(
     extracted = None
     if options.preprocessing == "two_phase":
         extraction = await _complete(
-            settings, EXTRACTION_SYSTEM_PROMPT, transcription, model, EXTRACTION_MAX_TOKENS,
+            settings,
+            EXTRACTION_SYSTEM_PROMPT,
+            transcription,
+            model,
+            EXTRACTION_MAX_TOKENS,
             allow_fallback=options.model is None,
         )
         extracted = extraction.text
@@ -406,14 +441,20 @@ async def generate_estimation_stream(
     def call(provider, target_model, attempt):
         selected = settings.model_copy(update={"llm_provider": provider})
         if provider == "openai":
-            return _stream_openai(system_prompt, user_message, selected, target_model,
-                                  options.max_tokens, attempt)
-        return _stream_anthropic(system_prompt, user_message, selected, target_model,
-                                options.max_tokens, attempt, options.thinking_budget)
+            return _stream_openai(system_prompt, user_message, selected, target_model, options.max_tokens, attempt)
+        return _stream_anthropic(
+            system_prompt, user_message, selected, target_model, options.max_tokens, attempt, options.thinking_budget
+        )
 
     stream = LLMWrapper(settings).stream(
-        system_prompt, user_message, model, options.max_tokens, options.thinking_budget,
-        options.model is None, completion, call,
+        system_prompt,
+        user_message,
+        model,
+        options.max_tokens,
+        options.thinking_budget,
+        options.model is None,
+        completion,
+        call,
     )
     async with aclosing(stream):
         async for chunk in stream:
@@ -436,7 +477,11 @@ async def generate_from_prompts(
     completions y las entradas cacheadas que no la cumplen se ignoran."""
     settings = get_settings()
     return await _complete(
-        settings, system_prompt, user_message, settings.effective_model(), max_tokens=None,
+        settings,
+        system_prompt,
+        user_message,
+        settings.effective_model(),
+        max_tokens=None,
         accept=accept,
     )
 
@@ -445,15 +490,21 @@ async def generate_from_messages(
     messages: list[dict[str, str]],
     accept: Callable[[str], bool] | None = None,
     max_tokens: int | None = None,
+    model: str | None = None,
 ) -> _Completion:
     """Como `generate_from_prompts` para una conversación: `messages` empieza por el mensaje `system`
-    y sigue con los turnos `user`/`assistant` (el último, del usuario). Misma política de proveedor."""
+    y sigue con los turnos `user`/`assistant` (el último, del usuario). Misma política de proveedor.
+    `model` fija el modelo de la tarea; sin él se usa el modelo efectivo global."""
     if len(messages) < 2 or messages[0].get("role") != "system":
         raise ValueError("messages must start with a system message followed by at least one turn")
     settings = get_settings()
     return await _complete(
-        settings, messages[0]["content"], messages[1:], settings.effective_model(),
-        max_tokens=max_tokens, accept=accept,
+        settings,
+        messages[0]["content"],
+        messages[1:],
+        model or settings.effective_model(),
+        max_tokens=max_tokens,
+        accept=accept,
     )
 
 
@@ -471,7 +522,14 @@ async def generate_from_prompts_stream(
         return _stream_anthropic(system_prompt, user_message, selected, target_model, None, attempt)
 
     stream = LLMWrapper(settings).stream(
-        system_prompt, user_message, settings.effective_model(), None, None, True, result, call,
+        system_prompt,
+        user_message,
+        settings.effective_model(),
+        None,
+        None,
+        True,
+        result,
+        call,
     )
     async with aclosing(stream):
         async for chunk in stream:
@@ -509,10 +567,16 @@ async def _complete(
         selected = settings.model_copy(update={"llm_provider": provider})
         if provider == "openai":
             return await _call_openai(system_prompt, user_message, selected, target_model, max_tokens)
-        return await _call_anthropic(system_prompt, user_message, selected, target_model,
-                                     max_tokens, thinking_budget)
+        return await _call_anthropic(system_prompt, user_message, selected, target_model, max_tokens, thinking_budget)
+
     return await LLMWrapper(settings).complete(
-        system_prompt, user_message, model, max_tokens, thinking_budget, allow_fallback, call,
+        system_prompt,
+        user_message,
+        model,
+        max_tokens,
+        thinking_budget,
+        allow_fallback,
+        call,
         accept,
     )
 
@@ -563,8 +627,10 @@ def _anthropic_options(max_tokens, thinking_budget):
     limit = max_tokens or _ANTHROPIC_DEFAULT_MAX_TOKENS
     if thinking_budget is None:
         return {"max_tokens": limit}
-    return {"max_tokens": max(limit, thinking_budget + 1024),
-            "thinking": {"type": "enabled", "budget_tokens": thinking_budget}}
+    return {
+        "max_tokens": max(limit, thinking_budget + 1024),
+        "thinking": {"type": "enabled", "budget_tokens": thinking_budget},
+    }
 
 
 _OPENAI_ERRORS = {
@@ -588,8 +654,9 @@ async def _call_openai(
     model: str,
     max_tokens: int | None,
 ) -> _Completion:
-    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.llm_timeout,
-                         max_retries=settings.llm_retries)
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key, timeout=settings.llm_timeout, max_retries=settings.llm_retries
+    )
     kwargs: dict = {}
     if max_tokens is not None:
         kwargs["max_completion_tokens"] = max_tokens
@@ -628,8 +695,9 @@ async def _call_anthropic(
     max_tokens: int | None,
     thinking_budget: int | None = None,
 ) -> _Completion:
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=settings.llm_timeout,
-                            max_retries=settings.llm_retries)
+    client = AsyncAnthropic(
+        api_key=settings.anthropic_api_key, timeout=settings.llm_timeout, max_retries=settings.llm_retries
+    )
     try:
         response = await client.messages.create(
             model=model,
@@ -665,8 +733,9 @@ async def _stream_openai(
     max_tokens: int | None,
     metrics: _Completion,
 ) -> AsyncIterator[str]:
-    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.llm_timeout,
-                         max_retries=settings.llm_retries)
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key, timeout=settings.llm_timeout, max_retries=settings.llm_retries
+    )
     stream = None
     kwargs: dict = {}
     if max_tokens is not None:
@@ -715,8 +784,9 @@ async def _stream_anthropic(
     metrics: _Completion,
     thinking_budget: int | None = None,
 ) -> AsyncIterator[str]:
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=settings.llm_timeout,
-                            max_retries=settings.llm_retries)
+    client = AsyncAnthropic(
+        api_key=settings.anthropic_api_key, timeout=settings.llm_timeout, max_retries=settings.llm_retries
+    )
     try:
         async with client.messages.stream(
             model=model,

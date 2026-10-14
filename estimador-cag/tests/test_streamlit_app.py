@@ -39,8 +39,10 @@ OUT_OF_SCOPE = {
 }
 EMPTY_FACTS = {"project_name": None, "assumed_team_size": None, "mentioned_technologies": [], "agreed_scope": None}
 FACTS = {
-    "project_name": "Vacaciones", "assumed_team_size": 3,
-    "mentioned_technologies": ["Django", "PostgreSQL"], "agreed_scope": "Calendario y aprobaciones",
+    "project_name": "Vacaciones",
+    "assumed_team_size": 3,
+    "mentioned_technologies": ["Django", "PostgreSQL"],
+    "agreed_scope": "Calendario y aprobaciones",
 }
 
 
@@ -51,11 +53,19 @@ def _fresh_app():
 
 def _metadata(prompt_version="v3", input_tokens=111, output_tokens=22, **overrides):
     return {
-        "prompt_version": prompt_version, "model": "gpt-4o-mini", "provider": "openai",
-        "finish_reason": "stop", "latency_ms": 10, "cache_hit": False,
-        "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens,
-                  "total_tokens": input_tokens + output_tokens},
-        "estimated_cost_usd": None, "request_cost_usd": None,
+        "prompt_version": prompt_version,
+        "model": "gpt-4o-mini",
+        "provider": "openai",
+        "finish_reason": "stop",
+        "latency_ms": 10,
+        "cache_hit": False,
+        "usage": {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        },
+        "estimated_cost_usd": None,
+        "request_cost_usd": None,
     } | overrides
 
 
@@ -87,9 +97,16 @@ def session_body(session_id, result=RESULT, facts=EMPTY_FACTS, prompt_version="v
     metrics_body = _metadata(**metrics)
     metrics_body.pop("prompt_version")
     return {
-        "result": result | {"out_of_scope": result["confidence_pct"] < 30}, "prompt_version": prompt_version,
-        "cached": False, "cache_source": "none", "estimation_id": None, "metrics": metrics_body,
-        "session_id": session_id, "project_metadata": facts, "turn_count": turn, "max_turns": 6,
+        "result": result | {"out_of_scope": result["confidence_pct"] < 30},
+        "prompt_version": prompt_version,
+        "cached": False,
+        "cache_source": "none",
+        "estimation_id": None,
+        "metrics": metrics_body,
+        "session_id": session_id,
+        "project_metadata": facts,
+        "turn_count": turn,
+        "max_turns": 6,
     }
 
 
@@ -116,9 +133,7 @@ class FakeApi:
             if isinstance(reply, Exception):
                 raise reply
             return reply
-        body = session_body(
-            session_id, self.result, self.facts, kwargs["data"]["prompt_version"], len(self.estimates)
-        )
+        body = session_body(session_id, self.result, self.facts, kwargs["data"]["prompt_version"], len(self.estimates))
         return httpx.Response(200, json=body, request=request)
 
 
@@ -148,7 +163,10 @@ def test_initial_page_creates_one_session_and_shows_form_metadata_panel_and_prom
     assert len(api.sessions) == 1 and at.session_state.session_id == api.sessions[0]
     assert len(at.chat_message) == 0
     assert [s.label for s in at.selectbox] == [
-        "Tipo de proyecto", "Nivel de detalle", "Formato de salida", "Versión del prompt",
+        "Tipo de proyecto",
+        "Nivel de detalle",
+        "Formato de salida",
+        "Versión del prompt",
     ]
     assert [b.label for b in at.sidebar.button] == ["Nueva conversación"]
     assert [u.label for u in at.file_uploader][1].startswith("Adjuntos (PDF o Word")
@@ -186,8 +204,11 @@ def test_submit_posts_multipart_to_the_session_and_shows_the_structured_result(a
     [call] = api.estimates
     assert call["url"].endswith(f"/api/v1/sessions/{api.sessions[0]}/estimate")
     assert call["data"] == {
-        "transcript": DESCRIPTION, "project_type": "internal_tool", "detail_level": "detailed",
-        "output_format": "line_items", "prompt_version": "v2",
+        "transcript": DESCRIPTION,
+        "project_type": "internal_tool",
+        "detail_level": "detailed",
+        "output_format": "line_items",
+        "prompt_version": "v2",
     }
     assert call["files"] is None
 
@@ -233,15 +254,18 @@ def test_following_submissions_reuse_the_same_session(api):
 
 def test_several_attachments_are_sent_as_multipart_files(api):
     at = _fresh_app().run()
-    at.file_uploader[1].set_value([
-        ("requisitos.pdf", b"%PDF-1.4 uno", "application/pdf"),
-        ("alcance.docx", b"PK dos", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-    ])
+    at.file_uploader[1].set_value(
+        [
+            ("requisitos.pdf", b"%PDF-1.4 uno", "application/pdf"),
+            ("alcance.docx", b"PK dos", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        ]
+    )
     at = _submit(at)
 
     assert at.exception == []
     assert api.estimates[0]["files"] == [
-        ("attachments", ("requisitos.pdf", b"%PDF-1.4 uno")), ("attachments", ("alcance.docx", b"PK dos")),
+        ("attachments", ("requisitos.pdf", b"%PDF-1.4 uno")),
+        ("attachments", ("alcance.docx", b"PK dos")),
     ]
     assert "`requisitos.pdf`, `alcance.docx`" in at.chat_message[0].markdown[0].value
 
@@ -351,8 +375,10 @@ def test_attachment_rejection_shows_the_server_message(api):
 
 def _request() -> EstimationRequest:
     return EstimationRequest(
-        description=DESCRIPTION, project_type="web_saas",
-        detail_level="summary", output_format="narrative",
+        description=DESCRIPTION,
+        project_type="web_saas",
+        detail_level="summary",
+        output_format="narrative",
     )
 
 
@@ -365,13 +391,16 @@ def test_structured_client_returns_validated_result_and_metadata(mocker):
     assert metadata.prompt_version == "v3" and metadata.usage.total_tokens == 133
 
 
-@pytest.mark.parametrize("result, metadata, final", [
-    (RESULT, None, "error"),                      # error del servidor
-    (RESULT, _metadata(), None),                  # conexión cortada sin done
-    (RESULT, {"model": "x"}, "done"),             # metadatos fuera del contrato
-    ({"summary": "x"}, _metadata(), "done"),      # resultado fuera del contrato
-    (None, _metadata(), "done"),                  # sin resultado
-])
+@pytest.mark.parametrize(
+    "result, metadata, final",
+    [
+        (RESULT, None, "error"),  # error del servidor
+        (RESULT, _metadata(), None),  # conexión cortada sin done
+        (RESULT, {"model": "x"}, "done"),  # metadatos fuera del contrato
+        ({"summary": "x"}, _metadata(), "done"),  # resultado fuera del contrato
+        (None, _metadata(), "done"),  # sin resultado
+    ],
+)
 def test_structured_client_never_accepts_incomplete_streams(mocker, result, metadata, final):
     patch_stream(mocker, result, metadata, final=final)
     with pytest.raises(EstimationStreamError):
@@ -379,8 +408,12 @@ def test_structured_client_never_accepts_incomplete_streams(mocker, result, meta
 
 
 def _estimate_call(**overrides):
-    kwargs = {"transcript": DESCRIPTION, "project_type": "web_saas", "detail_level": "summary",
-              "output_format": "narrative"}
+    kwargs = {
+        "transcript": DESCRIPTION,
+        "project_type": "web_saas",
+        "detail_level": "summary",
+        "output_format": "narrative",
+    }
     return request_session_estimation("http://api/", str(uuid.uuid4()), **(kwargs | overrides))
 
 
@@ -421,13 +454,24 @@ def test_session_client_maps_404_to_session_expired(mocker):
         _estimate_call()
 
 
-@pytest.mark.parametrize("status, body, expected", [
-    (400, {"reason": "pii_email", "message": "Elimina el correo."}, "Elimina el correo."),
-    (413, {"detail": "Cada adjunto puede pesar como máximo 10 MB."}, "Cada adjunto puede pesar como máximo 10 MB."),
-    (422, {"detail": [{"loc": ["body"], "msg": "x", "input": "texto privado"}]}, "La API rechazó la solicitud (HTTP 422)."),
-    (502, {"detail": "LLM returned an invalid estimation"}, "La API no pudo completar la estimación. Intenta de nuevo."),
-    (418, {}, "La API rechazó la solicitud (HTTP 418)."),
-])
+@pytest.mark.parametrize(
+    "status, body, expected",
+    [
+        (400, {"reason": "pii_email", "message": "Elimina el correo."}, "Elimina el correo."),
+        (413, {"detail": "Cada adjunto puede pesar como máximo 10 MB."}, "Cada adjunto puede pesar como máximo 10 MB."),
+        (
+            422,
+            {"detail": [{"loc": ["body"], "msg": "x", "input": "texto privado"}]},
+            "La API rechazó la solicitud (HTTP 422).",
+        ),
+        (
+            502,
+            {"detail": "LLM returned an invalid estimation"},
+            "La API no pudo completar la estimación. Intenta de nuevo.",
+        ),
+        (418, {}, "La API rechazó la solicitud (HTTP 418)."),
+    ],
+)
 def test_session_client_sanitizes_error_responses(mocker, status, body, expected):
     mocker.patch("app.streamlit_client.httpx.post", return_value=reply(status, body))
 

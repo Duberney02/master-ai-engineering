@@ -9,7 +9,7 @@ import asyncio
 from datetime import datetime, timezone
 
 import structlog
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, select
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, inspect, select, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -55,6 +55,26 @@ class EstimationRecord(Base):
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     metrics: Mapped[dict | None] = mapped_column(_Json, nullable=True)
+    # Conversación (sesión) de la que procede la estimación y metadatos del proyecto tras ese turno.
+    conversation_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    metadata_snapshot: Mapped[dict | None] = mapped_column(_Json, nullable=True)
+
+
+def _add_missing_columns(connection) -> None:
+    """`create_all` no altera tablas existentes: añade las columnas nuevas a una base anterior.
+
+    Idempotente y solo aditivo (columnas nulas), válido en PostgreSQL y SQLite."""
+    table = EstimationRecord.__table__
+    existing = {column["name"] for column in inspect(connection).get_columns(table.name)}
+    for column in table.columns:
+        if column.name in existing:
+            continue
+        column_type = column.type.compile(dialect=connection.dialect)
+        connection.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {column.name} {column_type}"))
+        if column.index:
+            connection.execute(
+                text(f"CREATE INDEX IF NOT EXISTS ix_{table.name}_{column.name} ON {table.name} ({column.name})")
+            )
 
 
 def _aware(value: datetime) -> datetime:
@@ -94,6 +114,8 @@ def _detail(record: EstimationRecord) -> EstimationDetail:
         model=record.model,
         provider=record.provider,
         metrics=record.metrics,
+        conversation_id=record.conversation_id,
+        metadata_snapshot=record.metadata_snapshot,
     )
 
 
@@ -122,6 +144,7 @@ class EstimationHistory:
                 self._sessions()
                 async with self._engine.begin() as connection:
                     await connection.run_sync(Base.metadata.create_all)
+                    await connection.run_sync(_add_missing_columns)
                 self._schema_ready = True
 
     async def save(
@@ -129,8 +152,13 @@ class EstimationHistory:
         request: EstimationRequest,
         outcome: PipelineOutcome,
         requested_at: datetime,
+        *,
+        conversation_id: str | None = None,
+        metadata_snapshot: dict | None = None,
     ) -> int | None:
-        """Guarda una estimación completada; devuelve su id, o `None` si no se pudo guardar."""
+        """Guarda una estimación completada; devuelve su id, o `None` si no se pudo guardar.
+
+        En una sesión, `conversation_id` y `metadata_snapshot` asocian la estimación con su conversación."""
         if not self.enabled:
             return None
         try:
@@ -147,6 +175,8 @@ class EstimationHistory:
                 requested_at=requested_at,
                 completed_at=datetime.now(timezone.utc),
                 metrics=outcome.metrics().model_dump(mode="json"),
+                conversation_id=conversation_id,
+                metadata_snapshot=metadata_snapshot,
             )
             async with self._sessions()() as session:
                 session.add(record)
@@ -166,8 +196,16 @@ class EstimationHistory:
         return [_summary(record) for record in records]
 
     async def get(self, estimation_id: int) -> EstimationDetail | None:
+        records = await self._read(select(EstimationRecord).where(EstimationRecord.id == estimation_id))
+        return _detail(records[0]) if records else None
+
+    async def latest_for_conversation(self, conversation_id: str) -> EstimationDetail | None:
+        """Última estimación asociada a una conversación (con su snapshot de metadatos), si existe."""
         records = await self._read(
-            select(EstimationRecord).where(EstimationRecord.id == estimation_id)
+            select(EstimationRecord)
+            .where(EstimationRecord.conversation_id == conversation_id)
+            .order_by(EstimationRecord.requested_at.desc(), EstimationRecord.id.desc())
+            .limit(1)
         )
         return _detail(records[0]) if records else None
 

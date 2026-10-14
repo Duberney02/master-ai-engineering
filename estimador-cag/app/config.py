@@ -1,11 +1,14 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _OPENAI_DEFAULT = "gpt-4o-mini"
 _ANTHROPIC_DEFAULT = "claude-haiku-4-5"
+
+
+Task = Literal["estimator", "metadata", "summary", "critic"]
 
 
 class ModelPrice(BaseModel):
@@ -25,8 +28,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     llm_provider: Literal["openai", "anthropic"] = "openai"
     llm_model: str = _OPENAI_DEFAULT
-    app_env: str = "development"
-    log_level: str = "DEBUG"
+    app_env: Literal["development", "test", "staging", "production"] = "development"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "DEBUG"
     # Lista separada por comas de modelos que las solicitudes pueden pedir con el
     # campo `model`. Vacía = sin restricción (solo se valida el formato del nombre).
     allowed_models: str = ""
@@ -62,6 +65,30 @@ class Settings(BaseSettings):
     session_max_turns: int = Field(default=6, ge=1, le=50)
     session_ttl_seconds: float = Field(default=6 * 3600, gt=0)
     session_max_count: int = Field(default=200, ge=1)
+    # Modelo por tarea del LLM; sin valor, la tarea usa `effective_model()`. El del crítico lo consume
+    # el orquestador Actor–Critic–Boss.
+    estimator_model: str | None = Field(default=None, min_length=1, max_length=100)
+    metadata_model: str | None = Field(default=None, min_length=1, max_length=100)
+    summary_model: str | None = Field(default=None, min_length=1, max_length=100)
+    critic_model: str | None = Field(default=None, min_length=1, max_length=100)
+    # Detección de anclas de memoria: reglas locales o una llamada al LLM (con las reglas como respaldo).
+    anchor_detection_mode: Literal["heuristic", "llm"] = "heuristic"
+    # Versión del prompt de estimación que usan las sesiones cuando la solicitud no indica `prompt_version`.
+    conversation_prompt_version: str = Field(default="v4", pattern=r"^v\d+$")
+    # Máximo de generaciones del actor en el flujo Actor–Critic–Boss, contando la primera.
+    boss_max_iterations: int = Field(default=3, ge=1, le=5)
+    # Máximo de generaciones del actor en el flujo Actor–Critic–Boss, contando la primera.
+    boss_max_iterations: int = Field(default=3, ge=1, le=5)
+
+    @field_validator("app_env", mode="before")
+    @classmethod
+    def _normalize_app_env(cls, value: object) -> object:
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _normalize_log_level(cls, value: object) -> object:
+        return value.strip().upper() if isinstance(value, str) else value
 
     @model_validator(mode="after")
     def validate_provider_key(self) -> "Settings":
@@ -77,6 +104,10 @@ class Settings(BaseSettings):
 
     def allowed_models_list(self) -> list[str]:
         return [m.strip() for m in self.allowed_models.split(",") if m.strip()]
+
+    def model_for(self, task: Task) -> str:
+        """Modelo de una tarea: el configurado para ella o, si no hay, el modelo efectivo global."""
+        return getattr(self, f"{task}_model") or self.effective_model()
 
     def effective_model(self) -> str:
         """Return the model to use, applying per-provider defaults when needed."""

@@ -27,9 +27,7 @@ def openai_response(
     model: str = "gpt-4o-mini",
 ):
     return SimpleNamespace(
-        choices=[
-            SimpleNamespace(message=SimpleNamespace(content=text), finish_reason=finish_reason)
-        ],
+        choices=[SimpleNamespace(message=SimpleNamespace(content=text), finish_reason=finish_reason)],
         usage=SimpleNamespace(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,

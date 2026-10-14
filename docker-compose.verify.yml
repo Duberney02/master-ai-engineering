@@ -1,0 +1,53 @@
+# Servicios de DESARROLLO/VERIFICACIÓN: todo se ejecuta en contenedores, nada en el host.
+# Reutilizan la etapa `test` de estimador-cag/Dockerfile (uv + dependencias de desarrollo) y montan el
+# código, de modo que no hace falta reconstruir la imagen al cambiarlo.
+#
+#   docker compose -f docker-compose.verify.yml run --rm api-test            # pytest -q (añade argumentos: api-test -k sessions)
+#   docker compose -f docker-compose.verify.yml run --rm api-lint            # ruff check
+#   docker compose -f docker-compose.verify.yml run --rm api-eval --help     # runner de evaluación
+#   docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
+#   docker compose -f docker-compose.verify.yml run --rm api-uv lock         # regenerar uv.lock
+
+name: estimator-verify
+
+x-api-dev: &api-dev
+  build:
+    context: ./estimador-cag
+    target: test
+  image: estimador-cag:test
+  volumes:
+    - ./estimador-cag:/app
+  working_dir: /app
+  environment:
+    # Claves ficticias: ninguna prueba llama a un proveedor real.
+    LLM_PROVIDER: openai
+    OPENAI_API_KEY: sk-test-dummy
+
+services:
+  api-test:
+    <<: *api-dev
+    entrypoint: ["pytest"]
+    command: ["-q"]
+
+  api-lint:
+    <<: *api-dev
+    entrypoint: ["ruff"]
+    command: ["check", "."]
+
+  api-eval:
+    <<: *api-dev
+    entrypoint: ["python", "-m", "evals.runner"]
+
+  api-uv:
+    <<: *api-dev
+    entrypoint: ["uv"]
+    environment:
+      UV_PROJECT_ENVIRONMENT: /opt/venv
+
+  openspec:
+    build:
+      context: ./openspec
+    image: estimador-openspec:1.13.2
+    volumes:
+      - .:/repo
+    working_dir: /repo

@@ -25,6 +25,7 @@ master-ai-engineering/
 ├── estimator-web/                ← aplicación web Rails (cliente HTTP de la API)
 ├── estimator-web-react/          ← la misma web en React + TypeScript (SPA con proxy nginx)
 ├── docker-compose.yml            ← stack completo: API + webs + Redis Stack + PostgreSQL
+├── docker-compose.verify.yml     ← pruebas, lint, evaluación y OpenSpec en contenedores
 ├── openspec/                     ← especificaciones y cambios SDD actuales
 └── .agents/skills/               ← integración OpenSpec para Codex
 ```
@@ -63,11 +64,19 @@ permiten transcripción más varios archivos, muestran los metadatos en la barra
 sesiones viven en memoria de la API (se pierden al reiniciar). Detalle, decisiones y límites en el
 [README de `estimador-cag`](./estimador-cag/README.md#conversación-con-memoria-sesiones).
 
-Las validaciones se ejecutan en contenedores:
+La memoria conversacional conserva además un **resumen acumulativo** y **anclas** (compromisos relevantes) de los turnos
+que salen de la ventana, adapta el enfoque del prompt a la **audiencia** (`tier`: executive, pm, developer, default), ofrece
+`GET /api/v1/sessions/{id}` con el estado de la sesión y `POST /api/v1/sessions/{id}/estimate-acb`, que añade un crítico
+independiente y un Boss en código con traza de auditoría. El dataset de referencia de 16 casos y su runner viven en
+`estimador-cag/evals/`. Detalle en el README de `estimador-cag`.
+
+Las validaciones se ejecutan en contenedores (`docker-compose.verify.yml`: nada se instala en el host):
 
 ```bash
-docker build --target test -t estimador-cag:test ./estimador-cag
-docker run --rm -v "$PWD/estimador-cag:/app" estimador-cag:test         # API + Streamlit (pytest)
+docker compose -f docker-compose.verify.yml run --rm api-test                       # pytest (API + Streamlit)
+docker compose -f docker-compose.verify.yml run --rm api-lint check .               # Ruff
+docker compose -f docker-compose.verify.yml run --rm api-eval --list                # dataset de evaluación
+docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
 ```
 
 Las pruebas de las webs tienen su comando Docker en el README de cada una.

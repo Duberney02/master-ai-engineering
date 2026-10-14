@@ -64,15 +64,15 @@ def test_app_package_is_importable():
     # esto falla con un mensaje claro en vez de un ImportError confuso más
     # adelante en la suite.
     import app  # noqa: F401
-    import app.main  # noqa: F401
     import app.config  # noqa: F401
+    import app.context.examples  # noqa: F401
+    import app.main  # noqa: F401
+    import app.prompts.loader  # noqa: F401
     import app.routers.estimations  # noqa: F401
     import app.routers.project_estimations  # noqa: F401
-    import app.prompts.loader  # noqa: F401
-    import app.services.llm_service  # noqa: F401
-    import app.services.evaluation  # noqa: F401
     import app.schemas.estimation  # noqa: F401
-    import app.context.examples  # noqa: F401
+    import app.services.evaluation  # noqa: F401
+    import app.services.llm_service  # noqa: F401
 
 
 def test_container_files_follow_the_security_baseline():
@@ -106,8 +106,13 @@ def test_root_compose_defines_all_services_on_a_shared_network():
     compose = _root_compose()
 
     assert set(compose["services"]) == {
-        "estimador-cag", "estimador-cag-chat", "estimator-web", "estimator-web-react",
-        "redis", "postgres"}
+        "estimador-cag",
+        "estimador-cag-chat",
+        "estimator-web",
+        "estimator-web-react",
+        "redis",
+        "postgres",
+    }
     assert "estimator-net" in compose["networks"]
     for name, service in compose["services"].items():
         assert service["networks"] == ["estimator-net"], name
@@ -132,7 +137,9 @@ def test_root_compose_waits_for_healthy_dependencies():
     services = _root_compose()["services"]
 
     assert {k: v["condition"] for k, v in services["estimador-cag"]["depends_on"].items()} == {
-        "redis": "service_healthy", "postgres": "service_healthy"}
+        "redis": "service_healthy",
+        "postgres": "service_healthy",
+    }
     assert services["estimator-web"]["depends_on"]["estimador-cag"]["condition"] == "service_healthy"
 
 
@@ -153,8 +160,7 @@ def test_root_compose_publishes_only_api_chat_and_web_ports():
     assert services["estimador-cag"]["ports"] == ["8000:8000"]
     assert services["estimator-web"]["ports"] == ["3000:3000"]
     assert services["estimador-cag-chat"]["ports"] == ["8501:8501"]
-    assert services["estimador-cag-chat"]["environment"] == {
-        "ESTIMATOR_API_BASE_URL": "http://estimador-cag:8000"}
+    assert services["estimador-cag-chat"]["environment"] == {"ESTIMATOR_API_BASE_URL": "http://estimador-cag:8000"}
     assert "ports" not in services["redis"] and "ports" not in services["postgres"]
 
 
@@ -162,7 +168,13 @@ def test_web_app_files_exist():
     web = REPO_ROOT / "estimator-web"
     if not web.exists():
         pytest.skip("estimator-web no disponible")
-    for relative in ["Dockerfile", "Gemfile", "Gemfile.lock", "app/services/estimator_api.rb",
-                     "app/controllers/estimations_controller.rb", "test/services/estimator_api_test.rb"]:
+    for relative in [
+        "Dockerfile",
+        "Gemfile",
+        "Gemfile.lock",
+        "app/services/estimator_api.rb",
+        "app/controllers/estimations_controller.rb",
+        "test/services/estimator_api_test.rb",
+    ]:
         assert (web / relative).exists(), relative
     assert "USER rails" in (web / "Dockerfile").read_text(encoding="utf-8")

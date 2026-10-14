@@ -48,8 +48,9 @@ def test_v3_examples_are_valid_results_and_include_an_out_of_scope_one():
 
 
 def test_v3_user_prompt_wraps_description_and_references():
-    request = make_request(reference_projects=[
-        {"name": "Portal de socios", "description": "Altas", "actual_hours": 640}])
+    request = make_request(
+        reference_projects=[{"name": "Portal de socios", "description": "Altas", "actual_hours": 640}]
+    )
     _, user = render_estimation_prompt(request, "v3")
 
     assert f"<project_description>\n{request.description}\n</project_description>" in user

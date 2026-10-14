@@ -39,9 +39,7 @@ _TABLE_HEADER_RE = re.compile(r"^\|\s*#\s*\|\s*[ÁA]rea\s*\|\s*Tarea\s*\|\s*Hora
 _SEPARATOR_RE = re.compile(r"^\|[\s:|-]+\|?\s*$")
 _HOURS_CELL_RE = re.compile(rf"^\**\s*[~≈]?\s*{_NUM}(?:\s*[–—-]\s*{_NUM})?\s*(?:h|hs|horas)?\s*\**$", re.I)
 _TOTAL_RE = re.compile(rf"Total\s+estimado{_LABEL_SEP}{_NUM}", re.I)
-_RANGE_RE = re.compile(
-    rf"Rango\s+recomendado{_LABEL_SEP}{_NUM}\s*(?:h|horas)?\s*[–—-]\s*{_NUM}", re.I
-)
+_RANGE_RE = re.compile(rf"Rango\s+recomendado{_LABEL_SEP}{_NUM}\s*(?:h|horas)?\s*[–—-]\s*{_NUM}", re.I)
 _TEAM_RE = re.compile(r"Equipo\s+recomendado\s*\**\s*:?\s*\**\s*\S", re.I)
 _DURATION_RE = re.compile(r"Duraci[oó]n\s+aproximada\s*\**\s*:?\s*\**\s*\S", re.I)
 
@@ -162,15 +160,13 @@ def evaluate_estimation(
     truncated = finish_reason in TRUNCATED_FINISH_REASONS
     if truncated:
         issues.append(
-            f"Respuesta truncada por el límite de tokens (finish_reason='{finish_reason}'); "
-            "aumenta max_tokens"
+            f"Respuesta truncada por el límite de tokens (finish_reason='{finish_reason}'); aumenta max_tokens"
         )
     elif not finish_reason_ok:
         issues.append(f"Finalización inesperada del proveedor (finish_reason='{finish_reason}')")
     if preprocessing_finish_reason in TRUNCATED_FINISH_REASONS:
         issues.append(
-            "La extracción de requisitos (fase 1) se truncó; la estimación pudo partir de "
-            "requisitos incompletos"
+            "La extracción de requisitos (fase 1) se truncó; la estimación pudo partir de requisitos incompletos"
         )
 
     # --- Puntuación: fracción de comprobaciones superadas -------------------
@@ -221,8 +217,7 @@ def _evaluate_project_costs(text: str, rates: dict[str, float], total_hours: flo
     """Separate exact budget table; never confuse it with the original hours table."""
     from decimal import Decimal, InvalidOperation
 
-    header = re.search(r"^\|\s*Rol\s*\|\s*Horas\s*\|\s*Tarifa EUR/h\s*\|\s*Coste EUR\s*\|\s*$",
-                       text, re.M | re.I)
+    header = re.search(r"^\|\s*Rol\s*\|\s*Horas\s*\|\s*Tarifa EUR/h\s*\|\s*Coste EUR\s*\|\s*$", text, re.M | re.I)
     declared = re.search(r"Total presupuesto\s*:\s*(\d+(?:[.,]\d+)?)\s*EUR", text, re.I)
     amount = Decimal(declared.group(1).replace(",", ".")) if declared else None
     if not header or amount is None or total_hours is None:
@@ -231,7 +226,7 @@ def _evaluate_project_costs(text: str, rates: dict[str, float], total_hours: flo
     hour_sum = Decimal(0)
     seen = set()
     valid = True
-    for line in text[header.end():].lstrip("\r\n").splitlines():
+    for line in text[header.end() :].lstrip("\r\n").splitlines():
         if not line.strip().startswith("|"):
             break
         if _SEPARATOR_RE.match(line.strip()):

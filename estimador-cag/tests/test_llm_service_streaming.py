@@ -45,9 +45,7 @@ async def test_stream_openai_populates_metrics(mocker):
 @pytest.mark.asyncio
 async def test_stream_anthropic_yields_deltas_and_metrics(mocker):
     patch_settings(mocker, anthropic_settings())
-    final = anthropic_final_message(
-        "Hola mundo", model="claude-haiku-4-5", input_tokens=150, output_tokens=40
-    )
+    final = anthropic_final_message("Hola mundo", model="claude-haiku-4-5", input_tokens=150, output_tokens=40)
     patch_anthropic_stream(mocker, ["Hola ", "mundo"], final)
 
     metrics = StreamMetrics()

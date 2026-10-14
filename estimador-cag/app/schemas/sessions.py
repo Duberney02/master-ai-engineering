@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.project_estimation import EstimationResponse
 from app.services.audience import Audience
-from app.services.sessions import ProjectMetadata
+from app.services.sessions import ProjectMetadata, TurnObservation
 
 
 class SessionCreated(BaseModel):
@@ -43,3 +43,10 @@ class SessionState(BaseModel):
     summary_length: int = Field(ge=0, description="Caracteres del resumen acumulativo.")
     last_audience: Audience | None = None
     last_audience_rule: str | None = None
+    last_turn: TurnObservation | None = Field(
+        default=None, description="Observación del último turno confirmado (`turn_observed`); nula sin turnos."
+    )
+    summary: str | None = Field(default=None, description="Resumen acumulativo; solo con `include_memory=true`.")
+    anchors: list[str] | None = Field(
+        default=None, description="Mensajes de usuario de las anclas; solo con `include_memory=true`."
+    )

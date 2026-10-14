@@ -7,7 +7,7 @@ extracción de adjuntos en `app.services.attachments` y el estado en `SessionSto
 from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.datastructures import FormData
 from fastapi.routing import APIRoute
 from pydantic import TypeAdapter, ValidationError
@@ -137,8 +137,13 @@ def _request(
     response_model=SessionState,
     responses={404: {"description": "La sesión no existe o caducó."}},
 )
-async def get_session_state(session_id: str, store: SessionStore = Depends(get_session_store)) -> SessionState:
-    """Estado de la sesión (ventana, anclas, resumen, metadatos y última audiencia); no estima ni llama al LLM."""
+async def get_session_state(
+    session_id: str,
+    include_memory: bool = Query(False, description="Incluye el texto del resumen y de las anclas."),
+    store: SessionStore = Depends(get_session_store),
+) -> SessionState:
+    """Estado de la sesión (ventana, anclas, resumen, metadatos, última audiencia y último turno observado);
+    no estima ni llama al LLM. El texto de la memoria solo se devuelve con `include_memory=true`."""
     session = store.get(session_id)
     if session is None:
         raise HTTPException(404, SESSION_NOT_FOUND)
@@ -152,6 +157,9 @@ async def get_session_state(session_id: str, store: SessionStore = Depends(get_s
         summary_length=len(history.summary),
         last_audience=session.audience,
         last_audience_rule=session.audience_rule,
+        last_turn=session.last_turn,
+        summary=history.summary if include_memory else None,
+        anchors=[a.user for a in history.anchors] if include_memory else None,
     )
 
 
@@ -195,6 +203,7 @@ async def _prepare(
     request = _request(
         combine_text(transcript, extracted), project_type, detail_level, output_format, reference_projects
     )
+    request.attachments_chars = sum(len(attachment.text) for attachment in extracted)
     return session, request, audience
 
 

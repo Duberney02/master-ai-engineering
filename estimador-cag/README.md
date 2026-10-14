@@ -217,6 +217,32 @@ El reporte JSON incluye por caso `latency_ms`, `metrics`, `passed`, `estimation`
 además de los errores y de los totales (`evaluated`, `passed`, `failed`, `errors`). Los rangos del dataset son una primera
 calibración: conviene revisarlos con una ejecución real. La evaluación estructural previa (`evaluation.py`) no cambia.
 
+#### Stress test del CAG (`evals/stress/`)
+
+Mide dónde degrada la memoria conversacional (ventana + resumen + anclas) al crecer los turnos y los adjuntos, como
+baseline para comparar con RAG. No cambia el CAG: lo observa.
+
+- **Observación por turno**: cada turno confirmado emite el evento structlog `turn_observed` (`turn_index`, `session_id`,
+  `enriched_transcript_chars`, `attachments_total_chars`, `messages_in_window`, `anchors_count`, `summary_chars`,
+  `tokens_in`, `tokens_out`, `cost_usd`, `latency_ms`, `cache_hit_kind`, `last_resolved_tier`; sin texto de la
+  conversación) y deja la misma observación en `GET /api/v1/sessions/{id}` como `last_turn`. Con `?include_memory=true`
+  el estado añade `summary` y `anchors` (texto del usuario), que el stress test necesita para medir la deriva de memoria.
+- **Escenarios** (`scenarios.py`): `growing`, `pivot` y `contradiction`, de 20 turnos, con checkpoints N = 1, 3, 6, 10 y 20.
+  **Adjuntos** (`fixtures/build_pdfs.py`): PDFs deterministas de ~5, 20, 50 y 100 KB que el runner regenera (no se versionan).
+- **Métricas** (`metrics.py`, reutilizan `MetricResult`): `LatencyBudgetMetric` (presupuesto por defecto 30 000 ms por turno),
+  `CostBudgetMetric` (0,01 USD por turno) y `MemoryDriftMetric` (hecho presente en resumen, anclas o metadatos; coincidencia
+  exacta sin distinguir mayúsculas). Los presupuestos se cambian con `--latency-budget-ms` y `--cost-budget-usd`.
+
+```bash
+# desde estimador-cag/, con el servidor en marcha y el proveedor de .env (un único modelo durante toda la medición)
+uv run python -m evals.stress.run --http http://localhost:8000 --scenarios growing,pivot,contradiction \
+    --attachment-sizes 0,5,20,50,100 --repeats 3 --workers 4 --output evals/stress/results.csv
+uv run python -m evals.stress.report        # REPORT.md desde el CSV (el análisis en prosa es evals/stress/analysis.md)
+```
+
+Sin `--http` el runner usa la aplicación en proceso. El baseline medido está en
+[`evals/stress/REPORT.md`](./evals/stress/REPORT.md) y [`evals/stress/results.csv`](./evals/stress/results.csv).
+
 Evaluación de librerías (Instructor, LiteLLM) y decisión de no adoptarlas por ahora:
 [`docs/evaluacion-instructor-litellm.md`](./docs/evaluacion-instructor-litellm.md). La primitiva propia basada en Pydantic es
 `app/services/structured.py`.

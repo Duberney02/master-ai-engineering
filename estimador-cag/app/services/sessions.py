@@ -19,7 +19,7 @@ import uuid
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, field_validator
 
@@ -173,6 +173,27 @@ class ConversationHistory:
         return messages
 
 
+class TurnObservation(BaseModel):
+    """Qué ocurrió en un turno confirmado: tamaño del contexto, tokens, coste y estado de la memoria.
+
+    Es el contenido del evento `turn_observed` y de `last_turn` en `GET /sessions/{id}`. Solo guarda
+    magnitudes: nunca texto del usuario ni del modelo."""
+
+    turn_index: int = Field(ge=1, description="Número de turno de la sesión (1-based, no limitado por la ventana).")
+    session_id: str
+    enriched_transcript_chars: int = Field(ge=0, description="Transcripción del turno más el texto de los adjuntos.")
+    attachments_total_chars: int = Field(ge=0)
+    messages_in_window: int = Field(ge=0, description="Mensajes de la ventana reciente tras la compresión.")
+    anchors_count: int = Field(ge=0)
+    summary_chars: int = Field(ge=0)
+    tokens_in: int = Field(ge=0, description="Suma de todas las llamadas al LLM del turno.")
+    tokens_out: int = Field(ge=0)
+    cost_usd: float | None = Field(description="Nulo si el modelo no tiene tarifa registrada.")
+    latency_ms: int = Field(ge=0)
+    cache_hit_kind: Literal["none", "exact", "semantic"]
+    last_resolved_tier: str
+
+
 @dataclass
 class Session:
     """Una conversación: historial, metadatos del proyecto y un cerrojo que serializa sus peticiones."""
@@ -183,6 +204,9 @@ class Session:
     # Última audiencia resuelta y nombre de la regla que la decidió (ver `app.services.audience`).
     audience: str | None = None
     audience_rule: str | None = None
+    # Turnos confirmados desde la creación (la ventana se estanca en `max_turns`) y observación del último.
+    turns_total: int = 0
+    last_turn: TurnObservation | None = None
     last_used: float = field(default_factory=time.monotonic)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
@@ -211,6 +235,7 @@ class Session:
     def record_turn(self, user: str, assistant: str, metadata: ProjectMetadata) -> None:
         """Confirma un turno completado: lo añade al historial y sustituye los metadatos."""
         self.history.add_turn(user, assistant)
+        self.turns_total += 1
         self.metadata = metadata
 
 

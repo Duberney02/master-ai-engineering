@@ -36,6 +36,9 @@ async def test_new_session_state_is_empty(client):
         "summary_length": 0,
         "last_audience": None,
         "last_audience_rule": None,
+        "last_turn": None,
+        "summary": None,
+        "anchors": None,
     }
 
 

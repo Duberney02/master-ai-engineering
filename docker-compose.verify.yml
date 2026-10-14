@@ -5,6 +5,7 @@
 #   docker compose -f docker-compose.verify.yml run --rm api-test            # pytest -q (añade argumentos: api-test -k sessions)
 #   docker compose -f docker-compose.verify.yml run --rm api-lint            # ruff check
 #   docker compose -f docker-compose.verify.yml run --rm api-eval --help     # runner de evaluación
+#   docker compose -f docker-compose.verify.yml run --rm api-stress --help   # stress test del CAG (necesita la API en marcha)
 #   docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
 #   docker compose -f docker-compose.verify.yml run --rm api-uv lock         # regenerar uv.lock
 
@@ -37,6 +38,13 @@ services:
   api-eval:
     <<: *api-dev
     entrypoint: ["python", "-m", "evals.runner"]
+
+  # Stress test del CAG contra la API del Compose raíz (docker compose up -d estimador-cag): usa --http http://host.docker.internal:8000
+  api-stress:
+    <<: *api-dev
+    entrypoint: ["python", "-m", "evals.stress.run"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   api-uv:
     <<: *api-dev

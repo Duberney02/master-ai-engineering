@@ -31,7 +31,7 @@ from app.services.guardrails import InputGuardrails
 from app.services.llm_service import generate_from_messages
 from app.services.llm_wrapper import Completion
 from app.services.pipeline import EstimationPipeline, PipelineOutcome
-from app.services.sessions import Message, ProjectMetadata, Session
+from app.services.sessions import Message, ProjectMetadata, Session, TurnObservation
 from app.services.summarizer import LLMSummarizer
 from app.services.validation import (
     ResultValidationError,
@@ -241,6 +241,7 @@ class SessionEstimationService:
             anchors=len(session.history.anchors),
             summary_chars=len(session.history.summary),
         )
+        self._observe_turn(session, request, resolution, outcome)
         return SessionOutcome(
             outcome=outcome,
             metadata=metadata,
@@ -248,6 +249,36 @@ class SessionEstimationService:
             audience=resolution.audience,
             audience_rule=resolution.rule,
         )
+
+    @staticmethod
+    def _observe_turn(
+        session: Session, request: EstimationRequest, resolution: AudienceResolution, outcome: PipelineOutcome
+    ) -> None:
+        """Registra `turn_observed` y lo guarda como `session.last_turn`, con datos que ya existen."""
+        history = session.history
+        if outcome.cache_source == "semantic":
+            cache_hit_kind = "semantic"
+        elif outcome.cached or outcome.completion_cache_hit:
+            cache_hit_kind = "exact"
+        else:
+            cache_hit_kind = "none"
+        observation = TurnObservation(
+            turn_index=session.turns_total,
+            session_id=session.session_id,
+            enriched_transcript_chars=len(request.description),
+            attachments_total_chars=request.attachments_chars,
+            messages_in_window=2 * len(history),
+            anchors_count=len(history.anchors),
+            summary_chars=len(history.summary),
+            tokens_in=outcome.input_tokens,
+            tokens_out=outcome.output_tokens,
+            cost_usd=outcome.estimated_cost_usd,
+            latency_ms=outcome.latency_ms,
+            cache_hit_kind=cache_hit_kind,
+            last_resolved_tier=resolution.audience.value,
+        )
+        session.last_turn = observation
+        logger.info("turn_observed", **observation.model_dump())
 
     @staticmethod
     def _remember_audience(session: Session, resolution: AudienceResolution) -> None:

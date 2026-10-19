@@ -55,6 +55,8 @@ class EstimationRequest(BaseModel):
         max_length=MAX_REFERENCE_PROJECTS,
         description="Proyectos similares ya entregados; se incluyen en el prompt si se envían.",
     )
+    # Caracteres de `description` que proceden de adjuntos (solo observabilidad; no se serializa).
+    attachments_chars: int = Field(default=0, ge=0, exclude=True)
 
 
 # Por debajo de esta confianza (%) la estimación se declara fuera de alcance.

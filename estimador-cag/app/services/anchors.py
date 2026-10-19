@@ -96,8 +96,8 @@ HEURISTIC_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
         _rule(
             r"\b(rgpd|gdpr|lopd|hipaa|pci[- ]?dss|psd2|dora|sox|iso ?27001|nda|"
             r"regulat\w+|normativ\w+|legal(es|mente)?|cumplimiento (normativo|legal)|compliance|"
-            r"proteccion de datos|confidencial\w*|acuerdo de confidencialidad|"
-            r"auditoria obligatoria|licencia obligatoria)\b"
+            r"proteccion de datos|confidencial\w*|acuerdo de confidencialidad|auditoria obligatoria|"
+            r"licencia obligatoria)\b"
         ),
     ),
 )

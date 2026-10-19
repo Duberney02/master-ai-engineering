@@ -48,6 +48,10 @@ El sistema SHALL rechazar con errores saneados y sin exponer el contenido: tipos
 - **WHEN** el PDF no contiene texto extraíble (por ejemplo, escaneado) y acompaña a una transcripción suficiente
 - **THEN** el adjunto se omite con un registro y la estimación continúa con la transcripción, en lugar de responder 422.
 
+#### Scenario: Todas las páginas ilegibles
+- **WHEN** todas las páginas de un PDF fallan al extraerse
+- **THEN** el documento se considera ilegible y la respuesta es 422.
+
 #### Scenario: Adjunto sin texto y solicitud insuficiente
 - **WHEN** el único contenido es un adjunto sin texto y no se alcanza el mínimo de caracteres
 - **THEN** la respuesta es 422 por texto demasiado corto.

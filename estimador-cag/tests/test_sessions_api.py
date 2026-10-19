@@ -16,7 +16,7 @@ import pytest
 from app.main import app
 from app.schemas import EstimationResult
 from app.services.sessions import MAX_TURNS, get_session_store, reset_session_store
-from tests._documents import make_docx, make_pdf
+from tests._documents import make_blank_pdf, make_docx, make_pdf
 from tests._fakes import openai_response, openai_settings, patch_settings
 
 TRANSCRIPT = "Reunión con el cliente: queremos un portal para gestionar pedidos y facturas."
@@ -255,6 +255,50 @@ async def test_several_attachments_are_combined_in_order(client, llm):
     user_message = llm.estimation_calls[0][-1]["content"]
     assert user_message.index("--- attachment: uno.pdf ---") < user_message.index("--- attachment: dos.docx ---")
     assert "Primer documento" in user_message and "Segundo documento" in user_message
+
+
+async def test_every_attachment_block_is_closed_with_an_end_delimiter(client, llm):
+    files = [("uno.pdf", make_pdf("Primer documento"), "application/pdf")]
+
+    await estimate(client, await new_session(client), files=files)
+
+    user_message = llm.estimation_calls[0][-1]["content"]
+    assert "--- attachment: uno.pdf ---\nPrimer documento\n--- end attachment ---" in user_message
+
+
+async def test_attachment_without_text_is_skipped_when_the_rest_of_the_request_is_valid(client, llm):
+    scanned = ("escaneado.pdf", make_blank_pdf(), "application/pdf")
+
+    response = await estimate(client, await new_session(client), files=[scanned])
+
+    assert response.status_code == 200
+    assert "escaneado.pdf" not in llm.estimation_calls[0][-1]["content"]
+
+
+async def test_attachment_without_text_alone_is_a_too_short_request(client, llm):
+    scanned = ("escaneado.pdf", make_blank_pdf(), "application/pdf")
+
+    response = await estimate(client, await new_session(client), transcript="", files=[scanned])
+
+    assert response.status_code == 422 and llm.calls == []
+
+
+async def test_unreadable_attachment_is_still_a_422(client, llm):
+    response = await estimate(
+        client, await new_session(client), files=[("roto.pdf", b"%PDF-1.4 basura sin estructura", "application/pdf")]
+    )
+
+    assert response.status_code == 422 and llm.calls == []
+
+
+async def test_attachment_text_is_truncated_to_max_attachment_chars(client, mocker):
+    patch_settings(mocker, openai_settings(moderation_enabled=False, max_attachment_chars=40))
+    llm = ScriptedLLM(mocker)
+
+    await estimate(client, await new_session(client), files=[("largo.pdf", make_pdf("Z" * 200), "application/pdf")])
+
+    user_message = llm.estimation_calls[0][-1]["content"]
+    assert "Z" * 40 in user_message and "Z" * 41 not in user_message
 
 
 async def test_attachments_alone_are_enough_without_a_transcript(client, llm):

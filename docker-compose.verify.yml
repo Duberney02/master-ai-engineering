@@ -8,6 +8,8 @@
 #   docker compose -f docker-compose.verify.yml run --rm api-stress --help   # stress test del CAG (necesita la API en marcha)
 #   docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
 #   docker compose -f docker-compose.verify.yml run --rm api-uv lock         # regenerar uv.lock
+#   docker compose -f docker-compose.verify.yml run --rm --entrypoint python api-test scripts/demo_cleaning_s06.py   # demos de la sesión 6
+# El preflight y las pruebas contra PostgreSQL real se ejecutan con el stack raíz levantado (ver estimador-cag/README.md).
 
 name: estimator-verify
 

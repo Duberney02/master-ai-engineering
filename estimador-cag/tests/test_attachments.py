@@ -2,7 +2,9 @@
 
 import pytest
 from fastapi import HTTPException
+from pypdf import PageObject
 
+from app.config import Settings
 from app.services import attachments
 from app.services.attachments import (
     AttachmentError,
@@ -11,6 +13,7 @@ from app.services.attachments import (
     safe_filename,
 )
 from tests._documents import make_blank_pdf, make_docx, make_pdf
+from tests._fakes import openai_settings, patch_settings
 
 
 async def _extract(*files):
@@ -21,7 +24,7 @@ async def test_pdf_text_is_extracted_with_its_separator():
     [pdf] = await _extract(("requisitos.pdf", make_pdf("Proyecto Orion con PostgreSQL")))
 
     assert pdf.filename == "requisitos.pdf"
-    assert pdf.block == "--- attachment: requisitos.pdf ---\nProyecto Orion con PostgreSQL"
+    assert pdf.block == "--- attachment: requisitos.pdf ---\nProyecto Orion con PostgreSQL\n--- end attachment ---"
 
 
 async def test_every_pdf_page_is_extracted_in_order():
@@ -48,7 +51,9 @@ async def test_several_attachments_follow_the_transcript_in_the_order_received()
     text = combine_text("  Transcripción de la reunión  ", extracted)
 
     assert text == (
-        "Transcripción de la reunión\n\n--- attachment: uno.pdf ---\nprimero\n\n--- attachment: dos.docx ---\nsegundo"
+        "Transcripción de la reunión\n\n"
+        "--- attachment: uno.pdf ---\nprimero\n--- end attachment ---\n\n"
+        "--- attachment: dos.docx ---\nsegundo\n--- end attachment ---"
     )
 
 
@@ -117,11 +122,10 @@ def _zip_without_document() -> bytes:
     return buffer.getvalue()
 
 
-async def test_pdf_without_extractable_text_is_422():
-    with pytest.raises(AttachmentError) as exc:
-        await _extract(("escaneado.pdf", make_blank_pdf()))
+async def test_pdf_without_extractable_text_is_skipped_not_an_error():
+    extracted = await _extract(("escaneado.pdf", make_blank_pdf()), ("req.pdf", make_pdf("con texto")))
 
-    assert exc.value.status_code == 422 and "escaneado.pdf" in exc.value.detail
+    assert [a.filename for a in extracted] == ["req.pdf"]
 
 
 async def test_corrupt_pdf_is_422_without_leaking_internals():
@@ -148,11 +152,8 @@ async def test_password_protected_pdf_is_422():
     assert exc.value.status_code == 422
 
 
-async def test_empty_docx_is_422():
-    with pytest.raises(AttachmentError) as exc:
-        await _extract(("vacio.docx", make_docx([])))
-
-    assert exc.value.status_code == 422
+async def test_empty_docx_is_skipped_not_an_error():
+    assert await _extract(("vacio.docx", make_docx([]))) == []
 
 
 async def test_oversized_attachment_is_413(monkeypatch):
@@ -194,3 +195,49 @@ async def test_docx_uncompressed_size_limit_is_413(monkeypatch):
 
 def test_attachment_errors_are_http_exceptions():
     assert issubclass(AttachmentError, HTTPException)
+
+
+async def test_text_is_truncated_to_the_configured_limit():
+    [pdf] = await extract_attachments([("largo.pdf", make_pdf("A" * 300))], max_chars=100)
+
+    assert pdf.text == "A" * 100
+
+
+async def test_default_limit_is_max_attachment_chars_from_settings(mocker):
+    patch_settings(mocker, openai_settings(max_attachment_chars=50))
+
+    [pdf] = await _extract(("largo.pdf", make_pdf("B" * 300)))
+
+    assert pdf.text == "B" * 50 and Settings(_env_file=None, openai_api_key="k").max_attachment_chars == 60_000
+
+
+async def test_text_within_the_limit_is_not_modified():
+    [pdf] = await extract_attachments([("corto.pdf", make_pdf("C" * 100))], max_chars=100)
+
+    assert pdf.text == "C" * 100
+
+
+async def test_unreadable_pdf_page_is_logged_and_readable_pages_are_kept(mocker):
+    original = PageObject.extract_text
+    calls = {"n": 0}
+
+    def flaky(self, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ValueError("pagina rota")
+        return original(self, *args, **kwargs)
+
+    mocker.patch.object(PageObject, "extract_text", flaky)
+
+    [pdf] = await _extract(("mixto.pdf", make_pdf("Pagina uno", "Pagina dos")))
+
+    assert pdf.text == "Pagina dos"
+
+
+async def test_pdf_whose_pages_are_all_unreadable_is_422(mocker):
+    mocker.patch.object(PageObject, "extract_text", side_effect=ValueError("rota"))
+
+    with pytest.raises(AttachmentError) as exc:
+        await _extract(("rota.pdf", make_pdf("Pagina uno", "Pagina dos")))
+
+    assert exc.value.status_code == 422 and "rota" not in exc.value.detail

@@ -59,6 +59,7 @@ def patch_settings(mocker, settings: Settings) -> None:
     mocker.patch("app.services.pipeline.get_settings", return_value=settings)
     mocker.patch("app.services.session_estimation.get_settings", return_value=settings)
     mocker.patch("app.services.history.get_settings", return_value=settings)
+    mocker.patch("app.services.attachments.get_settings", return_value=settings)
 
 
 def patch_openai(mocker, *outcomes) -> AsyncMock:

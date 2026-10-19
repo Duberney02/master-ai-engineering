@@ -68,10 +68,15 @@ RUN groupadd --system --gid 10001 app \
 
 WORKDIR /app
 
-# Solo el entorno virtual ya construido y el código de la aplicación.
+# Solo el entorno virtual ya construido, el código de la aplicación y lo que necesita la ingesta:
+# catálogo y corpus de ejemplo (data/), migraciones Alembic y utilidades de comprobación (scripts/).
 COPY --from=builder /app/.venv /app/.venv
 COPY app/ ./app/
 COPY streamlit_app.py ./streamlit_app.py
+COPY data/ ./data/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./alembic.ini
+COPY scripts/ ./scripts/
 
 USER app
 
@@ -82,4 +87,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
 
 # Las claves NO van en la imagen: se inyectan en tiempo de ejecución (--env-file / Compose).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Antes de servir, aplica las migraciones Alembic si hay DATABASE_URL (sin ella no hace nada).
+CMD ["sh", "-c", "python -m app.persistence.migrate && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]

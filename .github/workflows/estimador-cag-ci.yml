@@ -76,6 +76,9 @@ jobs:
         # - test_critic_*.py / test_boss.py / test_acb*.py -> Actor-Critic-Boss y estimate-acb
         # - tests/evals/               -> dataset de referencia, métricas y runner
         # - test_cache_fakeredis.py    -> caché de completions con FakeRedis (ida y vuelta, serialización, TTL)
+        # - test_architecture.py / test_catalog_loader.py / test_parsers_*.py / test_cleaning_budgets.py / test_validation_policy.py
+        #   / test_pii_*.py / test_ingestion_core.py / test_ingestion_endpoint.py -> ingesta de la sesión 6 (modelo español de spaCy real)
+        # - test_ingestion_persistence.py / test_ingestion_postgres.py -> migraciones Alembic y repositorios (SQLite y PostgreSQL real)
         run: uv run pytest -v
 
   docker:

@@ -8,11 +8,28 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.logging_config import configure_logging
-from app.routers import estimations, history, project_estimations, prompts, sessions
+from app.persistence.database import close_engine
+from app.routers import estimations, history, ingestion, project_estimations, prompts, sessions
 from app.services.guardrails import GuardrailViolation
 from app.services.history import close_history
 
 logger = structlog.get_logger(__name__)
+
+
+def _log_catalog() -> None:
+    """Un catálogo malformado es un problema de despliegue: se registra al arrancar, no en la primera solicitud."""
+    try:
+        from app.dependencies import get_catalog
+
+        catalog = get_catalog()
+        logger.info(
+            "catalog_loaded",
+            version=catalog.version,
+            sources_total=len(catalog.sources),
+            sources_included=len(catalog.included_sources()),
+        )
+    except Exception as exc:
+        logger.error("catalog_load_failed", error_type=type(exc).__name__)
 
 
 @asynccontextmanager
@@ -25,8 +42,10 @@ async def lifespan(app: FastAPI):
         provider=settings.llm_provider,
         model=settings.effective_model(),
     )
+    _log_catalog()
     yield
     await close_history()
+    await close_engine()
 
 
 app = FastAPI(
@@ -45,6 +64,7 @@ app.include_router(project_estimations.router, prefix="/api/v1", tags=["estimati
 app.include_router(prompts.router, prefix="/api/v1", tags=["prompts"])
 app.include_router(history.router, prefix="/api/v1", tags=["history"])
 app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
+app.include_router(ingestion.router, prefix="/api/v1")
 app.include_router(estimations.router, prefix="/api/v1/transcription", tags=["transcription"])
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 

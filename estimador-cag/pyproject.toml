@@ -22,6 +22,16 @@ dependencies = [
     "pypdf>=5.0",
     "python-docx>=1.1",
     "python-multipart>=0.0.9",
+    # Ingesta (sesión 6): catálogo, limpieza, PII y migraciones.
+    "pyyaml>=6.0",
+    "pandas>=2.2",
+    "pandera>=0.20",
+    "alembic>=1.13",
+    "presidio-analyzer>=2.2",
+    "spacy>=3.8,<3.9",
+    "faker>=24.0",
+    # Modelo español de spaCy (rueda oficial; versión compatible con spaCy 3.8).
+    "es-core-news-md @ https://github.com/explosion/spacy-models/releases/download/es_core_news_md-3.8.0/es_core_news_md-3.8.0-py3-none-any.whl",
 ]
 
 [dependency-groups]

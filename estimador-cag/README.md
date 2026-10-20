@@ -250,7 +250,10 @@ Evaluación de librerías (Instructor, LiteLLM) y decisión de no adoptarlas por
 #### Estrategia de adjuntos: extracción local frente a envío directo al proveedor
 
 Los PDF y Word se **leen en el propio servicio** (`pypdf` y `python-docx`) y su texto se añade a la transcripción
-con un separador `--- attachment: <nombre> ---`, en el orden recibido. Los archivos no se envían al proveedor del LLM.
+entre un separador `--- attachment: <nombre> ---` y un cierre `--- end attachment ---`, en el orden recibido. Los
+archivos no se envían al proveedor del LLM. El texto de cada adjunto se recorta a `MAX_ATTACHMENT_CHARS` (60 000 por
+defecto); un PDF cuyas páginas no se pueden leer todas conserva las legibles, y un adjunto que se abre pero no tiene
+texto (p. ej. un PDF escaneado) se omite sin error (un documento corrupto o cifrado sigue siendo 422).
 Motivos de la decisión:
 
 - **Un único camino de seguridad**: el texto extraído pasa por los mismos guardrails (PII, prompt injection,
@@ -266,6 +269,40 @@ El precio es que se pierde lo que no es texto (imágenes, diagramas, tablas esca
 rechaza con `422` en lugar de enviarse a un modelo con visión. Defensas: tamaño y número de adjuntos, comprobación de
 la firma del archivo (no solo la extensión), tope de páginas (200) y de tamaño descomprimido de los `.docx`, rechazo
 de PDF cifrados, nombre de archivo saneado (no puede falsificar un separador) y extracción fuera del bucle de eventos.
+
+### Ingesta de datos (sesión 6)
+
+Subsistema de ingesta independiente del flujo de estimación (`app/ingestion/`, `app/persistence/`). **No** es un
+pipeline RAG: no indexa los documentos, no genera embeddings y la limpieza y la seudonimización son utilidades que el
+orquestador no ejecuta. Todo se ejecuta en Docker (desde la raíz del repositorio):
+
+| Capacidad | Módulo | Cómo usarla |
+|---|---|---|
+| Viabilidad CAG y recomendación `CAG`/`Hybrid`/`RAG` | `app/ingestion/architecture.py` | `docker compose exec estimador-cag python -m app.ingestion.architecture` |
+| Catálogo versionado y auditable (3 fuentes) | `app/ingestion/catalog/`, `data/catalog/catalog.yaml` | `… python -m app.ingestion.catalog.loader data/catalog/catalog.yaml` · `… python -m app.ingestion.catalog.inspect data/seed` |
+| `Document`, cargador y parsers JSON/TXT | `app/ingestion/{documents,loaders,parsers}/` | vía la API de ingesta |
+| Limpieza y validación de presupuestos (pandas + Pandera) | `app/ingestion/cleaning/` | `… python scripts/demo_cleaning_s06.py` |
+| Detección de PII (Presidio + `es_core_news_md`) y seudonimización consistente (HMAC + Faker) | `app/ingestion/pii/` | `… python scripts/demo_pii_s06.py` |
+| Trabajos de ingesta y mappings en PostgreSQL | `app/persistence/`, `alembic/` | migraciones al arrancar la API |
+| Comprobación de entorno | `scripts/preflight_s06.py` | `… python scripts/preflight_s06.py` |
+
+API de seguimiento (`202` + sondeo; solo estos dos endpoints):
+
+```sh
+curl -X POST localhost:8000/api/v1/ingestion/runs -H 'content-type: application/json' -d '{"source_name":"presupuestos_json"}'
+curl localhost:8000/api/v1/ingestion/jobs/<job_id>
+```
+
+`404` para fuentes o trabajos desconocidos y `400` para fuentes `review` o `exclude`; los estados son
+`pending → running → completed | failed`. Las fuentes `transcripciones_txt` (revisión) y `rate_card_xlsx` (excluida) no
+se ingieren; la excluida no se promueve automáticamente.
+
+Ajustes (`.env.example`): `CATALOG_PATH`, `INGESTION_DATA_ROOT`, `PRESIDIO_SPACY_MODEL`, `PSEUDONYM_FAKER_LOCALE`,
+`PSEUDONYM_HASH_SALT` (cámbiala fuera de desarrollo) y `MAX_ATTACHMENT_CHARS`. La seudonimización **no es reversible**:
+la tabla `pseudonym_mappings` guarda el tipo de entidad, el HMAC del valor y el seudónimo, nunca el original, y `forget`
+solo elimina el mapping. Limitaciones heredadas de la referencia: las entidades solapadas que detecta Presidio no se
+resuelven (un código de cliente puede recibir un seudónimo de persona), y `strict=True` del esquema de Pandera cuenta
+las columnas adicionales del registro como fallo de comprobación.
 
 #### Metadatos del proyecto: llamada adicional al LLM frente a heurística
 
@@ -306,6 +343,7 @@ estimador-cag/
 │   ├── routers/
 │   │   ├── project_estimations.py — POST /api/v1/estimate (contrato estructurado)
 │   │   ├── sessions.py     — /api/v1/sessions: crear, estado, estimate y estimate-acb
+│   │   ├── ingestion.py    — POST /api/v1/ingestion/runs y GET /api/v1/ingestion/jobs/{id}
 │   │   └── estimations.py  — POST /api/v1/transcription/estimate[/stream]
 │   ├── schemas/
 │   │   ├── project_estimation.py — contrato estructurado (compartido con Streamlit)
@@ -327,8 +365,14 @@ estimador-cag/
 │   │   ├── attachments.py  — extracción local de PDF y Word
 │   │   ├── llm_service.py  — prompts, preprocesamiento, dispatch OpenAI/Anthropic
 │   │   └── evaluation.py   — evaluación estructural de la estimación
+│   ├── ingestion/          — sesión 6: architecture · catalog/ · documents/ · loaders/ · parsers/ · cleaning/ · pii/ · orchestrator
+│   ├── persistence/        — trabajos de ingesta y mappings (SQLAlchemy asíncrono), repositorios y migrate.py
+│   ├── dependencies.py     — catálogo, cargador, registro de parsers y seudonimizador
 │   └── context/
 │       └── examples.py     — catálogo CAG (5 ejemplos estructurados) y formatos
+├── alembic/ · alembic.ini  — migraciones de la ingesta (ingestion_jobs, pseudonym_mappings)
+├── data/                   — catálogo de fuentes (catalog/) y corpus de ejemplo (seed/)
+├── scripts/                — demos de limpieza y PII y preflight de la sesión 6
 ├── evals/                  — dataset de referencia, métricas deterministas y runner (no va en la imagen)
 ├── tests/
 ├── Dockerfile              — imagen multietapa, usuario sin privilegios, health check
@@ -445,6 +489,13 @@ stream se muestran como mensajes genéricos y nunca se guardan como estimaciones
 
 El `.env` **nunca** entra en la imagen (está en `.dockerignore`): las claves se
 inyectan al arrancar el contenedor.
+
+**Stack completo con PostgreSQL (desde la raíz del repositorio).** `docker compose up --build` levanta la API, las webs,
+Redis Stack y PostgreSQL; el comando de la imagen de la API ejecuta `python -m app.persistence.migrate`
+(`alembic upgrade head`) antes de `uvicorn` cuando hay `DATABASE_URL`, de modo que las tablas de la ingesta existen
+cuando la API acepta solicitudes. La imagen incluye `data/`, `alembic/` y `scripts/`. Sin `DATABASE_URL` (p. ej. este
+Compose de desarrollo) arranca igualmente y solo la API de ingesta responde 503. Los volúmenes `postgres_data` y
+`redis_data` se conservan: ningún paso de la ingesta los elimina.
 
 ### Desarrollo (Docker Compose, con recarga en caliente)
 
@@ -730,7 +781,17 @@ docker run --rm -v "$PWD:/app" estimador-cag:test pytest -v tests/test_sessions_
 uv run pytest -v
 ```
 
-La suite no llama a los proveedores reales (los SDK se simulan) y usa SQLite en memoria para el historial; `tests/test_history_postgres.py` se activa con `TEST_DATABASE_URL` y ejercita un PostgreSQL real (ver el Compose raíz). `tests/prompts/` prueba las
+La suite no llama a los proveedores reales (los SDK se simulan) y usa SQLite en memoria para el historial y la ingesta; `tests/test_history_postgres.py` y `tests/test_ingestion_postgres.py` (migraciones Alembic, concurrencia de `lookup_or_create`, ingesta real) se activan con `TEST_DATABASE_URL` y ejercitan un PostgreSQL real. Con el stack raíz levantado, desde la raíz del repositorio y sobre una base de pruebas aparte (no toca el historial):
+
+```bash
+docker compose exec postgres psql -U estimator -d postgres -c "CREATE DATABASE estimator_test"
+docker run --rm --network estimator_estimator-net -v "$PWD/estimador-cag:/app" -w /app \
+  -e OPENAI_API_KEY=sk-test-dummy \
+  -e TEST_DATABASE_URL=postgresql+asyncpg://estimator:estimator-dev@postgres:5432/estimator_test \
+  estimador-cag:test pytest -q
+```
+
+La ingesta (`docker compose exec estimador-cag python scripts/preflight_s06.py`, demos y CLI) se describe en «Ingesta de datos (sesión 6)». Las migraciones se aplican solas al arrancar la API cuando hay `DATABASE_URL` (`python -m app.persistence.migrate`; manualmente: `docker compose exec estimador-cag alembic upgrade head`). `tests/prompts/` prueba las
 plantillas en milisegundos (descripción literal, formato, detalle, referencias, versiones
 y log del render). El resto cubre el contrato estructurado, las opciones del
 endpoint de transcripción, ambos modos de preprocesamiento, selección y formatos de ejemplos (incluida la

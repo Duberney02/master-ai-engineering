@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -77,8 +78,16 @@ class Settings(BaseSettings):
     conversation_prompt_version: str = Field(default="v4", pattern=r"^v\d+$")
     # Máximo de generaciones del actor en el flujo Actor–Critic–Boss, contando la primera.
     boss_max_iterations: int = Field(default=3, ge=1, le=5)
-    # Máximo de generaciones del actor en el flujo Actor–Critic–Boss, contando la primera.
-    boss_max_iterations: int = Field(default=3, ge=1, le=5)
+    # Tope de caracteres que se conservan del texto extraído de cada adjunto (protege la ventana de contexto).
+    max_attachment_chars: int = Field(default=60_000, gt=0)
+    # Ingesta (sesión 6). Las rutas relativas se resuelven desde el directorio de trabajo (`/app` en Docker).
+    catalog_path: Path = Path("data/catalog/catalog.yaml")
+    ingestion_data_root: Path = Path("data/seed")
+    # Modelo de spaCy que carga Presidio; debe ser el español (`es_core_news_md`).
+    presidio_spacy_model: str = "es_core_news_md"
+    # Locale de Faker para los seudónimos y sal del HMAC (cámbiala fuera de desarrollo).
+    pseudonym_faker_locale: str = "es_ES"
+    pseudonym_hash_salt: str = "change-me-in-prod"
 
     @field_validator("app_env", mode="before")
     @classmethod

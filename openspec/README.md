@@ -46,7 +46,8 @@ Los cambios completados están en `changes/archive/`:
 `2026-10-06-estimador-validar-antes-de-cachear`,
 `2026-10-07-estimador-memoria-conversacional` y, de la sesión 5, `2026-10-09-estimador-memoria-resumen-anclas`,
 `2026-10-09-estimador-audiencia-adaptativa`, `2026-10-09-estimador-actor-critic-boss`,
-`2026-10-09-estimador-evaluacion-referencia` y `2026-10-09-estimador-practicas-complementarias`.
+`2026-10-09-estimador-evaluacion-referencia`, `2026-10-09-estimador-practicas-complementarias` y, de la sesión 6
+(ingesta, PII, persistencia y adjuntos), `2026-10-19-session-6-refined`.
 
 Las especificaciones actuales viven en `specs/`; los cambios en curso y su
 evidencia viven en `changes/`. Tras revisar un cambio completado puede archivarse

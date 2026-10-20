@@ -50,6 +50,18 @@ SAFE_FIELDS = frozenset(
         "tokens_out",
         "cache_hit_kind",
         "last_resolved_tier",
+        # Ingesta (sesión 6): identificadores operativos, nunca contenido de los documentos.
+        "job_id",
+        "source_name",
+        "format",
+        "documents_count",
+        "version",
+        "sources_total",
+        "sources_included",
+        # Adjuntos: páginas ilegibles y recortes (sin nombres de archivo ni texto).
+        "page",
+        "original_chars",
+        "kept_chars",
     }
 )
 

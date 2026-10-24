@@ -1,7 +1,7 @@
 """Composición de mensajes: sistema + resumen, anclas, turnos recientes y mensaje actual."""
 
-from app.services.context import SUMMARY_MAX_CHARS, clean_summary, compose_messages, system_with_memory
-from app.services.sessions import AnchorTurn, ConversationHistory, ProjectMetadata, Session
+from app.generation.conversation.context import SUMMARY_MAX_CHARS, clean_summary, compose_messages, system_with_memory
+from app.generation.conversation.sessions import AnchorTurn, ConversationHistory, ProjectMetadata, Session
 
 
 def roles(messages):

@@ -55,11 +55,9 @@ def anthropic_response(
 
 
 def patch_settings(mocker, settings: Settings) -> None:
-    mocker.patch("app.services.llm_service.get_settings", return_value=settings)
-    mocker.patch("app.services.pipeline.get_settings", return_value=settings)
-    mocker.patch("app.services.session_estimation.get_settings", return_value=settings)
-    mocker.patch("app.services.history.get_settings", return_value=settings)
-    mocker.patch("app.services.attachments.get_settings", return_value=settings)
+    mocker.patch("app.foundation.llm.service.get_settings", return_value=settings)
+    mocker.patch("app.dependencies.get_settings", return_value=settings)
+    mocker.patch("app.foundation.attachments.extractor.get_settings", return_value=settings)
 
 
 def patch_openai(mocker, *outcomes) -> AsyncMock:
@@ -67,7 +65,7 @@ def patch_openai(mocker, *outcomes) -> AsyncMock:
     create = AsyncMock(side_effect=list(outcomes))
     client = MagicMock()
     client.chat.completions.create = create
-    mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=client)
+    mocker.patch("app.foundation.llm.service.AsyncOpenAI", return_value=client)
     return create
 
 
@@ -75,7 +73,7 @@ def patch_anthropic(mocker, *outcomes) -> AsyncMock:
     create = AsyncMock(side_effect=list(outcomes))
     client = MagicMock()
     client.messages.create = create
-    mocker.patch("app.services.llm_service.AsyncAnthropic", return_value=client)
+    mocker.patch("app.foundation.llm.service.AsyncAnthropic", return_value=client)
     return create
 
 
@@ -135,7 +133,7 @@ def patch_openai_stream(mocker, chunks: list) -> AsyncMock:
     create = AsyncMock(return_value=_AsyncIterFromList(chunks))
     client = MagicMock()
     client.chat.completions.create = create
-    mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=client)
+    mocker.patch("app.foundation.llm.service.AsyncOpenAI", return_value=client)
     return create
 
 
@@ -178,5 +176,5 @@ def patch_anthropic_stream(mocker, deltas: list[str], final_message) -> MagicMoc
     """Parchea AsyncAnthropic para que `messages.stream(...)` devuelva un context manager fake."""
     client = MagicMock()
     client.messages.stream = MagicMock(return_value=_FakeAnthropicStream(deltas, final_message))
-    mocker.patch("app.services.llm_service.AsyncAnthropic", return_value=client)
+    mocker.patch("app.foundation.llm.service.AsyncAnthropic", return_value=client)
     return client

@@ -5,7 +5,7 @@ OpenAI o Anthropic. Ofrece dos flujos:
 
 - **Estimación estructurada** (`POST /api/v1/estimate`): una descripción breve más
   tipo de proyecto, nivel de detalle y formato de salida. El prompt se renderiza
-  desde plantillas Jinja2 versionadas (`app/prompts/estimation/<versión>/`).
+  desde plantillas Jinja2 versionadas (`app/foundation/prompts/estimation/<versión>/`).
 - **Estimación desde transcripción** (`POST /api/v1/transcription/estimate` y
   `/stream`): parte de una reunión con el cliente y usa CAG (Context-Augmented
   Generation) con ejemplos históricos.
@@ -24,14 +24,14 @@ El modelo recibe toda la información de contexto en una sola llamada.
 POST /api/v1/estimate?prompt_version=v3        ← EstimationPipeline inyectado con Depends
        │
        ▼
-EstimationRequest (app.schemas: description, project_type, detail_level,
+EstimationRequest (app.domain.schemas: description, project_type, detail_level,
                    output_format, reference_projects?)
        │
        ▼
 1. Guardrails de entrada (PII, prompt injection, moderación)  → 400 {reason, message}
 2. Caché exacta (Redis)            ┐ cached=true
 3. Caché semántica (redisvl)       ┘ filtrada por versión/tipo/detalle/formato
-4. render_estimation_prompt(request, version)   ← app/prompts/estimation/<versión>/*.j2
+4. render_estimation_prompt(request, version)   ← app/foundation/prompts/estimation/<versión>/*.j2
 5. generate_from_prompts(system, user)          ← wrapper: caché, reintentos, fallback, costes
 6. Validación de negocio + corrección automática (suma de costes, "Out of scope:")
 7. Filtro de fuera de alcance → almacenamiento en ambas cachés
@@ -74,7 +74,7 @@ Sin historial disponible ambos responden `503 {"detail": "History is not configu
 POST /api/v1/transcription/estimate
        │
        ▼
-EstimationRequest (app.schemas.estimation: transcripción + opciones validadas)
+EstimationRequest (app.domain.schemas.estimation: transcripción + opciones validadas)
        │
        ▼
 generate_estimation(transcription, GenerationOptions)
@@ -137,7 +137,7 @@ antiguos al superar `MAX_TURNS` (6 por defecto; `SESSION_MAX_TURNS`). El system 
 se conserva siempre y se regenera en cada llamada con los metadatos vigentes. Al enviar un turno, el modelo ve como
 máximo `MAX_TURNS` turnos contando el actual (`MAX_TURNS - 1` previos), de modo que nunca se supera la ventana.
 
-**Volatilidad aceptada.** Las sesiones viven en un diccionario del proceso (`app/services/sessions.py`), sin base de
+**Volatilidad aceptada.** Las sesiones viven en un diccionario del proceso (`app/generation/conversation/sessions.py`), sin base de
 datos ni Redis: son contexto auxiliar, no un registro (las estimaciones completadas ya se guardan en el historial
 PostgreSQL). Se pierden al reiniciar el servicio y no se comparten entre procesos o réplicas, así que la API debe
 ejecutarse como un único proceso (como hace Docker Compose). El crecimiento está acotado por `SESSION_MAX_COUNT`
@@ -147,17 +147,17 @@ ventana de turnos. Los clientes detectan el `404` y abren una conversación nuev
 #### Memoria con resumen acumulativo y anclas
 
 Lo que sale de la ventana reciente no se pierde sin más. Tras completar cada turno, una **política de compresión**
-(`app/services/compression.py`) trabaja con los turnos que acaban de salir de la ventana:
+(`app/generation/conversation/compression.py`) trabaja con los turnos que acaban de salir de la ventana:
 
 - Los pares usuario/asistente con **compromisos relevantes** (contrato, alcance cerrado, presupuesto acordado, fecha
   límite, restricción legal o regulatoria) pasan a ser **anclas**: se conservan literalmente, fuera de la ventana y
   hasta un máximo de 8 (se descarta la más antigua). No cuentan para `MAX_TURNS`.
 - El resto se combina con el **resumen anterior** mediante una llamada al LLM (`SUMMARY_MODEL`) y sustituye al resumen.
   Si el resumidor falla o devuelve vacío, se conserva el resumen anterior y la estimación no falla.
-- Los mensajes del estimador se componen con `compose_messages` (`app/services/context.py`): prompt de sistema
+- Los mensajes del estimador se componen con `compose_messages` (`app/generation/conversation/context.py`): prompt de sistema
   actualizado (con el resumen en un bloque `<conversation_summary>` de datos) + anclas + turnos recientes + mensaje actual.
 
-Las tres piezas son independientes: la **estructura** (`ConversationHistory`), el **detector** (`app/services/anchors.py`) y
+Las tres piezas son independientes: la **estructura** (`ConversationHistory`), el **detector** (`app/generation/conversation/anchors.py`) y
 la **política**. El detector es heurístico (`ANCHOR_DETECTION_MODE=heuristic`, reglas con nombre `contract`,
 `closed_scope`, `agreed_budget`, `deadline`, `legal_regulatory`; solo evalúa el mensaje del usuario) o por LLM
 (`llm`, con las reglas como respaldo si falla). Se registra el nombre de las reglas que identificaron cada ancla
@@ -169,7 +169,7 @@ Lo que sí se persiste (si hay `DATABASE_URL`) es cada estimación con su `conve
 
 La audiencia decide el enfoque del prompt **v4**: `executive` (riesgos, síntesis, lenguaje accesible), `pm` (hitos,
 entregables, dependencias), `developer` (tecnologías, integraciones, supuestos técnicos) y `default`. Se resuelve con
-reglas ordenadas (`app/services/audience.py`): confidencialidad o contexto regulatorio → `executive`; al menos 3
+reglas ordenadas (`app/domain/audience.py`): confidencialidad o contexto regulatorio → `executive`; al menos 3
 términos técnicos distintos (contando las tecnologías de los metadatos) → `developer`; equipo de 5 o menos en los
 metadatos → `pm`; si no, `default`. El parámetro `tier` **prevalece** sobre las reglas (`audience_rule = "explicit"`).
 La sesión conserva la última audiencia y la regla (`GET /api/v1/sessions/{id}` → `last_audience`, `last_audience_rule`).
@@ -245,7 +245,7 @@ Sin `--http` el runner usa la aplicación en proceso. El baseline medido está e
 
 Evaluación de librerías (Instructor, LiteLLM) y decisión de no adoptarlas por ahora:
 [`docs/evaluacion-instructor-litellm.md`](./docs/evaluacion-instructor-litellm.md). La primitiva propia basada en Pydantic es
-`app/services/structured.py`.
+`app/foundation/llm/structured.py`.
 
 #### Estrategia de adjuntos: extracción local frente a envío directo al proveedor
 
@@ -272,7 +272,7 @@ de PDF cifrados, nombre de archivo saneado (no puede falsificar un separador) y 
 
 ### Ingesta de datos (sesión 6)
 
-Subsistema de ingesta independiente del flujo de estimación (`app/ingestion/`, `app/persistence/`). **No** es un
+Subsistema de ingesta independiente del flujo de estimación (`app/ingestion/`, `app/foundation/persistence/`). **No** es un
 pipeline RAG: no indexa los documentos, no genera embeddings y la limpieza y la seudonimización son utilidades que el
 orquestador no ejecuta. Todo se ejecuta en Docker (desde la raíz del repositorio):
 
@@ -283,7 +283,7 @@ orquestador no ejecuta. Todo se ejecuta en Docker (desde la raíz del repositori
 | `Document`, cargador y parsers JSON/TXT | `app/ingestion/{documents,loaders,parsers}/` | vía la API de ingesta |
 | Limpieza y validación de presupuestos (pandas + Pandera) | `app/ingestion/cleaning/` | `… python scripts/demo_cleaning_s06.py` |
 | Detección de PII (Presidio + `es_core_news_md`) y seudonimización consistente (HMAC + Faker) | `app/ingestion/pii/` | `… python scripts/demo_pii_s06.py` |
-| Trabajos de ingesta y mappings en PostgreSQL | `app/persistence/`, `alembic/` | migraciones al arrancar la API |
+| Trabajos de ingesta y mappings en PostgreSQL | `app/foundation/persistence/`, `alembic/` | migraciones al arrancar la API |
 | Comprobación de entorno | `scripts/preflight_s06.py` | `… python scripts/preflight_s06.py` |
 
 API de seguimiento (`202` + sondeo; solo estos dos endpoints):
@@ -309,7 +309,7 @@ las columnas adicionales del registro como fallo de comprobación.
 `ProjectMetadata` recoge `project_name`, `assumed_team_size`, `mentioned_technologies` y `agreed_scope`. El system
 prompt incluye un bloque `<project_metadata>` con los hechos conocidos (vacío en la primera llamada; se omite en
 `/api/v1/estimate`). Tras cada estimación válida, una **segunda llamada al LLM** con un prompt específico
-(`app/prompts/sessions/`) recibe los metadatos actuales, el mensaje del usuario y la estimación, y devuelve un
+(`app/foundation/prompts/sessions/`) recibe los metadatos actuales, el mensaje del usuario y la estimación, y devuelve un
 objeto JSON que se valida con el modelo Pydantic; el código lo fusiona con lo ya conocido (las listas se unen sin
 duplicados, un valor nuevo no nulo sustituye al anterior y nunca se borra un hecho). Si la llamada falla o su JSON no
 es válido, la estimación se devuelve igualmente y los metadatos anteriores se conservan.
@@ -500,7 +500,7 @@ uv run streamlit run streamlit_app.py
 Se abre en `http://localhost:8501`. Arranca también la API en otra terminal.
 Al cargar la página crea una sesión (`POST /api/v1/sessions`) y conserva su
 `session_id` en `st.session_state`; cada envío valida las opciones con el mismo
-`EstimationRequest` que usa la API (lo importa de `app.schemas`) y va como
+`EstimationRequest` que usa la API (lo importa de `app.domain.schemas`) y va como
 `multipart/form-data` a `POST /api/v1/sessions/{id}/estimate`. Con adjuntos el
 mensaje puede ser corto: la API valida la longitud del conjunto. No necesita claves LLM.
 Configura `ESTIMATOR_API_BASE_URL` (por defecto `http://localhost:8000`) en
@@ -534,7 +534,7 @@ El `.env` **nunca** entra en la imagen (está en `.dockerignore`): las claves se
 inyectan al arrancar el contenedor.
 
 **Stack completo con PostgreSQL (desde la raíz del repositorio).** `docker compose up --build` levanta la API, las webs,
-Redis Stack y PostgreSQL; el comando de la imagen de la API ejecuta `python -m app.persistence.migrate`
+Redis Stack y PostgreSQL; el comando de la imagen de la API ejecuta `python -m app.foundation.persistence.migrate`
 (`alembic upgrade head`) antes de `uvicorn` cuando hay `DATABASE_URL`, de modo que las tablas de la ingesta existen
 cuando la API acepta solicitudes. La imagen incluye `data/`, `alembic/` y `scripts/`. Sin `DATABASE_URL` (p. ej. este
 Compose de desarrollo) arranca igualmente y solo la API de ingesta responde 503. Los volúmenes `postgres_data` y
@@ -656,7 +656,7 @@ curl -N "http://localhost:8000/api/v1/estimate/stream?prompt_version=v2" \
 | `reference_projects` | opcional, hasta 5 `{name, description, actual_hours}` |
 | `?prompt_version` | query param; `v3` por defecto (`v1` y `v2` siguen disponibles con el contrato JSON añadido). Una versión inexistente → `422` |
 
-**Versionado de prompts**: cada versión es un directorio en `app/prompts/estimation/`
+**Versionado de prompts**: cada versión es un directorio en `app/foundation/prompts/estimation/`
 con `system.j2` (rol, reglas y bloques condicionales por formato y detalle, que
 incluye `examples.j2`), `user.j2` (envuelve la descripción en `<project_description>`
 y recorre `reference_projects`) y `examples.j2` (ejemplos few-shot en el formato
@@ -834,7 +834,7 @@ docker run --rm --network estimator_estimator-net -v "$PWD/estimador-cag:/app" -
   estimador-cag:test pytest -q
 ```
 
-La ingesta (`docker compose exec estimador-cag python scripts/preflight_s06.py`, demos y CLI) se describe en «Ingesta de datos (sesión 6)». Las migraciones se aplican solas al arrancar la API cuando hay `DATABASE_URL` (`python -m app.persistence.migrate`; manualmente: `docker compose exec estimador-cag alembic upgrade head`). `tests/prompts/` prueba las
+La ingesta (`docker compose exec estimador-cag python scripts/preflight_s06.py`, demos y CLI) se describe en «Ingesta de datos (sesión 6)». Las migraciones se aplican solas al arrancar la API cuando hay `DATABASE_URL` (`python -m app.foundation.persistence.migrate`; manualmente: `docker compose exec estimador-cag alembic upgrade head`). `tests/prompts/` prueba las
 plantillas en milisegundos (descripción literal, formato, detalle, referencias, versiones
 y log del render). El resto cubre el contrato estructurado, las opciones del
 endpoint de transcripción, ambos modos de preprocesamiento, selección y formatos de ejemplos (incluida la

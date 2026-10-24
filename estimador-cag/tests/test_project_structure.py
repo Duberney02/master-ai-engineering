@@ -14,35 +14,37 @@ REQUIRED_PATHS = [
     "app/__init__.py",
     "app/main.py",
     "app/config.py",
-    "app/routers/__init__.py",
-    "app/routers/estimations.py",
-    "app/routers/project_estimations.py",
-    "app/routers/history.py",
-    "app/routers/prompts.py",
-    "app/services/__init__.py",
-    "app/services/llm_service.py",
-    "app/services/evaluation.py",
-    "app/schemas/estimation.py",
-    "app/schemas/project_estimation.py",
-    "app/schemas/history.py",
-    "app/services/history.py",
-    "app/services/sessions.py",
-    "app/services/attachments.py",
-    "app/services/session_estimation.py",
-    "app/schemas/sessions.py",
-    "app/routers/sessions.py",
-    "app/prompts/estimation/project_metadata.j2",
-    "app/prompts/sessions/metadata_system.j2",
-    "app/prompts/sessions/metadata_user.j2",
-    "app/prompts/loader.py",
-    "app/prompts/estimation/v1/system.j2",
-    "app/prompts/estimation/v1/user.j2",
-    "app/prompts/estimation/v1/examples.j2",
-    "app/prompts/estimation/v2/system.j2",
-    "app/prompts/estimation/v2/user.j2",
-    "app/prompts/estimation/v2/examples.j2",
-    "app/context/__init__.py",
-    "app/context/examples.py",
+    "app/api/__init__.py",
+    "app/api/estimations.py",
+    "app/api/project_estimations.py",
+    "app/api/history.py",
+    "app/api/prompts.py",
+    "app/foundation/llm/service.py",
+    "app/domain/evaluation.py",
+    "app/domain/schemas/estimation.py",
+    "app/domain/schemas/project_estimation.py",
+    "app/domain/schemas/history.py",
+    "app/domain/history.py",
+    "app/generation/conversation/sessions.py",
+    "app/foundation/attachments/extractor.py",
+    "app/domain/session_estimation.py",
+    "app/domain/schemas/sessions.py",
+    "app/api/sessions.py",
+    "app/foundation/prompts/estimation/project_metadata.j2",
+    "app/foundation/prompts/sessions/metadata_system.j2",
+    "app/foundation/prompts/sessions/metadata_user.j2",
+    "app/foundation/prompts/loader.py",
+    "app/foundation/prompts/estimation/v1/system.j2",
+    "app/foundation/prompts/estimation/v1/user.j2",
+    "app/foundation/prompts/estimation/v1/examples.j2",
+    "app/foundation/prompts/estimation/v2/system.j2",
+    "app/foundation/prompts/estimation/v2/user.j2",
+    "app/foundation/prompts/estimation/v2/examples.j2",
+    "app/foundation/__init__.py",
+    "app/domain/__init__.py",
+    "app/generation/__init__.py",
+    "app/api/__init__.py",
+    "app/foundation/prompts/examples.py",
     "tests/conftest.py",
     "pyproject.toml",
     ".env.example",
@@ -64,15 +66,15 @@ def test_app_package_is_importable():
     # esto falla con un mensaje claro en vez de un ImportError confuso más
     # adelante en la suite.
     import app  # noqa: F401
+    import app.api.estimations  # noqa: F401
+    import app.api.project_estimations  # noqa: F401
     import app.config  # noqa: F401
-    import app.context.examples  # noqa: F401
+    import app.domain.evaluation  # noqa: F401
+    import app.domain.schemas.estimation  # noqa: F401
+    import app.foundation.llm.service  # noqa: F401
+    import app.foundation.prompts.examples  # noqa: F401
+    import app.foundation.prompts.loader  # noqa: F401
     import app.main  # noqa: F401
-    import app.prompts.loader  # noqa: F401
-    import app.routers.estimations  # noqa: F401
-    import app.routers.project_estimations  # noqa: F401
-    import app.schemas.estimation  # noqa: F401
-    import app.services.evaluation  # noqa: F401
-    import app.services.llm_service  # noqa: F401
 
 
 def test_container_files_follow_the_security_baseline():

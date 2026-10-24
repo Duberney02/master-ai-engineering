@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from app.context.examples import (
+from app.foundation.prompts.examples import (
     ESTIMATION_EXAMPLES,
     ESTIMATION_EXAMPLES_CATALOG,
     MAX_EXAMPLES,

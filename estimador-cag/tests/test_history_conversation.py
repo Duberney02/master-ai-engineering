@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.services.history import EstimationHistory
+from app.domain.history import EstimationHistory
 from tests._fakes import openai_settings
 from tests.test_history import NOW, _outcome, _request
 

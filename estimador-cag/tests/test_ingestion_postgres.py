@@ -15,14 +15,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.dependencies import build_pseudonymizer
+from app.foundation.persistence.migrate import upgrade_to_head
+from app.foundation.persistence.models import PseudonymMappingRow
+from app.foundation.persistence.repositories.jobs import JobsRepository
+from app.foundation.persistence.repositories.mappings import MappingsRepository
 from app.ingestion.catalog.loader import load_catalog
 from app.ingestion.loaders.filesystem import FileSystemLoader
 from app.ingestion.orchestrator import ingest_source
 from app.ingestion.parsers.registry import default_registry
-from app.persistence.migrate import upgrade_to_head
-from app.persistence.models import PseudonymMappingRow
-from app.persistence.repositories.jobs import JobsRepository
-from app.persistence.repositories.mappings import MappingsRepository
 from tests._fakes import openai_settings
 
 URL = os.getenv("TEST_DATABASE_URL")

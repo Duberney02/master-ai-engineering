@@ -20,7 +20,7 @@ from typing import Any, Protocol
 
 from pydantic import ValidationError
 
-from app.schemas import EstimationResult
+from app.domain.schemas import EstimationResult
 from evals.dataset import CATEGORIES, EvalCase, EvalDataset, load_dataset
 from evals.metrics import MetricResult, evaluate_case
 

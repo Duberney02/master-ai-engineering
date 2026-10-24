@@ -2,7 +2,7 @@
 
 import re
 
-from app.prompts.loader import render_estimation_prompt
+from app.foundation.prompts.loader import render_estimation_prompt
 from tests.prompts.test_estimation_v1 import PER_PHASE_ASSUMPTIONS, make_request
 
 

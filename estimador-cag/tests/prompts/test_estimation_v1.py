@@ -4,8 +4,8 @@ import re
 
 import pytest
 
-from app.prompts.loader import render_estimation_prompt as _render
-from app.schemas import EstimationRequest
+from app.domain.schemas import EstimationRequest
+from app.foundation.prompts.loader import render_estimation_prompt as _render
 
 DESCRIPTION = (
     "Aplicación web para que una red de bibliotecas gestione préstamos, reservas y avisos de devolución por correo."

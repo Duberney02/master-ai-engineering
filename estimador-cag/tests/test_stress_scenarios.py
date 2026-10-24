@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.schemas import MAX_DESCRIPTION_CHARS, MIN_DESCRIPTION_CHARS
+from app.domain.schemas import MAX_DESCRIPTION_CHARS, MIN_DESCRIPTION_CHARS
 from evals.stress.fixtures.build_pdfs import FACTS, build_pdf, build_pdfs
 from evals.stress.metrics import Snapshot
 from evals.stress.scenarios import ALLOWED_N, PROFILES, FactTracker, build_scenario

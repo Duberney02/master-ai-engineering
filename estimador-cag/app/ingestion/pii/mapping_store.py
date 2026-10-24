@@ -22,7 +22,7 @@ from typing import Protocol, runtime_checkable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.persistence.repositories.mappings import MappingsRepository
+from app.foundation.persistence.repositories.mappings import MappingsRepository
 
 
 @runtime_checkable

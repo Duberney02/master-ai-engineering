@@ -144,7 +144,7 @@ cancelación, coste por fase, parser SSE, UI y evaluación monetaria. No usan mo
 
 ## Estimación estructurada: guardrails, validación y caché semántica
 
-`POST /api/v1/estimate` ejecuta un pipeline único (`app/services/pipeline.py`):
+`POST /api/v1/estimate` ejecuta un pipeline único (`app/domain/pipeline.py`):
 guardrails de entrada → caché exacta → caché semántica → render del prompt →
 generación → validación de negocio (con reintentos) → almacenamiento.
 

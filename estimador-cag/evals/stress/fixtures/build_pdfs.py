@@ -9,7 +9,7 @@ mismos bytes. Cada PDF lleva tres hechos identificables (inicio, mitad y final d
 para comprobar qué parte del adjunto sobrevive. Tamaño 0 significa «sin adjunto» y no genera archivo.
 
 El manifiesto (`manifest.json`) registra por archivo el tamaño real, los caracteres que extrae el extractor
-de la aplicación (`app.services.attachments`) y su cercanía al límite de texto de la API
+de la aplicación (`app.foundation.attachments.extractor`) y su cercanía al límite de texto de la API
 (`MAX_DESCRIPTION_CHARS`, 80 000 caracteres entre transcripción y adjuntos). Superarlo no trunca: la API
 responde 413.
 """
@@ -26,8 +26,8 @@ from pathlib import Path
 
 from fpdf import FPDF
 
-from app.schemas import MAX_DESCRIPTION_CHARS
-from app.services.attachments import extract_attachments
+from app.domain.schemas import MAX_DESCRIPTION_CHARS
+from app.foundation.attachments.extractor import extract_attachments
 
 DEFAULT_SIZES_KB = (5, 20, 50, 100)
 GENERATED_DIR = Path(__file__).parent / "generated"

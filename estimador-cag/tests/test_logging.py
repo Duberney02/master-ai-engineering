@@ -4,8 +4,8 @@ import logging
 import pytest
 import structlog
 
+from app.foundation.llm.service import generate_estimation
 from app.logging_config import configure_logging
-from app.services.llm_service import generate_estimation
 from tests._fakes import openai_response, openai_settings, patch_openai, patch_settings
 
 

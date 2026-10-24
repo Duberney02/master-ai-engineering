@@ -5,8 +5,8 @@ import re
 
 import pytest
 
-from app.prompts.loader import DEFAULT_PROMPT_VERSION, OUTPUT_CONTRACT_MARKER, render_estimation_prompt
-from app.services.validation import validate_text
+from app.domain.validation import validate_text
+from app.foundation.prompts.loader import DEFAULT_PROMPT_VERSION, OUTPUT_CONTRACT_MARKER, render_estimation_prompt
 from tests.prompts.test_estimation_v1 import make_request
 
 

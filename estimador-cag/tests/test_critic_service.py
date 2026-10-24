@@ -4,12 +4,12 @@ import json
 
 import pytest
 
-from app.prompts.loader import render_auxiliary_template
-from app.schemas import EstimationResult
-from app.schemas.critic import CriticFeedback, Verdict
-from app.services.critic import CriticService, render_feedback_message
-from app.services.sessions import ProjectMetadata
-from app.services.structured import StructuredOutputError
+from app.domain.schemas import EstimationResult
+from app.domain.schemas.critic import CriticFeedback, Verdict
+from app.foundation.llm.structured import StructuredOutputError
+from app.foundation.prompts.loader import render_auxiliary_template
+from app.generation.agentic.critic import CriticService, render_feedback_message
+from app.generation.conversation.sessions import ProjectMetadata
 from tests._acb import ScriptedGenerator, accept, estimation, needs_iteration
 from tests._fakes import openai_settings
 

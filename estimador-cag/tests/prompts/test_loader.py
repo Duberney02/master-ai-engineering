@@ -3,14 +3,14 @@ from jinja2 import StrictUndefined, UndefinedError
 from pydantic import ValidationError
 from structlog.testing import capture_logs
 
-from app.prompts import loader
-from app.prompts.loader import (
+from app.domain.schemas import EstimationRequest
+from app.foundation.prompts import loader
+from app.foundation.prompts.loader import (
     UnknownPromptVersionError,
     available_versions,
     prompt_hash,
     render_estimation_prompt,
 )
-from app.schemas import EstimationRequest
 from tests.prompts.test_estimation_v1 import DESCRIPTION, make_request
 
 

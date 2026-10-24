@@ -7,11 +7,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app import dependencies
+from app.dependencies import get_history, get_pipeline
+from app.domain import history as history_module
+from app.domain.history import EstimationHistory
+from app.domain.pipeline import PipelineOutcome
+from app.domain.schemas import EstimationRequest, EstimationResult
 from app.main import app
-from app.schemas import EstimationRequest, EstimationResult
-from app.services import history as history_module
-from app.services.history import EstimationHistory, get_history
-from app.services.pipeline import PipelineOutcome, get_pipeline
 from tests._fakes import openai_settings, patch_settings
 
 RESULT = {
@@ -267,7 +269,7 @@ def test_estimation_survives_a_failing_history(mocker):
 
 def test_history_endpoints_return_503_when_not_configured(mocker):
     patch_settings(mocker, openai_settings(moderation_enabled=False))
-    history_module._instances.clear()
+    dependencies._history_instances.clear()
     app.dependency_overrides[get_pipeline] = lambda: FakePipeline()
     try:
         with TestClient(app) as client:

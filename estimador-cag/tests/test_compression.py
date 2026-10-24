@@ -2,11 +2,11 @@
 
 import pytest
 
-from app.services.anchors import AnchorMatch, HeuristicAnchorDetector
-from app.services.compression import CompressionPolicy
-from app.services.llm_wrapper import Completion
-from app.services.sessions import MAX_ANCHORS, ConversationHistory
-from app.services.summarizer import LLMSummarizer
+from app.foundation.llm.wrapper import Completion
+from app.generation.conversation.anchors import AnchorMatch, HeuristicAnchorDetector
+from app.generation.conversation.compression import CompressionPolicy
+from app.generation.conversation.sessions import MAX_ANCHORS, ConversationHistory
+from app.generation.conversation.summarizer import LLMSummarizer
 from tests._fakes import openai_settings
 
 
@@ -45,7 +45,7 @@ def test_turns_that_leave_the_window_are_queued_for_compression_in_order():
 
 
 def test_anchors_are_deduplicated_and_bounded_keeping_the_most_recent():
-    from app.services.sessions import AnchorTurn
+    from app.generation.conversation.sessions import AnchorTurn
 
     h = history()
     for n in range(MAX_ANCHORS + 3):

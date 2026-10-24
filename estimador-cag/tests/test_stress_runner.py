@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from app.services.sessions import get_session_store
+from app.dependencies import get_session_store
 from evals.stress import run
 from evals.stress.scenarios import build_scenario
 from tests import test_sessions_api as base

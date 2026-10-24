@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.schemas import EstimationRequest, EstimationResult
-from app.services import semantic_cache
-from app.services.cache import CachedEstimation
-from app.services.semantic_cache import SemanticCache, attributes, index_name, semantic_text
+from app.domain.schemas import EstimationRequest, EstimationResult
+from app.generation.cag import semantic as semantic_cache
+from app.generation.cag.exact import CachedEstimation
+from app.generation.cag.semantic import SemanticCache, attributes, index_name, semantic_text
 from tests._fakes import anthropic_settings, openai_settings
 
 RESULT = EstimationResult(

@@ -18,7 +18,7 @@ carpeta.
 master-ai-engineering/
 ├── README.md                     ← este archivo (índice del repo)
 ├── estimador-cag/                ← proyecto 1: API de estimación de software con CAG
-│   ├── app/                      ← código FastAPI (routers, services, schemas, config)
+│   ├── app/                      ← código FastAPI (foundation, domain, generation, ingestion, api; ver ARCHITECTURE.md)
 │   ├── tests/                    ← suite de pytest
 │   ├── docs/                    ← documentación e historial de diseño
 │   └── README.md                 ← documentación completa del proyecto

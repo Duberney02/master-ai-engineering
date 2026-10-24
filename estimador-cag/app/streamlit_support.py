@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import AsyncIterator, Iterator, Mapping, MutableMapping
 
-from app.prompts.loader import few_shot_examples  # noqa: F401  (se reexporta para el cliente Streamlit)
+from app.foundation.prompts.loader import few_shot_examples  # noqa: F401  (se reexporta para el cliente Streamlit)
 
 # Una transcripción de 80 000 caracteres ocupa como mucho ~320 KB en UTF-8.
 MAX_TRANSCRIPT_BYTES = 400_000

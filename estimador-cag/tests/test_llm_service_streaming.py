@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.llm_service import StreamMetrics, generate_estimation_stream
+from app.foundation.llm.service import StreamMetrics, generate_estimation_stream
 from tests._fakes import (
     LONG_TRANSCRIPTION,
     anthropic_final_message,

@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from app.schemas import EstimationResult
-from app.services.validation import (
+from app.domain.schemas import EstimationResult
+from app.domain.validation import (
     ResultValidationError,
     apply_out_of_scope_filter,
     validate_text,

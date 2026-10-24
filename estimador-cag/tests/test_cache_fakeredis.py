@@ -7,9 +7,9 @@ import fakeredis
 import pytest
 from fakeredis import FakeAsyncRedis
 
-from app.schemas import EstimationRequest, EstimationResult
-from app.services.cache import CachedEstimation, EstimationCache, make_key, make_result_key
-from app.services.llm_wrapper import Completion, LLMWrapper
+from app.domain.schemas import EstimationRequest, EstimationResult
+from app.foundation.llm.wrapper import Completion, LLMWrapper
+from app.generation.cag.exact import CachedEstimation, EstimationCache, make_key, make_result_key
 from tests._fakes import openai_settings
 
 URL = "redis://fake:6379/0"
@@ -34,7 +34,7 @@ def connect(mocker, server):
         assert url == URL
         return FakeAsyncRedis(server=server, decode_responses=kwargs.get("decode_responses", False))
 
-    return mocker.patch("app.services.cache.Redis.from_url", side_effect=factory)
+    return mocker.patch("app.foundation.llm.cache.Redis.from_url", side_effect=factory)
 
 
 @pytest.fixture
@@ -114,7 +114,7 @@ async def test_unserializable_values_are_not_written_and_do_not_raise(cache, ser
 async def test_redis_errors_degrade_to_a_miss(mocker):
     from redis.exceptions import ConnectionError as RedisConnectionError
 
-    mocker.patch("app.services.cache.Redis.from_url", side_effect=RedisConnectionError("caído"))
+    mocker.patch("app.foundation.llm.cache.Redis.from_url", side_effect=RedisConnectionError("caído"))
     broken = EstimationCache(openai_settings(redis_url=URL))
 
     await broken.set("k", {"v": 1})

@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.embedding_pipeline.embedder import OpenAIEmbedder  # noqa: E402
+from app.generation.rag.embedding.embedder import OpenAIEmbedder  # noqa: E402
 
 
 def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:

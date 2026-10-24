@@ -3,7 +3,7 @@
 La URL de la base de datos se lee de `app.config.Settings` (no de `alembic.ini`) para que el
 contenedor, el anfitrión y el CI usen la misma fuente de verdad. Es la URL asíncrona de la aplicación
 (`postgresql+asyncpg://…`), por lo que las migraciones se ejecutan con un motor asíncrono. Las
-migraciones se descubren importando `app.persistence.models`: solo gestionan las tablas de la ingesta,
+migraciones se descubren importando `app.foundation.persistence.models`: solo gestionan las tablas de la ingesta,
 no la tabla `estimations` del historial.
 """
 
@@ -16,7 +16,7 @@ from sqlalchemy.pool import NullPool
 
 from alembic import context
 from app.config import get_settings
-from app.persistence.models import Base
+from app.foundation.persistence.models import Base
 
 config = context.config
 

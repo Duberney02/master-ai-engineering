@@ -2,9 +2,9 @@
 
 import pytest
 
-from app.schemas.acb import BossDecision
-from app.schemas.critic import CriticFeedback
-from app.services.boss import decide
+from app.domain.schemas.acb import BossDecision
+from app.domain.schemas.critic import CriticFeedback
+from app.generation.agentic.boss import decide
 from tests._acb import accept, needs_iteration, reject
 
 
@@ -39,7 +39,7 @@ def test_the_review_confidence_does_not_change_the_decision():
 
 
 def test_the_boss_makes_no_llm_calls(mocker):
-    sdk = mocker.patch("app.services.llm_service.AsyncOpenAI")
+    sdk = mocker.patch("app.foundation.llm.service.AsyncOpenAI")
 
     decide(feedback(needs_iteration()), 1, 3)
 

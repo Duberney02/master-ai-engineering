@@ -1,7 +1,7 @@
 import pytest
 
-from app.context.examples import ESTIMATION_EXAMPLES, ESTIMATION_EXAMPLES_CATALOG
-from app.services.evaluation import evaluate_estimation
+from app.domain.evaluation import evaluate_estimation
+from app.foundation.prompts.examples import ESTIMATION_EXAMPLES, ESTIMATION_EXAMPLES_CATALOG
 
 WELL_FORMED = ESTIMATION_EXAMPLES[0]["estimation"]  # total 292, rango 280–340
 

@@ -3,7 +3,7 @@
 
 import pytest
 
-from app.services.sessions import get_session_store
+from app.dependencies import get_session_store
 from tests import test_sessions_api as base
 from tests._fakes import openai_settings, patch_settings
 from tests.test_sessions_api import TRANSCRIPT, estimate, new_session

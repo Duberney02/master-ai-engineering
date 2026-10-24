@@ -8,15 +8,15 @@ from fastapi import HTTPException
 from openai import APITimeoutError, AuthenticationError
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from app.services.cache import EstimationCache, make_key
-from app.services.llm_service import (
+from app.foundation.llm.cache import EstimationCache, make_key
+from app.foundation.llm.service import (
     GenerationOptions,
     StreamMetrics,
     generate_estimation,
     generate_estimation_stream,
     generate_from_prompts,
 )
-from app.services.llm_wrapper import LLMWrapper
+from app.foundation.llm.wrapper import LLMWrapper
 from tests._fakes import (
     LONG_TRANSCRIPTION,
     anthropic_final_message,
@@ -46,7 +46,7 @@ class MemoryCache:
 @pytest.fixture
 def memory(mocker):
     cache = MemoryCache()
-    mocker.patch("app.services.llm_wrapper.EstimationCache", return_value=cache)
+    mocker.patch("app.foundation.llm.wrapper.EstimationCache", return_value=cache)
     return cache
 
 
@@ -305,7 +305,7 @@ async def test_stream_truncation_and_missing_usage_are_not_cached(mocker, memory
 async def test_sdk_timeout_retries_and_close_are_configured(mocker):
     patch_settings(mocker, priced(llm_timeout=12, llm_retries=1))
     patch_openai(mocker, openai_response("Respuesta"))
-    from app.services import llm_service
+    from app.foundation.llm import service as llm_service
 
     llm_service.AsyncOpenAI.return_value.close = AsyncMock()
     await generate_estimation(LONG_TRANSCRIPTION)

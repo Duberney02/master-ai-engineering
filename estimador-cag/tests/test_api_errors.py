@@ -31,7 +31,7 @@ from openai import (
     RateLimitError as OpenAIRateLimit,
 )
 
-from app.context.examples import ESTIMATION_EXAMPLES
+from app.foundation.prompts.examples import ESTIMATION_EXAMPLES
 from tests._fakes import (
     LONG_TRANSCRIPTION,
     anthropic_response,

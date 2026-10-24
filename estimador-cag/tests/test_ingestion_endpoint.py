@@ -13,12 +13,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app.dependencies import get_catalog, get_filesystem_loader, get_parser_registry
+from app.foundation.persistence.database import get_session
+from app.foundation.persistence.models import Base
 from app.ingestion.catalog.loader import load_catalog
 from app.ingestion.loaders.filesystem import FileSystemLoader
 from app.ingestion.parsers.registry import default_registry
 from app.main import app
-from app.persistence.database import get_session
-from app.persistence.models import Base
 from tests._fakes import openai_settings
 
 CATALOG = """
@@ -79,7 +79,7 @@ async def ingestion_client(tmp_path, monkeypatch):
     app.dependency_overrides[get_filesystem_loader] = lambda: FileSystemLoader(data_root=tmp_path)
     app.dependency_overrides[get_parser_registry] = default_registry
     app.dependency_overrides[get_session] = override_session
-    monkeypatch.setattr("app.routers.ingestion.SessionLocal", sessions)
+    monkeypatch.setattr("app.api.ingestion.SessionLocal", sessions)
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         yield client
@@ -141,7 +141,7 @@ async def test_no_job_is_created_for_rejected_sources(ingestion_client):
     await _run(ingestion_client, "excluded_xlsx")
     await _run(ingestion_client, "does_not_exist")
 
-    from app.persistence.repositories.jobs import list_jobs
+    from app.foundation.persistence.repositories.jobs import list_jobs
 
     async for session in app.dependency_overrides[get_session]():
         assert await list_jobs(session) == []
@@ -168,7 +168,7 @@ async def test_only_the_two_documented_endpoints_are_exposed():
 
 
 async def test_endpoints_answer_503_without_database_configured(mocker):
-    mocker.patch("app.persistence.database.get_settings", return_value=openai_settings(database_url=None))
+    mocker.patch("app.foundation.persistence.database.get_settings", return_value=openai_settings(database_url=None))
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/api/v1/ingestion/jobs/00000000-0000-0000-0000-000000000000")
 

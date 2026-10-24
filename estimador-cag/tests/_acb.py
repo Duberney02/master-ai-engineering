@@ -6,7 +6,7 @@ todas las llamadas para poder inspeccionarlas.
 
 import json
 
-from app.services.llm_wrapper import Completion
+from app.foundation.llm.wrapper import Completion
 
 CRITIC_MARKER = "revisor independiente"
 METADATA_MARKER = "extractor de datos"

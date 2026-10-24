@@ -10,7 +10,7 @@ Una librería nueva solo entra si aporta una ventaja medible frente a lo que ya 
 - clientes **asíncronos** (`AsyncOpenAI`, `AsyncAnthropic`) y streaming propio;
 - contrato en español con reglas de negocio (`validate_text`, filtro de fuera de alcance, corrección automática con el motivo del fallo).
 
-## Primitiva propia: `app.services.structured.generate_structured`
+## Primitiva propia: `app.foundation.llm.structured.generate_structured`
 
 Es la «primitiva de generación estructurada basada en modelos Pydantic» del proyecto: recibe un generador (`generate_from_messages` por defecto), una lista de mensajes y un modelo Pydantic; valida la respuesta con `extract_json` + `model_validate`, y ante una respuesta inválida reintenta con la respuesta anterior y el motivo (`correction_message`) hasta `attempts` veces, devolviendo el objeto y las completions consumidas. Se usa en el crítico (`CriticFeedback`) y en el detector de anclas con LLM (`AnchorVerdict`). Como pasa por `generate_from_messages`, hereda caché (solo se cachean respuestas válidas), fallback, métricas y errores saneados. Son ~60 líneas sin dependencias nuevas, cubiertas por `tests/test_structured.py`.
 

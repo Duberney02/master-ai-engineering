@@ -8,7 +8,7 @@ los encabezados estructurales y las palabras SHALL/MUST de las specs, en inglés
 Monorepo del máster en AI Engineering. Un mismo producto (estimador de proyectos con IA) con varios proyectos:
 
 - `estimador-cag/`: servicio FastAPI (Python 3.11, uv). **Todo el trabajo de IA vive aquí.**
-- `estimator-web/`: cliente Rails 8 (Faraday, Minitest, WebMock).
+- `estimator-web/`: cliente Rails 8 organizado por contextos ([`ARCHITECTURE.md`](estimator-web/ARCHITECTURE.md)): Faraday, Minitest, WebMock y PostgreSQL solo para el historial del Chunking Lab.
 - `estimator-web-react/`: el mismo cliente en React + TypeScript.
 - `openspec/`: specs (`specs/estimator/`) y cambios (`changes/`). El trabajo nuevo sigue OpenSpec.
 - `.agents/skills/`: skills de OpenSpec (`openspec-propose`, `-apply-change`, `-sync-specs`, `-archive-change`).
@@ -23,6 +23,8 @@ docker compose -f docker-compose.verify.yml run --rm api-test tests/test_x.py -k
 docker compose -f docker-compose.verify.yml run --rm api-lint              # ruff check
 docker compose -f docker-compose.verify.yml run --rm api-lint check . --fix
 docker compose -f docker-compose.verify.yml run --rm api-uv lock           # regenerar uv.lock
+docker compose -f docker-compose.verify.yml run --rm web-test              # cliente Rails: bin/rails test (con PostgreSQL efímero)
+docker compose -f docker-compose.verify.yml run --rm web-lint              # cliente Rails: RuboCop
 docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
 docker compose up --build                                                   # stack completo (API 8000, Rails 3000, React 3001, Streamlit 8501)
 ```

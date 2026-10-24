@@ -72,6 +72,11 @@ SAFE_FIELDS = frozenset(
         "strategies_count",
         "queries_count",
         "reason",
+        # Modelos en runtime: knob y modelos (nombres públicos), nunca claves.
+        "key",
+        "old_effective",
+        "new_value",
+        "reset",
         # Adjuntos: páginas ilegibles y recortes (sin nombres de archivo ni texto).
         "page",
         "original_chars",

@@ -29,6 +29,7 @@ from app.domain.validation import (
     validate_text,
 )
 from app.foundation.guardrails.input import InputGuardrails
+from app.foundation.llm.runtime_config import RuntimeModelConfig, task_model
 from app.foundation.llm.service import generate_from_messages
 from app.foundation.llm.wrapper import Completion
 from app.foundation.prompts.loader import (
@@ -121,9 +122,17 @@ class SessionEstimationService:
             build_anchor_detector(settings, generate), LLMSummarizer(settings, generate=generate)
         )
 
-    def _model_options(self, task: Task) -> dict[str, str]:
-        """`model=` solo cuando la tarea tiene un modelo propio; si no, el generador usa el global."""
-        model = getattr(self.settings, f"{task}_model")
+    async def _model_options(self, task: Task) -> dict[str, str]:
+        """`model=` solo cuando la tarea tiene un modelo propio; si no, el generador usa el global.
+
+        La estimación usa `estimator_model` (`.env`) salvo que haya un override en runtime del modelo primario, que
+        la suplanta: el generador resuelve entonces el primario efectivo."""
+        if task == "estimator":
+            if "primary_model" in await RuntimeModelConfig(self.settings).overrides():
+                return {}
+            model = self.settings.estimator_model
+        else:
+            model = await task_model(self.settings, f"{task}_model")
         return {"model": model} if model else {}
 
     async def check_input(self, request: EstimationRequest, prompt_version: str) -> None:
@@ -183,7 +192,8 @@ class SessionEstimationService:
         completions: list[Completion] = []
         result = None
         for attempt in range(1, self.settings.validation_max_attempts + 1):
-            completion = await self._generate(messages, accept=_is_valid_estimation, **self._model_options("estimator"))
+            model_options = await self._model_options("estimator")
+            completion = await self._generate(messages, accept=_is_valid_estimation, **model_options)
             completions.append(completion)
             try:
                 result = apply_out_of_scope_filter(validate_text(completion.text))
@@ -304,7 +314,7 @@ class SessionEstimationService:
                 messages,
                 accept=_is_valid_metadata,
                 max_tokens=_METADATA_MAX_TOKENS,
-                **self._model_options("metadata"),
+                **await self._model_options("metadata"),
             )
         except Exception as exc:
             logger.warning("metadata_extraction_failed", error_type=type(exc).__name__)

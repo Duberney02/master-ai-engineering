@@ -3,6 +3,7 @@
 from typing import Protocol
 
 from app.config import Settings
+from app.foundation.llm.runtime_config import task_model
 from app.foundation.llm.service import generate_from_messages
 from app.foundation.llm.structured import Generator
 from app.foundation.llm.wrapper import Completion
@@ -37,7 +38,7 @@ class LLMSummarizer:
         )
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         options: dict = {"max_tokens": _SUMMARY_MAX_TOKENS}
-        if self.settings.summary_model:
-            options["model"] = self.settings.summary_model
+        if model := await task_model(self.settings, "summary_model"):
+            options["model"] = model
         completion = await self._generate(messages, **options)
         return clean_summary(completion.text), [completion]

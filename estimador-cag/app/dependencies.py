@@ -17,6 +17,7 @@ from app.domain.acb import ActorCriticBoss
 from app.domain.history import EstimationHistory
 from app.domain.pipeline import EstimationPipeline
 from app.domain.session_estimation import SessionEstimationService
+from app.foundation.llm.runtime_config import RuntimeModelConfig, effective_settings
 from app.generation.agentic.critic import CriticService
 from app.generation.conversation.sessions import SessionStore
 from app.generation.rag.chunking.base import Chunker
@@ -134,8 +135,15 @@ def get_embedder() -> OpenAIEmbedder:
     return OpenAIEmbedder()
 
 
-def get_chunker_builder() -> Callable[[list[str]], list[Chunker]]:
-    """Construye los chunkers pedidos por nombre; no hace llamadas a ninguna API (ver `chunking/registry.py`)."""
-    settings = get_settings()
+async def get_chunker_builder() -> Callable[[list[str]], list[Chunker]]:
+    """Construye los chunkers pedidos por nombre; no hace llamadas a ninguna API (ver `chunking/registry.py`).
+
+    Resuelve los modelos de los chunkers con LLM en el momento de la solicitud (overrides en runtime)."""
+    settings = await effective_settings(get_settings())
     embedder = get_embedder()
     return lambda names: build_chunkers(names, settings, embedder)
+
+
+def get_runtime_config() -> RuntimeModelConfig:
+    """Almacén de overrides de modelos en runtime (Redis); no guarda estado, cada operación abre su conexión."""
+    return RuntimeModelConfig(get_settings())

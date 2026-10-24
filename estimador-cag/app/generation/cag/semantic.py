@@ -1,7 +1,7 @@
 """Caché semántica de estimaciones sobre Redis Stack (RediSearch) con `redisvl`.
 
 Una entrada solo se reutiliza si coinciden versión de prompt, tipo de proyecto, nivel de
-detalle y formato (filtros de tipo tag) y la similitud coseno alcanza el umbral. Cualquier
+detalle, formato y modelo que la generó (filtros de tipo tag) y la similitud coseno alcanza el umbral. Cualquier
 fallo (Redis, índice, embeddings) se registra y se trata como un fallo de caché.
 """
 
@@ -20,7 +20,7 @@ from app.generation.cag.exact import CachedEstimation
 
 logger = structlog.get_logger(__name__)
 
-ATTRIBUTES = ("prompt_version", "project_type", "detail_level", "output_format")
+ATTRIBUTES = ("prompt_version", "project_type", "detail_level", "output_format", "model")
 
 
 def semantic_text(request: EstimationRequest) -> str:
@@ -31,19 +31,22 @@ def semantic_text(request: EstimationRequest) -> str:
     return "\n".join(parts)
 
 
-def attributes(request: EstimationRequest, prompt_version: str) -> dict[str, str]:
+def attributes(request: EstimationRequest, prompt_version: str, model: str) -> dict[str, str]:
+    """Filtros de la entrada. El modelo evita servir una respuesta generada por otro LLM (p. ej. tras un cambio)."""
     return {
         "prompt_version": prompt_version,
         "project_type": request.project_type.value,
         "detail_level": request.detail_level.value,
         "output_format": request.output_format.value,
+        "model": model,
     }
 
 
 def index_name(settings: Settings) -> str:
     """El modelo y las dimensiones forman parte del nombre: vectores incompatibles no se mezclan."""
     model = re.sub(r"[^a-z0-9]+", "_", settings.embedding_model.lower()).strip("_")
-    return f"estimation_semantic_{model}_{settings.embedding_dimensions}"
+    # `_by_model`: el índice con el filtro `model` es otro esquema; el anterior queda huérfano y caduca por TTL.
+    return f"estimation_semantic_{model}_{settings.embedding_dimensions}_by_model"
 
 
 @lru_cache
@@ -119,11 +122,15 @@ class SemanticCache:
             s.cache_timeout,
         )
 
-    async def lookup(self, request: EstimationRequest, prompt_version: str) -> CachedEstimation | None:
-        """Devuelve la entrada más parecida por encima del umbral (nunca en `log_only`)."""
+    async def lookup(
+        self, request: EstimationRequest, prompt_version: str, model: str | None = None
+    ) -> CachedEstimation | None:
+        """Devuelve la entrada más parecida por encima del umbral (nunca en `log_only`).
+
+        `model` es el LLM con el que se generaría la respuesta; por defecto, el primario de `settings`."""
         if not self.enabled or self._too_long(request):
             return None
-        values = attributes(request, prompt_version)
+        values = attributes(request, prompt_version, model or self.settings.effective_model())
         try:
             vector = await self._embed(semantic_text(request))
             cache = await self._cache()
@@ -151,7 +158,7 @@ class SemanticCache:
     async def store(self, request: EstimationRequest, prompt_version: str, entry: CachedEstimation) -> None:
         if not self.enabled or self._too_long(request):
             return
-        values = attributes(request, prompt_version)
+        values = attributes(request, prompt_version, entry.model or self.settings.effective_model())
         try:
             vector = await self._embed(semantic_text(request))
             cache = await self._cache()

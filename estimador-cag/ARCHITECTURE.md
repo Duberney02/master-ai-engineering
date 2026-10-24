@@ -25,7 +25,7 @@ app/
 ├── config.py · dependencies.py · main.py   # raíz: settings, composition root, factory FastAPI
 ├── foundation/     # fontanería técnica, sin opinión de arquitectura IA
 │   ├── llm/        #   wrapper (LiteLLM/SDK async, caché de completions, fallback), service, structured,
-│   │               #   cache (almacén Redis), embeddings (embedder async), runtime_config (Sesión 7, C)
+│   │               #   cache (almacén Redis), embeddings (embedder async), runtime_config (modelos en runtime)
 │   ├── prompts/    #   loader Jinja2 + plantillas versionadas (estimation v1–v4, auxiliary, sessions) + ejemplos
 │   ├── guardrails/ #   input (moderación, inyección, PII)
 │   ├── attachments/#   extracción de texto de PDF/DOCX
@@ -102,7 +102,7 @@ Las sesiones (`/api/v1/sessions/*`) pasan por `domain/session_estimation.py` (me
 | Si añades… | Va en… |
 |---|---|
 | Backend LLM, plantilla de prompt, guardrail, adjunto, persistencia | `foundation/` |
-| Modelo seleccionable en runtime | `foundation/llm/runtime_config.py` |
+| Modelo seleccionable en runtime (knob nuevo) | `foundation/llm/runtime_config.py` (`MODEL_KNOBS`) y su ruta en `api/config.py` |
 | Estrategia de chunking, embeddings, comparación | `generation/rag/` |
 | Vector store o retriever (Sesión 8) | `generation/rag/store/` y `generation/rag/retriever.py` |
 | Estrategia de caché | `generation/cag/` |

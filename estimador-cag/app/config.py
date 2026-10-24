@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     # contextual retrieval: modelo de Anthropic (usa prompt caching).
     propositional_chunker_model: str = Field(default="gpt-4o-mini", min_length=1, max_length=100)
     contextual_chunker_model: str = Field(default="claude-sonnet-4-5", min_length=1, max_length=100)
+    # Catálogo de modelos seleccionables en runtime (PUT /api/v1/config/models), separado por comas. La API lo filtra
+    # por las claves configuradas. Distinto de `allowed_models`, que restringe el campo `model` de cada solicitud.
+    available_models: str = "gpt-4o-mini,gpt-4o,claude-haiku-4-5,claude-sonnet-4-5"
     # Detección de anclas de memoria: reglas locales o una llamada al LLM (con las reglas como respaldo).
     anchor_detection_mode: Literal["heuristic", "llm"] = "heuristic"
     # Versión del prompt de estimación que usan las sesiones cuando la solicitud no indica `prompt_version`.
@@ -114,6 +117,9 @@ class Settings(BaseSettings):
         if self.fallback_provider and not getattr(self, f"{self.fallback_provider}_api_key"):
             raise ValueError("API key for FALLBACK_PROVIDER is required")
         return self
+
+    def available_models_list(self) -> list[str]:
+        return [m.strip() for m in self.available_models.split(",") if m.strip()]
 
     def allowed_models_list(self) -> list[str]:
         return [m.strip() for m in self.allowed_models.split(",") if m.strip()]

@@ -64,7 +64,7 @@ class FakeSemantic:
     def __init__(self, rec, hit=None):
         self.rec, self.hit, self.stored = rec, hit, []
 
-    async def lookup(self, request, prompt_version):
+    async def lookup(self, request, prompt_version, model=None):
         self.rec.events.append("semantic_lookup")
         return self.hit
 

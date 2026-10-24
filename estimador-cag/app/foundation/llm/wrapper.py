@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.config import Settings
 from app.foundation.llm.cache import EstimationCache, make_key
+from app.foundation.llm.runtime_config import provider_for_model
 
 logger = structlog.get_logger(__name__)
 SUCCESS_REASONS = {"stop", "end_turn", "stop_sequence"}
@@ -52,7 +53,8 @@ class LLMWrapper:
         self.cache = cache or EstimationCache(settings)
 
     def targets(self, model: str, allow_fallback: bool):
-        yield self.settings.llm_provider, model
+        # El proveedor lo indica el modelo (un crítico de Anthropic puede convivir con un primario de OpenAI).
+        yield provider_for_model(model, self.settings.llm_provider), model
         if allow_fallback and self.settings.fallback_provider:
             yield self.settings.fallback_provider, self.settings.fallback_model
 

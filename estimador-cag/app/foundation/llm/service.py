@@ -54,6 +54,7 @@ from openai import (
 
 from app.config import Settings, get_settings
 from app.domain.schemas.estimation import DEFAULT_NUM_EXAMPLES, Phase, PreprocessingMode
+from app.foundation.llm.runtime_config import effective_settings
 from app.foundation.llm.wrapper import Completion as _Completion
 from app.foundation.llm.wrapper import LLMWrapper, ProviderFailure, total_cost
 from app.foundation.prompts.examples import ExampleFormat, format_examples, select_examples
@@ -356,7 +357,7 @@ def _result(completion, phases, options, extracted, start) -> LLMEstimationResul
 
 async def generate_estimation(transcription: str, options: GenerationOptions | None = None) -> LLMEstimationResult:
     options = options or GenerationOptions()
-    settings = get_settings()
+    settings = await effective_settings(get_settings())
     model = _resolve_model(settings, options)
     start = time.monotonic()
 
@@ -418,7 +419,7 @@ async def generate_estimation_stream(
 ) -> AsyncIterator[str]:
     """Misma orquestación y metadatos que la respuesta normal; emite solo la estimación."""
     options = options or GenerationOptions()
-    settings = get_settings()
+    settings = await effective_settings(get_settings())
     model = _resolve_model(settings, options)
     start = time.monotonic()
     phases: list[PhaseResult] = []
@@ -468,14 +469,18 @@ async def generate_estimation_stream(
 
 
 async def generate_from_prompts(
-    system_prompt: str, user_message: str, accept: Callable[[str], bool] | None = None
+    system_prompt: str,
+    user_message: str,
+    accept: Callable[[str], bool] | None = None,
+    settings: Settings | None = None,
 ) -> _Completion:
     """Estimación estructurada: recibe los mensajes system/user ya renderizados desde las
     plantillas y aplica la misma política de proveedor (caché, reintentos, fallback, costes).
 
     `accept` decide si el texto es una respuesta válida: solo esas se guardan en la caché de
-    completions y las entradas cacheadas que no la cumplen se ignoran."""
-    settings = get_settings()
+    completions y las entradas cacheadas que no la cumplen se ignoran. `settings` permite reutilizar la resolución
+    de modelos en runtime que el llamante ya hizo (ver `effective_settings`); sin él se resuelve aquí."""
+    settings = settings or await effective_settings(get_settings())
     return await _complete(
         settings,
         system_prompt,
@@ -497,7 +502,7 @@ async def generate_from_messages(
     `model` fija el modelo de la tarea; sin él se usa el modelo efectivo global."""
     if len(messages) < 2 or messages[0].get("role") != "system":
         raise ValueError("messages must start with a system message followed by at least one turn")
-    settings = get_settings()
+    settings = await effective_settings(get_settings())
     return await _complete(
         settings,
         messages[0]["content"],
@@ -513,7 +518,7 @@ async def generate_from_prompts_stream(
 ) -> AsyncIterator[str]:
     """Versión en streaming de `generate_from_prompts`. `result` se completa (modelo,
     tokens, costes, caché) solo cuando el stream termina con éxito."""
-    settings = get_settings()
+    settings = await effective_settings(get_settings())
 
     def call(provider, target_model, attempt):
         selected = settings.model_copy(update={"llm_provider": provider})

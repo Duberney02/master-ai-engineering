@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from app.config import Settings
 from app.domain.schemas import EstimationResult
 from app.domain.schemas.critic import CriticFeedback
+from app.foundation.llm.runtime_config import task_model
 from app.foundation.llm.service import generate_from_messages
 from app.foundation.llm.structured import Generator, generate_structured
 from app.foundation.llm.wrapper import Completion
@@ -70,7 +71,7 @@ class CriticService:
         )
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         options: dict = {"max_tokens": _CRITIC_MAX_TOKENS}
-        if self.settings.critic_model:
-            options["model"] = self.settings.critic_model
+        if model := await task_model(self.settings, "critic_model"):
+            options["model"] = model
         feedback, completions = await generate_structured(self._generate, messages, CriticFeedback, **options)
         return CriticReview(feedback=feedback, completions=completions)

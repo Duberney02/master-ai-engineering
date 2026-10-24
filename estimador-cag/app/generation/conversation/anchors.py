@@ -18,6 +18,7 @@ import structlog
 from pydantic import BaseModel, Field
 
 from app.config import Settings
+from app.foundation.llm.runtime_config import task_model
 from app.foundation.llm.service import generate_from_messages
 from app.foundation.llm.structured import Generator, generate_structured
 from app.foundation.prompts.loader import render_auxiliary_prompt
@@ -149,8 +150,8 @@ class LLMAnchorDetector:
         )
         messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
         options: dict = {"max_tokens": _DETECTOR_MAX_TOKENS}
-        if self.settings.summary_model:
-            options["model"] = self.settings.summary_model
+        if model := await task_model(self.settings, "summary_model"):
+            options["model"] = model
         try:
             verdict, _ = await generate_structured(self._generate, messages, AnchorVerdict, **options)
         except Exception as exc:

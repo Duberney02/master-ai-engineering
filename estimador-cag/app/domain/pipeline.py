@@ -22,6 +22,7 @@ from app.domain.validation import (
     validate_text,
 )
 from app.foundation.guardrails.input import InputGuardrails
+from app.foundation.llm.runtime_config import effective_settings
 from app.foundation.llm.service import generate_from_prompts
 from app.foundation.llm.wrapper import Completion, total_cost
 from app.foundation.prompts.loader import available_versions, render_estimation_prompt
@@ -43,12 +44,6 @@ def _is_valid_text(text: str) -> bool:
     except ResultValidationError:
         return False
     return True
-
-
-async def _generate_checked(system: str, user: str) -> Completion:
-    """Generador por defecto: solo cachea completions válidas (validar antes de cachear), de modo
-    que el reintento de corrección no reciba de la caché la misma respuesta inválida."""
-    return await generate_from_prompts(system, user, accept=_is_valid_text)
 
 
 @dataclass
@@ -93,7 +88,7 @@ class EstimationPipeline:
         guardrails: InputGuardrails | None = None,
         exact_cache: EstimationCache | None = None,
         semantic_cache: SemanticCache | None = None,
-        generate: Generator = _generate_checked,
+        generate: Generator | None = None,
     ):
         self.settings = settings
         self.guardrails = guardrails or InputGuardrails(settings)
@@ -121,19 +116,22 @@ class EstimationPipeline:
         if not input_checked:
             await self.check_input(request, prompt_version)
 
-        key = make_result_key(request, prompt_version, self.settings.llm_provider, self.settings.effective_model())
+        # Los modelos en runtime se resuelven una vez por solicitud: la clave y la caché semántica usan el mismo modelo.
+        settings = await effective_settings(self.settings)
+        model = settings.effective_model()
+        key = make_result_key(request, prompt_version, settings.llm_provider, model)
         raw = await self.exact_cache.get(key)
         entry = self._valid(CachedEstimation.parse(raw) if raw is not None else None)
         if entry is not None:
             logger.info("estimation_cache_hit", layer="exact", prompt_version=prompt_version)
             return self._cached(entry, prompt_version, started, "exact")
 
-        entry = self._valid(await self.semantic_cache.lookup(request, prompt_version))
+        entry = self._valid(await self.semantic_cache.lookup(request, prompt_version, model))
         if entry is not None:
             await self.exact_cache.set(key, entry.model_dump(mode="json"))
             return self._cached(entry, prompt_version, started, "semantic")
 
-        outcome = await self._generate_validated(request, prompt_version, started)
+        outcome = await self._generate_validated(request, prompt_version, started, settings)
         entry = CachedEstimation(result=outcome.result, model=outcome.model, provider=outcome.provider)
         await self.exact_cache.set(key, entry.model_dump(mode="json"))
         await self.semantic_cache.store(request, prompt_version, entry)
@@ -163,15 +161,22 @@ class EstimationPipeline:
             latency_ms=int((time.monotonic() - started) * 1000),
         )
 
+    async def _complete(self, settings: Settings, system: str, user: str) -> Completion:
+        """Generador por defecto: solo cachea completions válidas (validar antes de cachear), de modo
+        que el reintento de corrección no reciba de la caché la misma respuesta inválida."""
+        if self._generate is not None:
+            return await self._generate(system, user)
+        return await generate_from_prompts(system, user, accept=_is_valid_text, settings=settings)
+
     async def _generate_validated(
-        self, request: EstimationRequest, prompt_version: str, started: float
+        self, request: EstimationRequest, prompt_version: str, started: float, settings: Settings
     ) -> PipelineOutcome:
         system, user = render_estimation_prompt(request, version=prompt_version)
         max_attempts = self.settings.validation_max_attempts
         completions: list[Completion] = []
         message = user
         for attempt in range(1, max_attempts + 1):
-            completion = await self._generate(system, message)
+            completion = await self._complete(settings, system, message)
             completions.append(completion)
             try:
                 result = apply_out_of_scope_filter(validate_text(completion.text))

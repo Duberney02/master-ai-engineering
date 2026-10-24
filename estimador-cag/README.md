@@ -333,6 +333,35 @@ explícitas, fusión determinista en código y tolerancia a fallos. Como los met
 texto del usuario y se reinyectan en el system prompt, se normalizan (una línea, sin `<`, `>` ni comillas
 invertidas, longitudes acotadas) y el prompt los marca como datos y no como instrucciones.
 
+### Modelos del LLM en tiempo de ejecución (sesión 7)
+
+Los modelos se pueden cambiar sin editar `.env` ni reiniciar. `Settings` sigue siendo el valor por defecto; los
+*overrides* viven en un hash de Redis (`estimator:runtime_config`), de modo que sobreviven a reinicios y se comparten
+entre procesos. Si Redis cae, la lectura vuelve a los valores de `.env`; una escritura que no se puede guardar
+responde `503`. Requiere `REDIS_URL`.
+
+Knobs: `primary_model`, `fallback_model`, `critic_model`, `metadata_model`, `summary_model` (resumen y compresión),
+`propositional_chunker_model` y `contextual_chunker_model`. El modelo de embeddings **no** es configurable: cambiarlo
+invalidaría los vectores guardados. El catálogo seleccionable es `AVAILABLE_MODELS` y la API devuelve solo los modelos
+cuyo proveedor tiene clave.
+
+```bash
+curl -s http://localhost:8000/api/v1/config/models      # por knob: effective, default, overridden
+curl -s -X PUT http://localhost:8000/api/v1/config/models -H "Content-Type: application/json" \
+  -d '{"models": {"primary_model": "gpt-4o", "critic_model": null}}'   # parcial y todo-o-nada; null restablece
+```
+
+Errores del `PUT`: `422` knob desconocido, modelo fuera del catálogo o chunker con un modelo de otro proveedor; `400`
+falta la clave del proveedor (el mensaje nombra la variable); `503` almacén no disponible. Cada cambio deja el log
+`runtime_config_changed` (`key`, `old_effective`, `new_value`, `reset`). La API no tiene autenticación, como el resto de
+rutas: protégela con la red o un proxy en despliegues reales.
+
+Cada solicitud resuelve los modelos **una vez al empezar** y usa esa copia hasta el final; el cambio aplica desde la
+siguiente. Cambiar el primario cambia también el proveedor según el nombre del modelo (`claude*` → Anthropic, `gpt*` →
+OpenAI) y suplanta a `ESTIMATOR_MODEL`. El **fallback** es independiente: si el primario efectivo falla de forma
+reintentable se intenta el fallback efectivo (`FALLBACK_MODEL` o su override); sin fallback no hay segundo intento. Las
+cachés exacta y semántica separan sus entradas por modelo, así que un cambio nunca sirve una respuesta generada por otro.
+
 ### Pipeline mínimo de embeddings (sesión 7)
 
 `app/generation/rag/` (chunking + embeddings) trocea presupuestos históricos normalizados (un chunk por componente, con el contexto del
@@ -436,7 +465,7 @@ estimador-cag/
 │   │   └── conversation/   — sessions, context, anchors, compression, summarizer
 │   ├── ingestion/          — sesión 6: catalog/ · documents/ · loaders/ · parsers/ · cleaning/ · pii/ · orchestrator
 │   └── api/                — routers finos: project_estimations, sessions, history, prompts, ingestion,
-│                             estimations (transcripción) y embeddings (ingest y compare)
+│                             estimations (transcripción), embeddings (ingest y compare) y config (modelos en runtime)
 ├── alembic/ · alembic.ini  — migraciones de la ingesta (ingestion_jobs, pseudonym_mappings)
 ├── data/                   — catálogo (catalog/), corpus de ejemplo (seed/), presupuestos y consultas de chunking
 ├── scripts/                — demos y preflight de la sesión 6, compare.py y compare_chunkers.py

@@ -9,6 +9,9 @@ Rails.application.configure do
   # Eager load code on boot for better performance and memory savings (ignored by Rake tasks).
   config.eager_load = true
 
+  # Caché en memoria del proceso (indicador del modelo primario).
+  config.cache_store = :memory_store, { size: 4 * 1024 * 1024 }
+
   # Full error reports are disabled.
   config.consider_all_requests_local = false
 

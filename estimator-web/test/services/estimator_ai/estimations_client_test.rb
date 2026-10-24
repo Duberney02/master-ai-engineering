@@ -1,15 +1,15 @@
 require "test_helper"
 
-class EstimatorApiTest < ActiveSupport::TestCase
+class EstimationsClientTest < ActiveSupport::TestCase
   ATTRIBUTES = { "description" => "Portal de clientes para facturas.", "project_type" => "web_saas",
                  "detail_level" => "medium", "output_format" => "phases_table" }.freeze
 
   def api
-    EstimatorApi.new(base_url: API)
+    EstimatorAi::EstimationsClient.new(base_url: API)
   end
 
   def assert_api_error(expected_message, status: nil)
-    error = assert_raises(EstimatorApi::Error) { yield }
+    error = assert_raises(EstimatorAi::Error) { yield }
     assert_equal expected_message, error.message
     assert_equal status, error.status if status
     refute_includes error.message, "estimator-api.test", "no debe exponer la URL interna"
@@ -46,53 +46,53 @@ class EstimatorApiTest < ActiveSupport::TestCase
   test "400 without a usable message gets a generic rejection" do
     stub_request(:post, "#{API}/api/v1/estimate").to_return(status: 400, body: "<html>proxy</html>")
 
-    assert_api_error(EstimatorApi::REJECTED_MESSAGE, status: 400) { api.create_estimation(ATTRIBUTES) }
+    assert_api_error(EstimatorAi::BaseClient::REJECTED_MESSAGE, status: 400) { api.create_estimation(ATTRIBUTES) }
   end
 
   test "400 messages are truncated" do
     stub_request(:post, "#{API}/api/v1/estimate").to_return(json_response({ "message" => "x" * 1000 }, status: 400))
 
-    error = assert_raises(EstimatorApi::Error) { api.create_estimation(ATTRIBUTES) }
+    error = assert_raises(EstimatorAi::Error) { api.create_estimation(ATTRIBUTES) }
 
-    assert_equal EstimatorApi::GUARDRAIL_MESSAGE_LIMIT, error.message.length
+    assert_equal EstimatorAi::BaseClient::GUARDRAIL_MESSAGE_LIMIT, error.message.length
   end
 
   test "422 gets a validation message without the response body" do
     body = { "detail" => [ { "loc" => [ "body", "description" ], "msg" => "secret detail" } ] }
     stub_request(:post, "#{API}/api/v1/estimate").to_return(json_response(body, status: 422))
 
-    error = assert_api_error(EstimatorApi::VALIDATION_MESSAGE, status: 422) { api.create_estimation(ATTRIBUTES) }
+    error = assert_api_error(EstimatorAi::BaseClient::VALIDATION_MESSAGE, status: 422) { api.create_estimation(ATTRIBUTES) }
     refute_includes error.message, "secret detail"
   end
 
   test "5xx never leaks the response body" do
     stub_request(:post, "#{API}/api/v1/estimate").to_return(status: 502, body: "Traceback: db password=hunter2")
 
-    error = assert_api_error(EstimatorApi::SERVER_MESSAGE, status: 502) { api.create_estimation(ATTRIBUTES) }
+    error = assert_api_error(EstimatorAi::BaseClient::SERVER_MESSAGE, status: 502) { api.create_estimation(ATTRIBUTES) }
     refute_includes error.message, "hunter2"
   end
 
   test "connection failures are translated" do
     stub_request(:post, "#{API}/api/v1/estimate").to_raise(Faraday::ConnectionFailed.new("getaddrinfo: estimator-api.test"))
 
-    assert_api_error(EstimatorApi::CONNECTION_MESSAGE) { api.create_estimation(ATTRIBUTES) }
+    assert_api_error(EstimatorAi::BaseClient::CONNECTION_MESSAGE) { api.create_estimation(ATTRIBUTES) }
   end
 
   test "timeouts are translated" do
     stub_request(:post, "#{API}/api/v1/estimate").to_timeout
 
-    assert_api_error(EstimatorApi::CONNECTION_MESSAGE) { api.create_estimation(ATTRIBUTES) }
+    assert_api_error(EstimatorAi::BaseClient::CONNECTION_MESSAGE) { api.create_estimation(ATTRIBUTES) }
   end
 
   test "non-JSON and out-of-contract 200 responses are invalid" do
     stub_request(:post, "#{API}/api/v1/estimate").to_return(status: 200, body: "<html>no es json</html>")
-    assert_api_error(EstimatorApi::INVALID_RESPONSE_MESSAGE) { api.create_estimation(ATTRIBUTES) }
+    assert_api_error(EstimatorAi::BaseClient::INVALID_RESPONSE_MESSAGE) { api.create_estimation(ATTRIBUTES) }
 
     stub_request(:post, "#{API}/api/v1/estimate").to_return(json_response({ "nope" => 1 }))
-    assert_api_error(EstimatorApi::INVALID_RESPONSE_MESSAGE) { api.create_estimation(ATTRIBUTES) }
+    assert_api_error(EstimatorAi::BaseClient::INVALID_RESPONSE_MESSAGE) { api.create_estimation(ATTRIBUTES) }
 
     stub_request(:post, "#{API}/api/v1/estimate").to_return(json_response([ 1, 2 ]))
-    assert_api_error(EstimatorApi::INVALID_RESPONSE_MESSAGE) { api.create_estimation(ATTRIBUTES) }
+    assert_api_error(EstimatorAi::BaseClient::INVALID_RESPONSE_MESSAGE) { api.create_estimation(ATTRIBUTES) }
   end
 
   test "list_estimations requests the limit and returns the items" do
@@ -109,13 +109,13 @@ class EstimatorApiTest < ActiveSupport::TestCase
     stub_request(:get, "#{API}/api/v1/estimations").with(query: { limit: 10 })
       .to_return(json_response({ "detail" => "History is not configured" }, status: 503))
 
-    assert_api_error(EstimatorApi::HISTORY_UNAVAILABLE_MESSAGE, status: 503) { api.list_estimations }
+    assert_api_error(EstimatorAi::BaseClient::HISTORY_UNAVAILABLE_MESSAGE, status: 503) { api.list_estimations }
   end
 
   test "list_estimations rejects a non-array body" do
     stub_request(:get, "#{API}/api/v1/estimations").with(query: { limit: 10 }).to_return(json_response({ "a" => 1 }))
 
-    assert_api_error(EstimatorApi::INVALID_RESPONSE_MESSAGE) { api.list_estimations }
+    assert_api_error(EstimatorAi::BaseClient::INVALID_RESPONSE_MESSAGE) { api.list_estimations }
   end
 
   test "find_estimation returns the detail" do
@@ -127,8 +127,8 @@ class EstimatorApiTest < ActiveSupport::TestCase
   test "find_estimation 404 and non numeric ids are not found" do
     stub_request(:get, "#{API}/api/v1/estimations/99").to_return(json_response({ "detail" => "Estimation not found" }, status: 404))
 
-    assert_api_error(EstimatorApi::NOT_FOUND_MESSAGE, status: 404) { api.find_estimation(99) }
-    assert_api_error(EstimatorApi::NOT_FOUND_MESSAGE, status: 404) { api.find_estimation("../etc/passwd") }
+    assert_api_error(EstimatorAi::BaseClient::NOT_FOUND_MESSAGE, status: 404) { api.find_estimation(99) }
+    assert_api_error(EstimatorAi::BaseClient::NOT_FOUND_MESSAGE, status: 404) { api.find_estimation("../etc/passwd") }
   end
 
   test "prompt_preview requests the rendered prompt for the given options" do
@@ -146,7 +146,7 @@ class EstimatorApiTest < ActiveSupport::TestCase
   test "prompt_preview rejects a body without the system prompt" do
     stub_request(:get, "#{API}/api/v1/prompts/estimation").with(query: hash_including({})).to_return(json_response({ "x" => 1 }))
 
-    assert_api_error(EstimatorApi::INVALID_RESPONSE_MESSAGE) do
+    assert_api_error(EstimatorAi::BaseClient::INVALID_RESPONSE_MESSAGE) do
       api.prompt_preview(prompt_version: "v3", project_type: "web_saas", detail_level: "medium", output_format: "phases_table")
     end
   end
@@ -154,6 +154,6 @@ class EstimatorApiTest < ActiveSupport::TestCase
   test "defaults come from the application configuration" do
     stub_request(:get, "#{API}/api/v1/estimations/1").to_return(json_response(detail_body(id: 1)))
 
-    assert_equal 1, EstimatorApi.new.find_estimation(1)["id"]
+    assert_equal 1, EstimatorAi::EstimationsClient.new.find_estimation(1)["id"]
   end
 end

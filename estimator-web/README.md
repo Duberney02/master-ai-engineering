@@ -1,11 +1,24 @@
 # estimator-web
 
-Aplicación web Rails para el [estimador](../estimador-cag/README.md). No tiene base de datos ni claves de
-proveedores: habla solo HTTP con la API (cliente [Faraday](https://lostisland.github.io/faraday/)).
+Aplicación web Rails para el [estimador](../estimador-cag/README.md). No tiene claves de proveedores: habla solo HTTP
+con la API (cliente [Faraday](https://lostisland.github.io/faraday/)). Su única persistencia es el historial del
+Chunking Lab (PostgreSQL). La organización del código y sus reglas están en [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Funcionalidad
 
-- **Formulario** con descripción (20–80 000 caracteres), tipo de proyecto, nivel de detalle, formato de salida y
+- **Inicio** (`/`): un panel con una tarjeta por contexto. La barra de navegación marca la sección activa y muestra el
+  **modelo primario** vigente del servicio (si el servicio no responde, el indicador simplemente no aparece).
+- **Chunking Lab** (`/rag/chunking_comparisons`): compara las ocho estrategias de chunking sobre los presupuestos
+  históricos (`POST /embeddings/compare`). Formulario con las estrategias (las gratuitas vienen marcadas; las de pago
+  llevan aviso de coste y de la clave que necesitan y son opt-in), consultas predefinidas o propias y `top-k`. El
+  resultado trae la **tabla de estadísticas** (chunks, min/p50/p95/máx de tokens, huérfanos y obesos), **barras de coste**
+  y un **playground de recuperación** con la similitud de cada chunk y la indicación padre/hijo de la estrategia
+  jerárquica. Cada ejecución se **guarda** (PostgreSQL) para revisarla sin repagar; la llamada usa un tiempo de espera
+  ampliado (600 s) solo para ella.
+- **Ajustes** (`/ai_settings`): ve y cambia los modelos del LLM en tiempo de ejecución (primario, respaldo, crítico,
+  metadatos, resumen y los dos chunkers con LLM). Un selector vacío restablece el valor por defecto. El modelo de
+  embeddings se muestra de solo lectura.
+- **Estimaciones** (`/estimations/new`): formulario con descripción (20–80 000 caracteres), tipo de proyecto, nivel de detalle, formato de salida y
   versión de prompt. Admite **cargar un archivo `.txt`** (UTF-8, máx. 400 KB) que sustituye a la descripción.
   Al enviar muestra un **indicador de carga y un temporizador** de segundos transcurridos.
 - **Conversación con memoria**: al abrir el formulario crea una sesión en la API (`POST /api/v1/sessions`) y guarda su
@@ -27,6 +40,9 @@ proveedores: habla solo HTTP con la API (cliente [Faraday](https://lostisland.gi
 | `ESTIMATOR_API_URL` | `http://localhost:8000` | URL de la API del estimador |
 | `ESTIMATOR_OPEN_TIMEOUT` | `5` | segundos para abrir la conexión |
 | `ESTIMATOR_READ_TIMEOUT` | `300` | segundos de espera de la respuesta (las transcripciones largas tardan) |
+| `ESTIMATOR_COMPARE_TIMEOUT` | `600` | segundos de espera de la comparación del Chunking Lab (solo esa llamada) |
+| `ESTIMATOR_BADGE_TIMEOUT` | `2` | segundos de espera del indicador del modelo primario de la barra |
+| `DATABASE_URL` | — | PostgreSQL del historial del Lab (`postgres://usuario:clave@host:5432/base`); el entrypoint la prepara al arrancar |
 | `SECRET_KEY_BASE` | — | obligatoria en producción (`openssl rand -hex 64`) |
 
 ## Ejecución
@@ -43,14 +59,17 @@ docker run --rm -p 3000:3000 -e SECRET_KEY_BASE=$(openssl rand -hex 64) \
 
 ## Pruebas
 
-Minitest + WebMock: nunca llaman a la API real. Sin Ruby local, en Docker:
+Minitest + WebMock: nunca llaman a la API real. Todo se ejecuta en Docker, con una base de datos PostgreSQL efímera, desde
+la raíz del repositorio:
 
 ```bash
-docker run --rm -v "$PWD:/rails" -w /rails ruby:3.4-slim sh -c \
-  "apt-get update -qq && apt-get install -y -qq build-essential git libyaml-dev && bundle install && bin/rails test"
+docker compose -f docker-compose.verify.yml run --rm web-test          # bin/rails test
+docker compose -f docker-compose.verify.yml run --rm web-test test test/models/rag   # un subconjunto
+docker compose -f docker-compose.verify.yml run --rm web-lint          # RuboCop (omakase)
 ```
 
-(`bundle install` instala gemas del grupo de pruebas en el contenedor; el montaje escribe `tmp/` y `log/` en el directorio.)
-
-Cubren el cliente y la sesión multipart (`test/services`), el formulario, la carga de `.txt` y los adjuntos (`test/models`) y los flujos completos —envío,
-rechazos antes de llamar a la API, baja confianza, historial vacío o desactivado y API caída— (`test/controllers`).
+Cubren: los **clientes por contexto** y la taxonomía de errores (`test/services/estimator_ai`), los **contratos**
+(`test/models/rag`, `test/models/ai`), los **controllers** con su mapeo de errores (`test/controllers`: estimaciones,
+conversación, inicio, Ajustes y Chunking Lab) y los **helpers** (`test/helpers`: navegación e indicador del modelo
+primario). `test_helper` simula siempre `GET /api/v1/config/models`, de modo que cualquier página —la barra incluida—
+se renderiza sin el servicio levantado.

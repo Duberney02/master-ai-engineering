@@ -1,11 +1,11 @@
 require "test_helper"
 
-class EstimatorApiSessionTest < ActiveSupport::TestCase
+class SessionsClientTest < ActiveSupport::TestCase
   FIELDS = { "transcript" => "Portal de clientes para facturas.", "project_type" => "web_saas",
              "detail_level" => "medium", "output_format" => "phases_table", "prompt_version" => "v3" }.freeze
 
   def api
-    EstimatorApi.new(base_url: API)
+    EstimatorAi::SessionsClient.new(base_url: API)
   end
 
   def upload(name, content = "contenido", type: "application/pdf")
@@ -17,7 +17,7 @@ class EstimatorApiSessionTest < ActiveSupport::TestCase
   end
 
   def assert_api_error(expected_message, status: nil)
-    error = assert_raises(EstimatorApi::Error) { yield }
+    error = assert_raises(EstimatorAi::Error) { yield }
     assert_equal expected_message, error.message
     assert_equal status, error.status if status
     refute_includes error.message, "estimator-api.test", "no debe exponer la URL interna"
@@ -36,20 +36,20 @@ class EstimatorApiSessionTest < ActiveSupport::TestCase
   test "create_session rejects bodies without a session id" do
     stub_request(:post, "#{API}/api/v1/sessions").to_return(json_response({ "otro" => 1 }, status: 201))
 
-    assert_api_error(EstimatorApi::INVALID_RESPONSE_MESSAGE) { api.create_session }
+    assert_api_error(EstimatorAi::BaseClient::INVALID_RESPONSE_MESSAGE) { api.create_session }
   end
 
   test "create_session expects 201 and sanitizes server errors" do
     stub_request(:post, "#{API}/api/v1/sessions").to_return(status: 500, body: "Traceback password=hunter2")
 
-    error = assert_api_error(EstimatorApi::SERVER_MESSAGE, status: 500) { api.create_session }
+    error = assert_api_error(EstimatorAi::BaseClient::SERVER_MESSAGE, status: 500) { api.create_session }
     refute_includes error.message, "hunter2"
   end
 
   test "create_session turns connection failures into the generic message" do
     stub_request(:post, "#{API}/api/v1/sessions").to_raise(Faraday::ConnectionFailed.new("getaddrinfo: estimator-api.test"))
 
-    assert_api_error(EstimatorApi::CONNECTION_MESSAGE) { api.create_session }
+    assert_api_error(EstimatorAi::BaseClient::CONNECTION_MESSAGE) { api.create_session }
   end
 
   # --- create_session_estimation ---
@@ -86,9 +86,9 @@ class EstimatorApiSessionTest < ActiveSupport::TestCase
   test "a 404 means the session expired" do
     stub_request(:post, SESSION_ESTIMATE_URL).to_return(json_response({ "detail" => "Session not found or expired" }, status: 404))
 
-    error = assert_raises(EstimatorApi::SessionExpired) { api.create_session_estimation(SESSION_ID, FIELDS) }
+    error = assert_raises(EstimatorAi::SessionExpired) { api.create_session_estimation(SESSION_ID, FIELDS) }
 
-    assert_equal EstimatorApi::SESSION_EXPIRED_MESSAGE, error.message
+    assert_equal EstimatorAi::BaseClient::SESSION_EXPIRED_MESSAGE, error.message
     assert_equal 404, error.status
   end
 
@@ -105,11 +105,11 @@ class EstimatorApiSessionTest < ActiveSupport::TestCase
   test "details that are not plain text fall back to generic messages and never leak the body" do
     stub_request(:post, SESSION_ESTIMATE_URL)
       .to_return(json_response({ "detail" => [ { "loc" => [ "body" ], "input" => "texto privado" } ] }, status: 422))
-    error = assert_api_error(EstimatorApi::VALIDATION_MESSAGE, status: 422) { api.create_session_estimation(SESSION_ID, FIELDS) }
+    error = assert_api_error(EstimatorAi::BaseClient::VALIDATION_MESSAGE, status: 422) { api.create_session_estimation(SESSION_ID, FIELDS) }
     refute_includes error.message, "privado"
 
     stub_request(:post, SESSION_ESTIMATE_URL).to_return(status: 413, body: "<html>nginx</html>")
-    assert_api_error(EstimatorApi::REJECTED_MESSAGE, status: 413) { api.create_session_estimation(SESSION_ID, FIELDS) }
+    assert_api_error(EstimatorAi::BaseClient::REJECTED_MESSAGE, status: 413) { api.create_session_estimation(SESSION_ID, FIELDS) }
   end
 
   test "guardrail rejections show the API message" do
@@ -125,7 +125,7 @@ class EstimatorApiSessionTest < ActiveSupport::TestCase
       { "result" => RESULT, "project_metadata" => { "mentioned_technologies" => "python" } } ].each do |body|
       stub_request(:post, SESSION_ESTIMATE_URL).to_return(json_response(body))
 
-      assert_api_error(EstimatorApi::INVALID_RESPONSE_MESSAGE) { api.create_session_estimation(SESSION_ID, FIELDS) }
+      assert_api_error(EstimatorAi::BaseClient::INVALID_RESPONSE_MESSAGE) { api.create_session_estimation(SESSION_ID, FIELDS) }
     end
   end
 
@@ -135,13 +135,5 @@ class EstimatorApiSessionTest < ActiveSupport::TestCase
     api.create_session_estimation("a/b", FIELDS)
 
     assert_requested stub
-  end
-
-  test "the stateless estimate still sends JSON" do
-    stub_request(:post, "#{API}/api/v1/estimate").to_return(json_response(estimate_body))
-
-    api.create_estimation({ "description" => "Portal de clientes para facturas." })
-
-    assert_requested(:post, "#{API}/api/v1/estimate") { |req| req.headers["Content-Type"].start_with?("application/json") }
   end
 end

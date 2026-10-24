@@ -1,0 +1,23 @@
+<% content_for :title, "Inicio · Estimador de proyectos" %>
+<h1>Estimador de proyectos</h1>
+<p class="hint">Elige un contexto. Cada tarjeta lleva a una parte del cliente; todas hablan con el mismo servicio IA.</p>
+
+<div class="grid" id="home-sections">
+  <section class="card" id="home-estimations">
+    <h2>Estimaciones</h2>
+    <p>Describe un proyecto o pega la transcripción de una reunión y obtén duración, coste y fases. La conversación conserva memoria.</p>
+    <p><a class="button" href="<%= new_estimation_path %>">Nueva estimación</a> · <a href="<%= estimations_path %>">Historial</a></p>
+  </section>
+
+  <section class="card" id="home-rag">
+    <h2>Chunking Lab</h2>
+    <p>Compara estrategias de chunking sobre presupuestos históricos: estadísticas, coste y qué recupera cada una para una consulta.</p>
+    <p><a class="button" href="<%= new_rag_chunking_comparison_path %>">Nueva comparación</a> · <a href="<%= rag_chunking_comparisons_path %>">Historial</a></p>
+  </section>
+
+  <section class="card" id="home-settings">
+    <h2>Ajustes</h2>
+    <p>Cambia los modelos del LLM (primario, respaldo, crítico, chunkers…) sin reiniciar el servicio.</p>
+    <p><a class="button" href="<%= ai_settings_path %>">Modelos del servicio IA</a></p>
+  </section>
+</div>

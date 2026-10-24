@@ -54,6 +54,48 @@ services:
     environment:
       UV_PROJECT_ENVIRONMENT: /opt/venv
 
+  # Cliente Rails: base de datos efímera y pruebas/lint en contenedor (el código se monta, sin reconstruir).
+  #   docker compose -f docker-compose.verify.yml run --rm web-test                # bin/rails test
+  #   docker compose -f docker-compose.verify.yml run --rm web-test test test/models/rag   # un subconjunto
+  #   docker compose -f docker-compose.verify.yml run --rm web-lint                # rubocop
+  web-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: estimator
+      POSTGRES_PASSWORD: estimator-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U estimator"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  web-test:
+    build:
+      context: ./estimator-web
+      target: test
+    image: estimator-web:test
+    volumes:
+      - ./estimator-web:/rails
+    working_dir: /rails
+    environment:
+      RAILS_ENV: test
+      DB_HOST: web-db
+    depends_on:
+      web-db:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "bin/rails db:prepare && exec bin/rails \"$@\"", "--"]
+    command: ["test"]
+
+  web-lint:
+    build:
+      context: ./estimator-web
+      target: test
+    image: estimator-web:test
+    volumes:
+      - ./estimator-web:/rails
+    working_dir: /rails
+    entrypoint: ["bundle", "exec", "rubocop"]
+
   openspec:
     build:
       context: ./openspec

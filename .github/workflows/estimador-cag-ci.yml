@@ -126,8 +126,22 @@ jobs:
           exit 1
 
   web:
-    # Pruebas Minitest + WebMock de estimator-web (nunca llaman a la API real).
+    # Pruebas Minitest + WebMock de estimator-web (nunca llaman a la API real) y lint. PostgreSQL real para el
+    # historial del Chunking Lab.
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: estimator
+          POSTGRES_PASSWORD: estimator-dev
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U estimator"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      RAILS_ENV: test
+      DB_HOST: localhost
     defaults:
       run:
         working-directory: estimator-web
@@ -138,6 +152,8 @@ jobs:
           ruby-version: "3.4"
           bundler-cache: true
           working-directory: estimator-web
+      - run: bundle exec rubocop
+      - run: bin/rails db:prepare
       - run: bin/rails test
 
   web-react:
@@ -184,6 +200,8 @@ jobs:
           curl -fsS http://localhost:3000/up
           test "$(curl -fsS http://localhost:8000/api/v1/estimations)" = "[]"
           curl -fsS http://localhost:3000/estimations | grep -q 'Historial'
+          curl -fsS http://localhost:3000/rag/chunking_comparisons | grep -q 'Chunking Lab'
+          curl -fsS http://localhost:3000/ai_settings | grep -q 'Ajustes del servicio IA'
           curl -fsS http://localhost:3001/healthz
           test "$(curl -fsS http://localhost:3001/api/v1/estimations)" = "[]"
           curl -fsS http://localhost:3001/estimations | grep -q '<div id="root">'

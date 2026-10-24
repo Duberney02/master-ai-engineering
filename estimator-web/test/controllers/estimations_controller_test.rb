@@ -27,7 +27,7 @@ class EstimationsControllerTest < ActionDispatch::IntegrationTest
   # --- Formulario ---
 
   test "the form shows the fields, the .txt upload, the loading indicator and the timer" do
-    get root_path
+    get new_estimation_path
 
     assert_response :success
     assert_select "textarea#description[maxlength='80000']"
@@ -281,7 +281,7 @@ class EstimationsControllerTest < ActionDispatch::IntegrationTest
   # --- Barra lateral (equivalente a la de Streamlit) ---
 
   test "the form page has the left sidebar with the system prompt and few-shot examples" do
-    get root_path
+    get new_estimation_path
 
     assert_select "aside#sidebar h2", text: "Contexto del prompt"
     assert_select "aside#sidebar textarea#system-prompt[readonly]", text: /arquitecto sénior de estimación/
@@ -359,7 +359,7 @@ class EstimationsControllerTest < ActionDispatch::IntegrationTest
   test "if the prompt cannot be rendered the page still works with a notice" do
     stub_prompt_preview(status: 500)
 
-    get root_path
+    get new_estimation_path
 
     assert_response :success
     assert_select "#prompt-unavailable"

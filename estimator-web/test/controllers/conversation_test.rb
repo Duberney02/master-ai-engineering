@@ -27,8 +27,8 @@ class ConversationTest < ActionDispatch::IntegrationTest
   test "opening the page creates a session once and keeps it across page loads" do
     stub_request(:get, "#{API}/api/v1/estimations").with(query: { limit: 10 }).to_return(json_response([]))
 
-    get root_path
-    get root_path
+    get new_estimation_path
+    get new_estimation_path
     get estimations_path
 
     assert_response :success
@@ -37,7 +37,7 @@ class ConversationTest < ActionDispatch::IntegrationTest
 
   test "the estimate is sent to the session created on load" do
     stub = stub_estimate
-    get root_path
+    get new_estimation_path
 
     post estimations_path, params: params
 
@@ -50,7 +50,7 @@ class ConversationTest < ActionDispatch::IntegrationTest
     stub_request(:post, "#{API}/api/v1/sessions").to_return(status: 500).then.to_return(json_response({ "session_id" => SESSION_ID }, status: 201))
     stub = stub_estimate
 
-    get root_path
+    get new_estimation_path
     assert_response :success
     assert_select "form#estimation-form"
 
@@ -64,7 +64,7 @@ class ConversationTest < ActionDispatch::IntegrationTest
   # --- Adjuntos ---
 
   test "the form offers a multiple attachments field for PDF and Word" do
-    get root_path
+    get new_estimation_path
 
     assert_select "input#attachments[type=file][multiple][accept*='.pdf'][accept*='.docx']"
     assert_select "label[for=attachments]", text: "Adjuntos (PDF o Word)"
@@ -126,7 +126,7 @@ class ConversationTest < ActionDispatch::IntegrationTest
   # --- Metadatos del proyecto ---
 
   test "the sidebar starts with an empty metadata panel and the new conversation button" do
-    get root_path
+    get new_estimation_path
 
     assert_select "aside#sidebar h2", text: "Metadatos del proyecto"
     assert_select "#no-project-metadata", text: /Aún no hay datos del proyecto/
@@ -146,7 +146,7 @@ class ConversationTest < ActionDispatch::IntegrationTest
     assert_select "#metadata-scope", text: "Portal y panel de administración"
     assert_select "#no-project-metadata", false
 
-    get root_path
+    get new_estimation_path
     assert_select "#metadata-name", text: "Orion"
   end
 
@@ -166,7 +166,7 @@ class ConversationTest < ActionDispatch::IntegrationTest
     stub_estimate(estimate_body(project_metadata: huge))
 
     post estimations_path, params: params
-    get root_path
+    get new_estimation_path
 
     assert_response :success
     assert_select "#metadata-name"
@@ -183,7 +183,7 @@ class ConversationTest < ActionDispatch::IntegrationTest
 
     post conversation_path
 
-    assert_redirected_to root_path
+    assert_redirected_to new_estimation_path
     follow_redirect!
     assert_select "#no-project-metadata"
     assert_select "#metadata-name", false
@@ -195,12 +195,12 @@ class ConversationTest < ActionDispatch::IntegrationTest
   end
 
   test "new conversation works even if the API cannot open the session right now" do
-    get root_path
+    get new_estimation_path
     stub_request(:post, "#{API}/api/v1/sessions").to_return(status: 503)
 
     post conversation_path
 
-    assert_redirected_to root_path
+    assert_redirected_to new_estimation_path
     follow_redirect!
     assert_response :success
     assert_select "#no-project-metadata"
@@ -210,7 +210,7 @@ class ConversationTest < ActionDispatch::IntegrationTest
 
   test "when the API lost the session a new one is opened and the user is told" do
     stub_estimate({ "detail" => "Session not found or expired" }, status: 404)
-    get root_path
+    get new_estimation_path
     stub_request(:post, "#{API}/api/v1/sessions").to_return(json_response({ "session_id" => SECOND_ID }, status: 201))
 
     post estimations_path, params: params(project_type: "data_pipeline")

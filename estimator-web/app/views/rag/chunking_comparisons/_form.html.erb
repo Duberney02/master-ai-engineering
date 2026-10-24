@@ -1,0 +1,64 @@
+<%= form_with url: rag_chunking_comparisons_path, method: :post, id: "lab-form" do %>
+  <div class="card">
+    <h2>Estrategias</h2>
+    <p class="hint">Las gratuitas vienen marcadas. Las de pago llaman a un LLM o a embeddings durante el chunking: son opcionales, cuestan dinero y pueden tardar minutos.</p>
+    <% Rag::Strategy::CATALOG.each do |strategy| %>
+      <div class="strategy">
+        <%= check_box_tag "strategies[]", strategy.name, @selected_strategies.include?(strategy.name),
+              id: "strategy_#{strategy.name}", data: { paid: (strategy.cost_tier != :free).to_s } %>
+        <div>
+          <label for="strategy_<%= strategy.name %>">
+            <%= strategy.label %>
+            <span class="badge <%= strategy.cost_tier %>">
+              <%= { free: "gratis", cheap: "de pago (embeddings)", expensive: "de pago (LLM)" }.fetch(strategy.cost_tier) %>
+            </span>
+            <% if strategy.needs_key %>
+              <span class="badge">requiere <%= Rag::Strategy::KEY_NAMES.fetch(strategy.needs_key) %></span>
+            <% end %>
+          </label>
+          <p class="meta"><%= strategy.description %></p>
+        </div>
+      </div>
+    <% end %>
+    <div class="alert warn" id="paid-warning" hidden>
+      Has marcado estrategias de pago: llamarán a proveedores externos con tu clave del servicio IA y pueden tardar varios minutos (hasta <%= Rails.configuration.x.estimator_compare_timeout.to_i %> s).
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Consultas</h2>
+    <p class="hint">Sin consultas solo se calculan las estadísticas. Con consultas se compara qué chunks recupera cada estrategia (requiere <code>OPENAI_API_KEY</code> en el servicio).</p>
+    <% EstimatorAi::BudgetCorpus.sample_queries.each_with_index do |query, index| %>
+      <div class="strategy">
+        <%= check_box_tag "queries[]", query, @queries.include?(query), id: "query_#{index}" %>
+        <label for="query_<%= index %>"><%= query %></label>
+      </div>
+    <% end %>
+    <label for="custom_queries">Consultas propias (una por línea)</label>
+    <%= text_area_tag :custom_queries, nil, rows: 3, id: "custom_queries" %>
+
+    <label for="top_k">Resultados por consulta (top-k)</label>
+    <%= number_field_tag :top_k, @top_k, min: 1, max: 10, id: "top_k" %>
+  </div>
+
+  <button type="submit" id="lab-submit">Comparar</button>
+  <div id="loading" role="status"><div class="spinner"></div><span>Calculando… las estrategias de pago pueden tardar varios minutos.</span></div>
+<% end %>
+
+<script>
+  (function () {
+    var form = document.getElementById("lab-form");
+    var warning = document.getElementById("paid-warning");
+    var boxes = form.querySelectorAll("input[name='strategies[]']");
+    function refresh() {
+      var paid = Array.prototype.some.call(boxes, function (box) { return box.checked && box.dataset.paid === "true"; });
+      warning.hidden = !paid;
+    }
+    Array.prototype.forEach.call(boxes, function (box) { box.addEventListener("change", refresh); });
+    refresh();
+    form.addEventListener("submit", function () {
+      document.getElementById("lab-submit").disabled = true;
+      document.getElementById("loading").classList.add("active");
+    });
+  })();
+</script>

@@ -90,17 +90,77 @@ module ApiHelpers
       .to_return(status == 200 ? json_response(prompt_body) : { status: status, body: "boom" })
   end
 
+  KNOB_KEYS = %w[primary_model fallback_model critic_model metadata_model summary_model
+                 propositional_chunker_model contextual_chunker_model].freeze
+
+  # Respuesta de `GET /api/v1/config/models`. `overrides` fija `effective` y marca `overridden` por knob.
+  def config_body(overrides: {}, available: %w[gpt-4o-mini gpt-4o claude-haiku-4-5 claude-sonnet-4-5])
+    defaults = { "fallback_model" => nil, "propositional_chunker_model" => "gpt-4o-mini", "contextual_chunker_model" => "claude-sonnet-4-5" }
+    models = KNOB_KEYS.to_h do |key|
+      default = defaults.fetch(key, "gpt-4o-mini")
+      [ key, { "effective" => overrides.fetch(key, default), "default" => default, "overridden" => overrides.key?(key) } ]
+    end
+    { "models" => models, "available_models" => available, "embedding_model" => "text-embedding-3-small",
+      "embedding_model_note" => "Solo lectura: cambiarlo invalidaría todos los vectores guardados." }
+  end
+
+  # La barra de navegación consulta el modelo primario en todas las páginas: las pruebas lo simulan siempre.
+  def stub_config_models(body = config_body)
+    stub_request(:get, "#{API}/api/v1/config/models").to_return(json_response(body))
+  end
+
+  def stats_body(strategy, n_chunks: 10, cost: 0.0, orphans: 0, obese: 0, calls: 0)
+    { "strategy" => strategy, "n_chunks" => n_chunks,
+      "token_distribution" => { "min" => 40, "p50" => 79.0, "p95" => 120.5, "max" => 300 },
+      "n_orphan_chunks" => orphans, "n_obese_chunks" => obese, "ingestion_cost_usd" => cost,
+      "extra_api_calls" => calls, "ingestion_seconds" => 0.012 }
+  end
+
+  def top_chunk(chunk_id, cosine, level: nil, parent: nil)
+    { "chunk_id" => chunk_id, "cosine" => cosine, "text_preview" => "Vista previa de #{chunk_id}",
+      "level" => level, "parent_chunk_id" => parent }
+  end
+
+  # Respuesta de `POST /embeddings/compare`.
+  def compare_body(strategies: %w[structural hierarchical], queries: [], contextual_cost: nil)
+    stats = strategies.to_h { |name| [ name, stats_body(name, cost: name == "contextual_retrieval" ? contextual_cost.to_f : 0.0) ] }
+    per_strategy = strategies.to_h do |name|
+      results = queries.map do |query|
+        top = if name == "hierarchical"
+          [ top_chunk("BUD-1::parent", 0.71, level: "parent"), top_chunk("BUD-1::AUTH-1", 0.64, level: "child", parent: "BUD-1::parent") ]
+        else
+          [ top_chunk("BUD-1::AUTH-1", 0.64) ]
+        end
+        { "strategy" => name, "query" => query, "top_k" => top }
+      end
+      [ name, results ]
+    end
+    { "stats_per_strategy" => stats, "queries_per_strategy" => queries.empty? ? {} : per_strategy }
+  end
+
   def json_response(body, status: 200)
     { status: status, body: body.to_json, headers: { "Content-Type" => "application/json" } }
   end
 end
 
+module StubHelpers
+  # Sustituye un método de clase mientras dura el bloque (Minitest 6 ya no incluye `stub`).
+  def with_singleton_stub(object, name, callable)
+    object.singleton_class.send(:define_method, name) { |*args, **kwargs, &block| callable.call(*args, **kwargs, &block) }
+    yield
+  ensure
+    object.singleton_class.send(:remove_method, name)
+  end
+end
+
 class ActiveSupport::TestCase
   include ApiHelpers
+  include StubHelpers
 
   setup do
     Rails.configuration.x.estimator_api_url = API
     stub_prompt_preview
     stub_session_create
+    stub_config_models
   end
 end

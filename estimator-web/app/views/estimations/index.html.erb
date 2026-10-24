@@ -3,7 +3,7 @@
 <% if @error %>
   <div class="alert warn" id="history-error"><%= @error %></div>
 <% elsif @estimations.empty? %>
-  <div class="card" id="history-empty">Todavía no hay estimaciones. <a href="<%= root_path %>">Crea la primera</a>.</div>
+  <div class="card" id="history-empty">Todavía no hay estimaciones. <a href="<%= new_estimation_path %>">Crea la primera</a>.</div>
 <% else %>
   <div class="card">
     <table id="history">

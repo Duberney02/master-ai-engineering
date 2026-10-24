@@ -4,11 +4,11 @@ class ConversationsController < ApplicationController
 
   def create
     begin
-      start_conversation(EstimatorApi.new)
-    rescue EstimatorApi::Error
+      start_conversation(EstimatorAi::SessionsClient.new)
+    rescue EstimatorAi::Error
       # Sin API no se puede abrir la sesión ahora: el estado queda limpio y el siguiente envío la crea.
       reset_conversation
     end
-    redirect_to root_path
+    redirect_to new_estimation_path
   end
 end

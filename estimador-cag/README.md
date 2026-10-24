@@ -333,6 +333,49 @@ explícitas, fusión determinista en código y tolerancia a fallos. Como los met
 texto del usuario y se reinyectan en el system prompt, se normalizan (una línea, sin `<`, `>` ni comillas
 invertidas, longitudes acotadas) y el prompt los marca como datos y no como instrucciones.
 
+### Pipeline mínimo de embeddings (sesión 7)
+
+`app/embedding_pipeline/` trocea presupuestos históricos normalizados (un chunk por componente, con el contexto del
+presupuesto en el texto y los metadatos aparte), los vectoriza con `text-embedding-3-small` (1536 dimensiones, lotes de
+100, hasta tres reintentos de 1, 2 y 4 s ante `RateLimitError`) y los devuelve por HTTP con estadísticas. Los vectores
+viven solo en memoria. El coste es una estimación con la tarifa fija `PRICE_PER_MILLION_TOKENS_USD` (0,02 USD por
+millón de tokens, variable en el tiempo). Resultados del sanity check: `app/embedding_pipeline/SANITY_CHECK.md`.
+
+Requiere `OPENAI_API_KEY` en `.env` (nunca en el repositorio).
+
+```bash
+# Desde estimador-cag/: construir y levantar (API en http://localhost:8000, Swagger en /docs)
+docker compose build estimador-cag
+docker compose up -d estimador-cag
+```
+
+Si el puerto 8000 está ocupado por otro stack, publica otro puerto con un override temporal
+(p. ej. `ports: !override ["8010:8000"]` en un segundo archivo `-f`).
+
+**Endpoint** `POST /embeddings/ingest` (cuerpo `{"budgets": [...]}`; `data/budgets_sample.json` es la lista de 15
+presupuestos, por lo que hay que envolverla):
+
+```bash
+python -c "import json; print(json.dumps({'budgets': json.load(open('data/budgets_sample.json', encoding='utf-8'))}))" > /tmp/ingest.json
+curl -s -X POST http://localhost:8000/embeddings/ingest -H "Content-Type: application/json" -d @/tmp/ingest.json \
+  | python -c "import sys, json; d = json.load(sys.stdin); print(d['stats'], len(d['chunks'][0]['embedding']))"
+```
+
+Respuestas: `200` (`chunks` vectorizados y `stats` con `total_budgets`, `total_chunks`, `total_tokens`,
+`estimated_cost_usd`), `422` (entrada inválida) y `500` (error del proveedor, mensaje genérico; el detalle va al log).
+
+**CLI de similitud coseno** (`scripts/compare.py`, cálculo manual con la biblioteca estándar):
+
+```bash
+# Dentro del contenedor (Compose monta ./scripts y ./data)
+docker compose exec estimador-cag python scripts/compare.py \
+  --text-a "OAuth 2.0 authentication backend for fintech" \
+  --text-b "JWT-based authorization service for banking app"
+
+# Fuera del contenedor: Python 3.11+, `uv sync` hecho y OPENAI_API_KEY en .env (se lee desde estimador-cag/)
+uv run python scripts/compare.py --text-a "..." --text-b "..."
+```
+
 ## Estructura del proyecto
 
 ```

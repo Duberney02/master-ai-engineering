@@ -58,6 +58,11 @@ SAFE_FIELDS = frozenset(
         "version",
         "sources_total",
         "sources_included",
+        # Pipeline de embeddings: cantidades y coste, nunca textos ni vectores.
+        "chunks_count",
+        "total_budgets",
+        "total_chunks",
+        "estimated_cost_usd",
         # Adjuntos: páginas ilegibles y recortes (sin nombres de archivo ni texto).
         "page",
         "original_chars",

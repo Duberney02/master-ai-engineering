@@ -88,4 +88,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 
 # Las claves NO van en la imagen: se inyectan en tiempo de ejecución (--env-file / Compose).
 # Antes de servir, aplica las migraciones Alembic si hay DATABASE_URL (sin ella no hace nada).
-CMD ["sh", "-c", "python -m app.persistence.migrate && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "python -m app.foundation.persistence.migrate && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]

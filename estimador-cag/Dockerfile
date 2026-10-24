@@ -27,6 +27,10 @@ COPY pyproject.toml uv.lock ./
 # --no-dev: sin pytest/httpx. --no-install-project: el código se copia en la etapa final.
 RUN uv sync --frozen --no-dev --no-install-project
 
+# Datos del tokenizador Punkt de NLTK (chunking por frases): se descargan aquí, al construir la imagen, para que
+# el servicio no necesite red ni escribir en disco en ejecución.
+RUN /app/.venv/bin/python -m nltk.downloader -d /opt/nltk_data punkt_tab
+
 
 # =============================================================================
 # Etapa de pruebas — dependencias de desarrollo; el código y los tests se montan en ejecución
@@ -43,12 +47,14 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
     PATH="/opt/venv/bin:$PATH" \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    NLTK_DATA=/opt/nltk_data
 
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --group dev --no-install-project
+RUN uv sync --frozen --group dev --no-install-project \
+ && /opt/venv/bin/python -m nltk.downloader -d /opt/nltk_data punkt_tab
 
 CMD ["pytest", "-q"]
 
@@ -60,7 +66,8 @@ FROM python:3.11-slim AS runtime
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    NLTK_DATA=/opt/nltk_data
 
 # Usuario de sistema sin shell de login ni directorio home: el proceso no corre como root.
 RUN groupadd --system --gid 10001 app \
@@ -71,6 +78,7 @@ WORKDIR /app
 # Solo el entorno virtual ya construido, el código de la aplicación y lo que necesita la ingesta:
 # catálogo y corpus de ejemplo (data/), migraciones Alembic y utilidades de comprobación (scripts/).
 COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /opt/nltk_data /opt/nltk_data
 COPY app/ ./app/
 COPY streamlit_app.py ./streamlit_app.py
 COPY data/ ./data/

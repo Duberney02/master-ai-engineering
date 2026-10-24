@@ -6,7 +6,7 @@ Definir los contratos Pydantic del pipeline y el chunking estructural de presupu
 ## Requirements
 
 ### Requirement: Contratos Pydantic del pipeline
-El módulo `app/embedding_pipeline/schemas.py` SHALL definir, con Pydantic v2, `BudgetComponent`, `Budget`, `Chunk` (`chunk_id`, `text`, `metadata`, `token_count`), `EmbeddedChunk` (extiende `Chunk` con `embedding: list[float]`), `IngestRequest` (`budgets: list[Budget]`) e `IngestResponse` (`chunks: list[EmbeddedChunk]`, `stats: dict`). `Budget` SHALL incluir `budget_id`, `client_metadata`, `project_summary`, `main_technology`, `year`, `total_estimated_hours` y `components`. Los campos con categorías de valores no exhaustivamente conocidos (`complexity`, `sector`) SHALL ser cadenas y no `Literal`.
+El módulo `app/generation/rag/schemas.py` SHALL definir, con Pydantic v2, `BudgetComponent`, `Budget`, `Chunk` (`chunk_id`, `text`, `metadata`, `token_count`), `EmbeddedChunk` (extiende `Chunk` con `embedding: list[float]`), `IngestRequest` (`budgets: list[Budget]`) e `IngestResponse` (`chunks: list[EmbeddedChunk]`, `stats: dict`). `Budget` SHALL incluir `budget_id`, `client_metadata`, `project_summary`, `main_technology`, `year`, `total_estimated_hours` y `components`. Los campos con categorías de valores no exhaustivamente conocidos (`complexity`, `sector`) SHALL ser cadenas y no `Literal`.
 
 #### Scenario: Presupuesto válido
 - **WHEN** se valida un presupuesto de `data/budgets_sample.json`

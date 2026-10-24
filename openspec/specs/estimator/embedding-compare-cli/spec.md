@@ -25,7 +25,7 @@ Comparar dos textos por similitud coseno desde la línea de comandos y registrar
 - **THEN** la CLI termina con código distinto de cero y un mensaje de uso.
 
 ### Requirement: Sanity check con tres parejas
-`app/embedding_pipeline/SANITY_CHECK.md` SHALL contener los tres valores de similitud realmente obtenidos con la CLI para las parejas A (cercanos, orientativo > 0.6), B (no relacionados, orientativo < 0.4) y C (genéricos, sin umbral), y un comentario de tres a cinco líneas sobre su relación con las expectativas. Los resultados SHALL provenir de ejecuciones reales y los umbrales SHALL declararse orientativos.
+`app/generation/rag/SANITY_CHECK.md` SHALL contener los tres valores de similitud realmente obtenidos con la CLI para las parejas A (cercanos, orientativo > 0.6), B (no relacionados, orientativo < 0.4) y C (genéricos, sin umbral), y un comentario de tres a cinco líneas sobre su relación con las expectativas. Los resultados SHALL provenir de ejecuciones reales y los umbrales SHALL declararse orientativos.
 
 #### Scenario: Resultados reales registrados
 - **WHEN** se ejecutan las tres parejas en el contenedor

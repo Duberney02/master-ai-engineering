@@ -5,6 +5,7 @@ Solo lo importan `app/api/`, `app/main.py`, los scripts y las pruebas; ninguna c
 Las pruebas sustituyen cualquiera de estas fábricas con `app.dependency_overrides`.
 """
 
+from collections.abc import Callable
 from functools import lru_cache
 
 from fastapi import Depends
@@ -18,6 +19,8 @@ from app.domain.pipeline import EstimationPipeline
 from app.domain.session_estimation import SessionEstimationService
 from app.generation.agentic.critic import CriticService
 from app.generation.conversation.sessions import SessionStore
+from app.generation.rag.chunking.base import Chunker
+from app.generation.rag.chunking.registry import build_chunkers
 from app.generation.rag.chunking.structural import JSONStructuralChunker
 from app.generation.rag.embedding.embedder import OpenAIEmbedder
 from app.ingestion.catalog import DataCatalog, load_catalog
@@ -129,3 +132,10 @@ def get_chunker() -> JSONStructuralChunker:
 @lru_cache
 def get_embedder() -> OpenAIEmbedder:
     return OpenAIEmbedder()
+
+
+def get_chunker_builder() -> Callable[[list[str]], list[Chunker]]:
+    """Construye los chunkers pedidos por nombre; no hace llamadas a ninguna API (ver `chunking/registry.py`)."""
+    settings = get_settings()
+    embedder = get_embedder()
+    return lambda names: build_chunkers(names, settings, embedder)

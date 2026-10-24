@@ -335,11 +335,11 @@ invertidas, longitudes acotadas) y el prompt los marca como datos y no como inst
 
 ### Pipeline mínimo de embeddings (sesión 7)
 
-`app/embedding_pipeline/` trocea presupuestos históricos normalizados (un chunk por componente, con el contexto del
+`app/generation/rag/` (chunking + embeddings) trocea presupuestos históricos normalizados (un chunk por componente, con el contexto del
 presupuesto en el texto y los metadatos aparte), los vectoriza con `text-embedding-3-small` (1536 dimensiones, lotes de
 100, hasta tres reintentos de 1, 2 y 4 s ante `RateLimitError`) y los devuelve por HTTP con estadísticas. Los vectores
 viven solo en memoria. El coste es una estimación con la tarifa fija `PRICE_PER_MILLION_TOKENS_USD` (0,02 USD por
-millón de tokens, variable en el tiempo). Resultados del sanity check: `app/embedding_pipeline/SANITY_CHECK.md`.
+millón de tokens, variable en el tiempo). Resultados del sanity check: `app/generation/rag/SANITY_CHECK.md`.
 
 Requiere `OPENAI_API_KEY` en `.env` (nunca en el repositorio).
 
@@ -376,54 +376,73 @@ docker compose exec estimador-cag python scripts/compare.py \
 uv run python scripts/compare.py --text-a "..." --text-b "..."
 ```
 
+### Comparación de estrategias de chunking (sesión 7)
+
+Además del chunking estructural (un chunk por componente), el servicio compara **ocho estrategias** detrás de la
+interfaz común `Chunker` (`app/generation/rag/chunking/`): `structural`, `fixed_size`, `recursive`, `sentence_window`,
+`hierarchical` (gratuitas) y `semantic`, `propositional` y `contextual_retrieval` (de pago: llaman a embeddings o a un
+LLM durante el chunking, así que son **opt-in** y nunca se ejecutan por defecto). Los modelos de las dos que usan LLM
+son configurables (`PROPOSITIONAL_CHUNKER_MODEL`, de OpenAI; `CONTEXTUAL_CHUNKER_MODEL`, de Anthropic). La dimensión
+de los embeddings sale de `EMBEDDING_DIMENSIONS` (truncado Matryoshka). La frase se separa con Punkt de NLTK, cuyos
+datos se descargan al construir la imagen (no en ejecución).
+
+**Endpoint** `POST /embeddings/compare` (sin persistencia): cuerpo `{"budgets": [...], "queries": [...],
+"strategies": [...], "top_k": 3}`. Sin `strategies` ejecuta solo las gratuitas. Devuelve por estrategia las estadísticas
+(chunks, distribución de tokens min/p50/p95/max, huérfanos < 20 y obesos > 800 tokens, coste, llamadas extra y
+segundos) y, si hay consultas, el top-k por similitud coseno. Errores: `400` estrategia desconocida, `503` falta la
+clave del proveedor de alguna estrategia o de los embeddings (el mensaje la nombra), `500` fallo de cómputo (genérico) y
+`422` entrada inválida. Cada estrategia se trocea una sola vez por petición.
+
+**CLI** `scripts/compare_chunkers.py` (corpus: `data/budgets_sample.json` y `data/budgets_stress_cases.json`;
+consultas: `data/test_queries.json`):
+
+```bash
+# Estadísticas de las estrategias gratuitas (no necesita claves)
+docker compose exec estimador-cag python scripts/compare_chunkers.py --show-stats
+# Todas las estrategias, con top-3 por consulta, coste e informe Markdown (necesita OPENAI y ANTHROPIC_API_KEY)
+docker compose exec estimador-cag python scripts/compare_chunkers.py --strategies all --queries all \
+  --show-stats --show-top-k 3 --show-cost --output /tmp/informe.md
+# Comparar dimensiones de embedding y resolver el padre en la jerárquica
+docker compose exec estimador-cag python scripts/compare_chunkers.py --strategies hierarchical --queries all \
+  --show-top-k 3 --dimensions 1536,768 --resolve-parents
+```
+
+Resultados de las gratuitas sobre el corpus: `app/generation/rag/COMPARISON_REPORT.md`.
+
+
 ## Estructura del proyecto
+
+Organizado por capas (contrato y reglas en [`ARCHITECTURE.md`](./ARCHITECTURE.md)):
 
 ```
 estimador-cag/
 ├── app/
-│   ├── main.py              — FastAPI app, /health, lifespan, Swagger
-│   ├── config.py            — BaseSettings + lru_cache + validación por proveedor
-│   ├── routers/
-│   │   ├── project_estimations.py — POST /api/v1/estimate (contrato estructurado)
-│   │   ├── sessions.py     — /api/v1/sessions: crear, estado, estimate y estimate-acb
-│   │   ├── ingestion.py    — POST /api/v1/ingestion/runs y GET /api/v1/ingestion/jobs/{id}
-│   │   └── estimations.py  — POST /api/v1/transcription/estimate[/stream]
-│   ├── schemas/
-│   │   ├── project_estimation.py — contrato estructurado (compartido con Streamlit)
-│   │   └── estimation.py   — contratos del flujo de transcripción
-│   ├── prompts/
-│   │   ├── loader.py       — render_estimation_prompt(request, version) -> (system, user)
-│   │   ├── estimation/
-│   │   │   ├── v1/         — system.j2, user.j2, examples.j2
-│   │   │   ├── v2/         — variación de tono y ejemplos
-│   │   │   └── project_metadata.j2 — bloque <project_metadata> compartido por las versiones
-│   │   └── sessions/       — prompts de la extracción de metadatos
-│   ├── services/
-│   │   ├── sessions.py     — ConversationHistory, ProjectMetadata, Session, SessionStore (en memoria)
-│   │   ├── session_estimation.py — un turno: borrador (draft) y confirmación (commit)
-│   │   ├── context.py · anchors.py · compression.py · summarizer.py — memoria: composición, anclas, política, resumen
-│   │   ├── audience.py     — resolución de la audiencia (reglas ordenadas / tier)
-│   │   ├── critic.py · boss.py · acb.py — Actor–Critic–Boss
-│   │   ├── structured.py   — generación estructurada con modelos Pydantic
-│   │   ├── attachments.py  — extracción local de PDF y Word
-│   │   ├── llm_service.py  — prompts, preprocesamiento, dispatch OpenAI/Anthropic
-│   │   └── evaluation.py   — evaluación estructural de la estimación
-│   ├── ingestion/          — sesión 6: architecture · catalog/ · documents/ · loaders/ · parsers/ · cleaning/ · pii/ · orchestrator
-│   ├── persistence/        — trabajos de ingesta y mappings (SQLAlchemy asíncrono), repositorios y migrate.py
-│   ├── dependencies.py     — catálogo, cargador, registro de parsers y seudonimizador
-│   └── context/
-│       └── examples.py     — catálogo CAG (5 ejemplos estructurados) y formatos
+│   ├── main.py · config.py · dependencies.py — factory FastAPI, settings y composition root (todas las fábricas)
+│   ├── foundation/         — fontanería sin opinión de IA
+│   │   ├── llm/            — wrapper (caché, reintentos, fallback), service, structured, cache (Redis), embeddings
+│   │   ├── prompts/        — loader Jinja2 y plantillas versionadas (estimation v1–v4, auxiliary, sessions)
+│   │   ├── guardrails/     — input: moderación, inyección y PII
+│   │   ├── attachments/    — extracción local de PDF y Word
+│   │   └── persistence/    — SQLAlchemy asíncrono, modelos, repositorios y migrate.py
+│   ├── domain/             — contrato y conductores
+│   │   ├── schemas/        — contratos Pydantic (compartidos con Rails, React y Streamlit)
+│   │   ├── pipeline.py · session_estimation.py · acb.py — conductores (estimar, sesión, Actor–Critic–Boss)
+│   │   └── validation.py · audience.py · history.py · evaluation.py
+│   ├── generation/
+│   │   ├── cag/            — exact.py (caché exacta) y semantic.py (caché semántica)
+│   │   ├── rag/            — chunking/ (8 estrategias), embedding/, analysis/ (comparación), schemas.py;
+│   │   │                     store/ y retriever.py reservados para la sesión 8
+│   │   ├── agentic/        — boss.py y critic.py
+│   │   └── conversation/   — sessions, context, anchors, compression, summarizer
+│   ├── ingestion/          — sesión 6: catalog/ · documents/ · loaders/ · parsers/ · cleaning/ · pii/ · orchestrator
+│   └── api/                — routers finos: project_estimations, sessions, history, prompts, ingestion,
+│                             estimations (transcripción) y embeddings (ingest y compare)
 ├── alembic/ · alembic.ini  — migraciones de la ingesta (ingestion_jobs, pseudonym_mappings)
-├── data/                   — catálogo de fuentes (catalog/) y corpus de ejemplo (seed/)
-├── scripts/                — demos de limpieza y PII y preflight de la sesión 6
-├── evals/                  — dataset de referencia, métricas deterministas y runner (no va en la imagen)
+├── data/                   — catálogo (catalog/), corpus de ejemplo (seed/), presupuestos y consultas de chunking
+├── scripts/                — demos y preflight de la sesión 6, compare.py y compare_chunkers.py
+├── evals/                  — dataset de referencia, métricas deterministas, runner y stress test (no va en la imagen)
 ├── tests/
-├── Dockerfile              — imagen multietapa, usuario sin privilegios, health check
-├── docker-compose.yml      — entorno de desarrollo (hot reload)
-├── .dockerignore
-├── .env.example
-├── pyproject.toml
-└── README.md
+├── ARCHITECTURE.md · Dockerfile · docker-compose.yml · pyproject.toml · README.md
 ```
 
 ## Requisitos

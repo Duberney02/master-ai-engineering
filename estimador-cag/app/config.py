@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     metadata_model: str | None = Field(default=None, min_length=1, max_length=100)
     summary_model: str | None = Field(default=None, min_length=1, max_length=100)
     critic_model: str | None = Field(default=None, min_length=1, max_length=100)
+    # Modelos de las estrategias de chunking que llaman a un LLM (Sesión 7). Proposicional: modelo de OpenAI;
+    # contextual retrieval: modelo de Anthropic (usa prompt caching).
+    propositional_chunker_model: str = Field(default="gpt-4o-mini", min_length=1, max_length=100)
+    contextual_chunker_model: str = Field(default="claude-sonnet-4-5", min_length=1, max_length=100)
     # Detección de anclas de memoria: reglas locales o una llamada al LLM (con las reglas como respaldo).
     anchor_detection_mode: Literal["heuristic", "llm"] = "heuristic"
     # Versión del prompt de estimación que usan las sesiones cuando la solicitud no indica `prompt_version`.

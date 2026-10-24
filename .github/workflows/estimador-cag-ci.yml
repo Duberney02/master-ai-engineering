@@ -52,6 +52,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --group dev
 
+      - name: Download NLTK Punkt data (sentence chunking)
+        # En Docker los datos se descargan al construir la imagen; aquí, una vez antes de las pruebas.
+        run: uv run python -m nltk.downloader punkt_tab
+
       - name: Lint (Ruff)
         run: uv run ruff check .
 

@@ -17,15 +17,15 @@ const module = "estimator-web/internal/"
 
 // allowed son los paquetes internos que puede importar cada paquete (el resto está prohibido).
 var allowed = map[string][]string{
-	"config":       {},
-	"jsondoc":      {},
-	"estimatorai":  {"jsondoc"},
-	"rag":          {"jsondoc"},
-	"ai":           {"jsondoc"},
-	"estimation":   {},
-	"session":      {"jsondoc"},
-	"web":          {"config", "jsondoc", "estimatorai", "rag", "ai", "estimation", "session"},
-	"archtest":     {},
+	"config":      {},
+	"jsondoc":     {},
+	"estimatorai": {"jsondoc"},
+	"rag":         {"jsondoc"},
+	"ai":          {"jsondoc"},
+	"estimation":  {},
+	"session":     {"jsondoc"},
+	"web":         {"config", "jsondoc", "estimatorai", "rag", "ai", "estimation", "session"},
+	"archtest":    {},
 }
 
 func internalDir(t *testing.T) string {

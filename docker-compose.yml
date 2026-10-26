@@ -71,10 +71,15 @@ services:
     environment:
       ESTIMATOR_API_URL: http://estimador-cag:8000
       ESTIMATOR_READ_TIMEOUT: "300"
+      ESTIMATOR_COMPARE_TIMEOUT: "600"
+      # Historial del Chunking Lab: su propia base, distinta de la de la API.
+      DATABASE_URL: postgres://estimator:${WEB_DB_PASSWORD:-estimator-web-dev}@estimator-web-db:5432/estimator_web
       # Solo desarrollo: define SECRET_KEY_BASE (openssl rand -hex 64) en .env para otro entorno.
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-only-secret-key-base-change-me-0123456789abcdef0123456789abcdef0123456789abcdef}
     depends_on:
       estimador-cag:
+        condition: service_healthy
+      estimator-web-db:
         condition: service_healthy
     networks: [estimator-net]
     init: true
@@ -85,6 +90,23 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+
+  estimator-web-db:
+    # Base de datos del cliente Rails: solo el historial de comparaciones del Chunking Lab.
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: estimator
+      POSTGRES_PASSWORD: ${WEB_DB_PASSWORD:-estimator-web-dev}
+      POSTGRES_DB: estimator_web
+    volumes:
+      - estimator_web_db_data:/var/lib/postgresql/data
+    networks: [estimator-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U estimator -d estimator_web"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   estimator-web-react:
     # Misma funcionalidad que estimator-web, en React: SPA estática con nginx, que reenvía /api/ a la API
@@ -145,3 +167,4 @@ networks:
 volumes:
   redis_data:
   postgres_data:
+  estimator_web_db_data:

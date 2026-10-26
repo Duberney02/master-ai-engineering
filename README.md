@@ -18,7 +18,7 @@ carpeta.
 master-ai-engineering/
 ├── README.md                     ← este archivo (índice del repo)
 ├── estimador-cag/                ← proyecto 1: API de estimación de software con CAG
-│   ├── app/                      ← código FastAPI (routers, services, schemas, config)
+│   ├── app/                      ← código FastAPI (foundation, domain, generation, ingestion, api; ver ARCHITECTURE.md)
 │   ├── tests/                    ← suite de pytest
 │   ├── docs/                    ← documentación e historial de diseño
 │   └── README.md                 ← documentación completa del proyecto
@@ -36,7 +36,7 @@ master-ai-engineering/
 |---|---|---|
 | [`estimador-cag/`](./estimador-cag/README.md) | API FastAPI que genera estimaciones iniciales de proyectos de software a partir de transcripciones de reuniones con clientes, usando CAG (Context-Augmented Generation): los ejemplos históricos se inyectan directamente en el prompt del LLM, sin embeddings ni vector store. Soporta OpenAI y Anthropic como proveedores. | Python 3.11, FastAPI, Pydantic, uv, OpenAI SDK, Anthropic SDK |
 
-| [`estimator-web/`](./estimator-web/README.md) | Aplicación web Rails para el estimador: formulario con carga de transcripciones `.txt` (hasta 80 000 caracteres), historial de estimaciones y vista del resultado con duración, coste, confianza y tabla de fases. Consume la API por HTTP con Faraday. | Ruby 3.4, Rails 8, Faraday, Minitest |
+| [`estimator-web/`](./estimator-web/README.md) | Aplicación web Rails para el estimador: formulario con carga de transcripciones `.txt` (hasta 80 000 caracteres), historial de estimaciones y vista del resultado con duración, coste, confianza y tabla de fases; **Chunking Lab** (comparación de estrategias con historial en PostgreSQL) y **Ajustes** (modelos del LLM en tiempo de ejecución). Consume la API por HTTP con Faraday, organizado por contextos. | Ruby 3.4, Rails 8, Faraday, Minitest |
 | [`estimator-web-react/`](./estimator-web-react/README.md) | La misma web del estimador en React: formulario con carga de `.txt`, historial, resultado y barra lateral del prompt, como componentes reutilizables. Se sirve con nginx, que reenvía `/api/` a la API (sin CORS). | React 19, TypeScript, Vite, Vitest, nginx |
 
 A medida que se agreguen nuevos proyectos del máster (RAG, agentes,

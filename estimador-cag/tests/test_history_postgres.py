@@ -11,9 +11,9 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.schemas import EstimationRequest, EstimationResult
-from app.services.history import EstimationHistory
-from app.services.pipeline import PipelineOutcome
+from app.domain.history import EstimationHistory
+from app.domain.pipeline import PipelineOutcome
+from app.domain.schemas import EstimationRequest, EstimationResult
 from tests._fakes import openai_settings
 
 URL = os.getenv("TEST_DATABASE_URL")

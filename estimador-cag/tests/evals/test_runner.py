@@ -8,8 +8,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from app.dependencies import get_session_store
 from app.main import app
-from app.services.sessions import get_session_store
 from evals import runner
 from tests import test_sessions_api as base
 

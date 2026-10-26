@@ -7,8 +7,8 @@ import httpx
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from app.prompts.loader import render_estimation_prompt
-from app.schemas import EstimationRequest, EstimationResult
+from app.domain.schemas import EstimationRequest, EstimationResult
+from app.foundation.prompts.loader import render_estimation_prompt
 from app.streamlit_client import (
     EstimationStreamError,
     SessionExpiredError,

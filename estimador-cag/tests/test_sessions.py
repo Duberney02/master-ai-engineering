@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.config import Settings
-from app.services.sessions import (
+from app.generation.conversation.sessions import (
     MAX_TURNS,
     ConversationHistory,
     ProjectMetadata,

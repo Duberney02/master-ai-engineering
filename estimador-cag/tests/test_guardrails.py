@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from app.schemas import EstimationRequest
-from app.services.guardrails import (
+from app.domain.schemas import EstimationRequest
+from app.foundation.guardrails.input import (
     GuardrailViolation,
     InputGuardrails,
     detect_pii,
@@ -34,7 +34,7 @@ def _patch_moderation(mocker, *, flagged=False, error: Exception | None = None) 
     client = MagicMock()
     client.moderations.create = create
     client.close = AsyncMock()
-    mocker.patch("app.services.guardrails.AsyncOpenAI", return_value=client)
+    mocker.patch("app.foundation.guardrails.input.AsyncOpenAI", return_value=client)
     return create
 
 

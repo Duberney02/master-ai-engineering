@@ -2,15 +2,15 @@
 
 import pytest
 
-from app.prompts.loader import (
+from app.domain.schemas import EstimationRequest
+from app.foundation.prompts.loader import (
     available_versions,
     render_estimation_prompt,
     render_metadata_extraction_prompt,
     render_system_prompt,
     render_user_prompt,
 )
-from app.schemas import EstimationRequest
-from app.services.sessions import ProjectMetadata
+from app.generation.conversation.sessions import ProjectMetadata
 
 REQUEST = EstimationRequest(
     description="Portal de clientes para consultar facturas y abrir incidencias de soporte.",

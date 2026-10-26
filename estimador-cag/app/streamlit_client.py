@@ -13,8 +13,8 @@ from collections.abc import Iterable, Iterator
 import httpx
 from pydantic import ValidationError
 
-from app.schemas import EstimationRequest, EstimationResult, EstimationStreamMetadata
-from app.schemas.sessions import SessionCreated, SessionEstimationResponse
+from app.domain.schemas import EstimationRequest, EstimationResult, EstimationStreamMetadata
+from app.domain.schemas.sessions import SessionCreated, SessionEstimationResponse
 
 # Versiones que ofrece el formulario; el servidor valida y rechaza con 422 las que no tenga.
 PROMPT_VERSIONS = ("v3", "v1", "v2")

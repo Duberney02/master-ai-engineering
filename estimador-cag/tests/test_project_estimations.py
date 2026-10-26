@@ -5,10 +5,11 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from app.dependencies import get_pipeline
+from app.domain.pipeline import PipelineOutcome
+from app.domain.schemas import EstimationRequest, EstimationResult, EstimationStreamMetadata
+from app.foundation.prompts.loader import render_estimation_prompt
 from app.main import app
-from app.prompts.loader import render_estimation_prompt
-from app.schemas import EstimationRequest, EstimationResult, EstimationStreamMetadata
-from app.services.pipeline import PipelineOutcome, get_pipeline
 from app.streamlit_client import parse_sse
 from tests._fakes import (
     LONG_TRANSCRIPTION,

@@ -6,7 +6,7 @@ Persistir el seguimiento de trabajos de ingesta y los mappings de seudónimos en
 ## Requirements
 
 ### Requirement: Tablas de ingesta
-El sistema SHALL definir las tablas `ingestion_jobs` (`job_id` UUID, `source_name`, `status`, `documents_count`, `error_message` hasta 2048 caracteres, `started_at`, `finished_at`; índice `idx_jobs_status`) y `pseudonym_mappings` (`id`, `entity_type`, `original_hash`, `pseudonym`, `created_at`; restricción única `uq_mappings_entity_hash` sobre `(entity_type, original_hash)` e índice `idx_mappings_lookup`) con una base declarativa propia, distinta de la del historial. (Referencia: `app/persistence/models.py`.)
+El sistema SHALL definir las tablas `ingestion_jobs` (`job_id` UUID, `source_name`, `status`, `documents_count`, `error_message` hasta 2048 caracteres, `started_at`, `finished_at`; índice `idx_jobs_status`) y `pseudonym_mappings` (`id`, `entity_type`, `original_hash`, `pseudonym`, `created_at`; restricción única `uq_mappings_entity_hash` sobre `(entity_type, original_hash)` e índice `idx_mappings_lookup`) con una base declarativa propia, distinta de la del historial. (Referencia: `app/foundation/persistence/models.py`.)
 
 #### Scenario: Restricción única
 - **WHEN** se inserta un segundo mapping con el mismo `(entity_type, original_hash)`
@@ -17,7 +17,7 @@ El sistema SHALL definir las tablas `ingestion_jobs` (`job_id` UUID, `source_nam
 - **THEN** `estimations` y sus datos no cambian.
 
 ### Requirement: Repositorios asíncronos
-El sistema SHALL ofrecer `JobsRepository` (`create`, `get`, `mark_running`, `mark_completed`, `mark_failed`) y `MappingsRepository` (`lookup`, `lookup_or_create`, `forget`) sobre `AsyncSession`, sin exponer tipos del ORM. `lookup_or_create` SHALL insertar con resolución de conflicto sobre la restricción única y releer la fila ganadora cuando otro escritor se adelanta. `mark_failed` SHALL truncar el mensaje a 2048 caracteres. (Referencia: `app/persistence/repositories/jobs.py`, `mappings.py`.)
+El sistema SHALL ofrecer `JobsRepository` (`create`, `get`, `mark_running`, `mark_completed`, `mark_failed`) y `MappingsRepository` (`lookup`, `lookup_or_create`, `forget`) sobre `AsyncSession`, sin exponer tipos del ORM. `lookup_or_create` SHALL insertar con resolución de conflicto sobre la restricción única y releer la fila ganadora cuando otro escritor se adelanta. `mark_failed` SHALL truncar el mensaje a 2048 caracteres. (Referencia: `app/foundation/persistence/repositories/jobs.py`, `mappings.py`.)
 
 #### Scenario: Ciclo de vida del trabajo
 - **WHEN** se crea un trabajo y se marca en ejecución y completado

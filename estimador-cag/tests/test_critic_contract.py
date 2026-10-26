@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.critic import (
+from app.domain.schemas.critic import (
     CriticFeedback,
     CriticIssue,
     IssueCategory,

@@ -51,7 +51,7 @@ La métrica `content_recall` SHALL calcular la fracción de requisitos y tecnolo
 - **THEN** el elemento cuenta como presente.
 
 ### Requirement: Evaluaciones existentes intactas
-Las evaluaciones de `app/services/evaluation.py` SHALL conservar su comportamiento y sus pruebas.
+Las evaluaciones de `app/domain/evaluation.py` SHALL conservar su comportamiento y sus pruebas.
 
 #### Scenario: Evaluación previa
 - **WHEN** se ejecutan las pruebas de la evaluación existente

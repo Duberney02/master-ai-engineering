@@ -13,7 +13,7 @@ Fuera del contenedor (Python 3.11+, dependencias instaladas y OPENAI_API_KEY en 
 from __future__ import annotations
 
 import argparse
-import math
+import asyncio
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -23,19 +23,13 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.embedding_pipeline.embedder import OpenAIEmbedder  # noqa: E402
+from app.generation.rag.analysis.similarity import cosine_similarity  # noqa: E402
+from app.generation.rag.embedding.embedder import OpenAIEmbedder  # noqa: E402
 
 
-def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
-    """dot(a, b) / (norm(a) * norm(b)), solo con la biblioteca estándar."""
-    if len(a) != len(b):
-        raise ValueError(f"vectors must have the same dimension ({len(a)} != {len(b)})")
-    dot = math.fsum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(math.fsum(x * x for x in a))
-    norm_b = math.sqrt(math.fsum(y * y for y in b))
-    if norm_a == 0 or norm_b == 0:
-        raise ValueError("cosine similarity is undefined for a zero-norm vector")
-    return dot / (norm_a * norm_b)
+async def _embed_pair(text_a: str, text_b: str) -> float:
+    vector_a, vector_b = await OpenAIEmbedder().embed_texts([text_a, text_b])
+    return cosine_similarity(vector_a, vector_b)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -44,11 +38,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--text-b", required=True, help="Segundo texto.")
     args = parser.parse_args(argv)
 
-    embedder = OpenAIEmbedder()
     try:
-        vector_a = embedder.embed_one(args.text_a)
-        vector_b = embedder.embed_one(args.text_b)
-        similarity = cosine_similarity(vector_a, vector_b)
+        similarity = asyncio.run(_embed_pair(args.text_a, args.text_b))
     except Exception as exc:
         print(f"ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1

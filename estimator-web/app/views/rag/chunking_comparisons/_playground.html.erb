@@ -1,0 +1,24 @@
+<% response.queries.each_with_index do |query, index| %>
+  <section class="card" id="query-<%= index %>">
+    <h3>«<%= query %>»</h3>
+    <div class="strategies-grid">
+      <% response.results_by_strategy_for(query).each do |name, result| %>
+        <div id="query-<%= index %>-<%= name %>">
+          <h4><%= Rag::Strategy.label_for(name) %></h4>
+          <% result.top_k.each do |chunk| %>
+            <div class="hit">
+              <div class="bar" role="img" aria-label="Similitud <%= chunk.cosine_pct %>%"><span style="width: <%= chunk.cosine_pct %>%"></span></div>
+              <div>
+                <strong><%= number_with_precision(chunk.cosine, precision: 3, separator: ",") %></strong>
+                <code><%= chunk.chunk_id %></code>
+                <% if chunk.parent? %><span class="badge parent">padre</span><% end %>
+                <% if chunk.child? %><span class="badge">hijo de <code><%= chunk.parent_chunk_id %></code></span><% end %>
+              </div>
+              <div class="meta"><%= chunk.text_preview %></div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </section>
+<% end %>

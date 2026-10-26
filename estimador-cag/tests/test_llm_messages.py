@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from app.services.llm_service import generate_from_messages
+from app.foundation.llm.service import generate_from_messages
 from tests._fakes import (
     anthropic_response,
     anthropic_settings,
@@ -59,7 +59,7 @@ async def test_requires_a_system_message_followed_by_a_turn(bad):
 
 
 async def test_completion_cache_key_depends_on_the_whole_conversation(mocker):
-    from app.services.llm_wrapper import LLMWrapper
+    from app.foundation.llm.wrapper import LLMWrapper
 
     wrapper = LLMWrapper(openai_settings(moderation_enabled=False))
 

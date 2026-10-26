@@ -5,9 +5,9 @@ import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.dependencies import get_history, get_session_store
+from app.domain.history import EstimationHistory
 from app.main import app
-from app.services.history import EstimationHistory, get_history
-from app.services.sessions import get_session_store
 from tests import test_sessions_api as base
 from tests._fakes import openai_settings
 from tests.test_sessions_api import TRANSCRIPT, estimate, new_session

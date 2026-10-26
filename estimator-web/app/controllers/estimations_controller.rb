@@ -1,15 +1,15 @@
 class EstimationsController < ApplicationController
   include ConversationSession
 
-  rescue_from EstimatorApi::Error, with: :render_api_error
+  rescue_from EstimatorAi::Error, with: :render_api_error
 
   def new
     @form = EstimationForm.new
     # La conversación se abre al cargar la página y se conserva en la sesión de Rails. Si la API no
     # responde ahora, el envío del formulario lo reintenta.
     begin
-      ensure_conversation(api)
-    rescue EstimatorApi::Error
+      ensure_conversation(sessions)
+    rescue EstimatorAi::Error
       nil
     end
     load_sidebar(@form.api_attributes, @form.prompt_version)
@@ -21,8 +21,8 @@ class EstimationsController < ApplicationController
     @form.load_attachments(params.dig(:estimation_form, :attachments))
     return render_form_errors unless @form.errors.empty? && @form.valid?
 
-    response = api.create_session_estimation(
-      ensure_conversation(api), @form.session_fields, attachments: @form.attachments
+    response = sessions.create_session_estimation(
+      ensure_conversation(sessions), @form.session_fields, attachments: @form.attachments
     )
     remember_metadata(response["project_metadata"])
     if (id = response["estimation_id"])
@@ -33,13 +33,13 @@ class EstimationsController < ApplicationController
       load_sidebar(@form.api_attributes, @form.prompt_version, response["metrics"])
       render :show
     end
-  rescue EstimatorApi::SessionExpired
+  rescue EstimatorAi::SessionExpired
     # La API perdió la sesión: se abre otra, se avisa y el formulario conserva lo escrito.
-    start_conversation(api)
-    @notice = EstimatorApi::SESSION_EXPIRED_MESSAGE
+    start_conversation(sessions)
+    @notice = EstimatorAi::BaseClient::SESSION_EXPIRED_MESSAGE
     load_sidebar(@form.api_attributes, @form.prompt_version)
     render :new
-  rescue EstimatorApi::Error => error
+  rescue EstimatorAi::Error => error
     @form.errors.add(:base, error.message)
     render_form_errors
   end
@@ -47,14 +47,14 @@ class EstimationsController < ApplicationController
   def index
     default = EstimationForm.new
     load_sidebar(default.api_attributes, default.prompt_version)
-    @estimations = api.list_estimations(limit: 10)
-  rescue EstimatorApi::Error => error
+    @estimations = estimations.list_estimations(limit: 10)
+  rescue EstimatorAi::Error => error
     @estimations = []
     @error = error.message
   end
 
   def show
-    @estimation = api.find_estimation(params[:id])
+    @estimation = estimations.find_estimation(params[:id])
     load_sidebar(@estimation["options"] || {}, @estimation["prompt_version"], @estimation["metrics"])
   end
 
@@ -65,19 +65,23 @@ class EstimationsController < ApplicationController
     params.fetch(:estimation_form, {}).permit(:description, :project_type, :detail_level, :output_format, :prompt_version)
   end
 
-  def api
-    @api ||= EstimatorApi.new
+  def estimations
+    @estimations ||= EstimatorAi::EstimationsClient.new
+  end
+
+  def sessions
+    @sessions ||= EstimatorAi::SessionsClient.new
   end
 
   # Barra lateral (como la de Streamlit): prompt de sistema, ejemplos few-shot y métricas de la llamada.
   # Es informativa: si la API no puede renderizar el prompt, la página sigue funcionando.
   def load_sidebar(options, prompt_version, metrics = nil)
     preview = begin
-      api.prompt_preview(
+      estimations.prompt_preview(
         prompt_version: prompt_version, project_type: options["project_type"],
         detail_level: options["detail_level"], output_format: options["output_format"]
       )
-    rescue EstimatorApi::Error
+    rescue EstimatorAi::Error
       nil
     end
     @sidebar = { preview: preview, metrics: metrics, prompt_version: prompt_version, metadata: conversation_metadata }

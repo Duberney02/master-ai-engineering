@@ -9,18 +9,18 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.main import app
-from app.schemas import MAX_DESCRIPTION_CHARS, MIN_DESCRIPTION_CHARS, EstimationRequest, EstimationResult
-from app.services import semantic_cache
-from app.services.cache import CachedEstimation
-from app.services.guardrails import (
+from app.domain.schemas import MAX_DESCRIPTION_CHARS, MIN_DESCRIPTION_CHARS, EstimationRequest, EstimationResult
+from app.foundation.guardrails.input import (
     MODERATION_CHUNK_CHARS,
     GuardrailViolation,
     InputGuardrails,
     detect_pii,
     detect_prompt_injection,
 )
-from app.services.semantic_cache import SemanticCache
+from app.generation.cag import semantic as semantic_cache
+from app.generation.cag.exact import CachedEstimation
+from app.generation.cag.semantic import SemanticCache
+from app.main import app
 from tests._fakes import openai_response, openai_settings, patch_openai, patch_settings
 
 SENTENCE = "El portal de clientes permitirá consultar facturas y abrir incidencias. "
@@ -168,7 +168,7 @@ def _moderation(mocker, *, flagged_chunks=()):
     client = MagicMock()
     client.moderations.create = create
     client.close = AsyncMock()
-    mocker.patch("app.services.guardrails.AsyncOpenAI", return_value=client)
+    mocker.patch("app.foundation.guardrails.input.AsyncOpenAI", return_value=client)
     return inputs
 
 

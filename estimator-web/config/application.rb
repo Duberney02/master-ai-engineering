@@ -2,6 +2,7 @@ require_relative "boot"
 
 require "rails"
 require "active_model/railtie"
+require "active_record/railtie"
 require "action_controller/railtie"
 require "action_view/railtie"
 require "rails/test_unit/railtie"
@@ -21,5 +22,9 @@ module EstimatorWeb
     config.x.estimator_open_timeout = Float(ENV.fetch("ESTIMATOR_OPEN_TIMEOUT", "5"))
     # Una transcripción larga puede tardar minutos en estimarse.
     config.x.estimator_read_timeout = Float(ENV.fetch("ESTIMATOR_READ_TIMEOUT", "300"))
+    # Comparar estrategias de chunking de pago (LLM) tarda minutos: solo esa llamada usa este tiempo de espera.
+    config.x.estimator_compare_timeout = Float(ENV.fetch("ESTIMATOR_COMPARE_TIMEOUT", "600"))
+    # Adornos de la interfaz (modelo primario de la barra): un servicio caído no debe retrasar las páginas.
+    config.x.estimator_badge_timeout = Float(ENV.fetch("ESTIMATOR_BADGE_TIMEOUT", "2"))
   end
 end

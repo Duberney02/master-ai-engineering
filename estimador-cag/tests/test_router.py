@@ -5,9 +5,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.context.examples import ESTIMATION_EXAMPLES
-from app.routers.estimations import router
-from app.services.llm_service import GenerationOptions, LLMEstimationResult, PhaseResult
+from app.api.estimations import router
+from app.foundation.llm.service import GenerationOptions, LLMEstimationResult, PhaseResult
+from app.foundation.prompts.examples import ESTIMATION_EXAMPLES
 
 
 def _make_result() -> LLMEstimationResult:
@@ -27,7 +27,7 @@ def _make_result() -> LLMEstimationResult:
 @pytest.fixture
 def client(mocker) -> TestClient:
     mocker.patch(
-        "app.routers.estimations.generate_estimation",
+        "app.api.estimations.generate_estimation",
         new=AsyncMock(return_value=_make_result()),
     )
     test_app = FastAPI()
@@ -114,7 +114,7 @@ def _rich_result(**overrides) -> LLMEstimationResult:
 @pytest.fixture
 def service(mocker) -> AsyncMock:
     return mocker.patch(
-        "app.routers.estimations.generate_estimation",
+        "app.api.estimations.generate_estimation",
         new=AsyncMock(return_value=_rich_result()),
     )
 

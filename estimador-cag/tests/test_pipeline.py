@@ -5,11 +5,11 @@ import json
 import pytest
 from fastapi import HTTPException
 
-from app.schemas import EstimationRequest, EstimationResult
-from app.services.cache import CachedEstimation, make_result_key
-from app.services.guardrails import GuardrailViolation
-from app.services.llm_wrapper import Completion
-from app.services.pipeline import EstimationPipeline
+from app.domain.pipeline import EstimationPipeline
+from app.domain.schemas import EstimationRequest, EstimationResult
+from app.foundation.guardrails.input import GuardrailViolation
+from app.foundation.llm.wrapper import Completion
+from app.generation.cag.exact import CachedEstimation, make_result_key
 from tests._fakes import openai_settings
 
 REQUEST = EstimationRequest(
@@ -64,7 +64,7 @@ class FakeSemantic:
     def __init__(self, rec, hit=None):
         self.rec, self.hit, self.stored = rec, hit, []
 
-    async def lookup(self, request, prompt_version):
+    async def lookup(self, request, prompt_version, model=None):
         self.rec.events.append("semantic_lookup")
         return self.hit
 
@@ -264,7 +264,7 @@ async def test_invalid_completions_are_not_cached_so_a_later_request_can_recover
 
     settings = openai_settings()
     memory = MemoryCompletionCache()
-    mocker.patch("app.services.llm_wrapper.EstimationCache", return_value=memory)
+    mocker.patch("app.foundation.llm.wrapper.EstimationCache", return_value=memory)
     patch_settings(mocker, settings)
     call = patch_openai(
         mocker,

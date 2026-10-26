@@ -6,13 +6,13 @@ import time
 import pytest
 from fastapi import HTTPException
 
-from app.context.examples import ESTIMATION_EXAMPLES
-from app.services.llm_service import (
+from app.foundation.llm.service import (
     EXTRACTION_MAX_TOKENS,
     EXTRACTION_SYSTEM_PROMPT,
     GenerationOptions,
     generate_estimation,
 )
+from app.foundation.prompts.examples import ESTIMATION_EXAMPLES
 from tests._fakes import (
     LONG_TRANSCRIPTION,
     anthropic_response,
@@ -266,7 +266,7 @@ async def test_concurrent_requests_overlap_because_provider_calls_are_awaited(mo
 
     client = MagicMock()
     client.chat.completions.create = AsyncMock(side_effect=slow_create)
-    mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=client)
+    mocker.patch("app.foundation.llm.service.AsyncOpenAI", return_value=client)
 
     start = time.monotonic()
     await asyncio.gather(*(generate_estimation(LONG_TRANSCRIPTION) for _ in range(4)))

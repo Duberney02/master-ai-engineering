@@ -1,0 +1,24 @@
+# PostgreSQL: guarda solo el historial de comparaciones del Chunking Lab.
+# En Docker llega por DATABASE_URL (postgres://usuario:clave@host:5432/base); Rails la aplica al entorno actual.
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS", 3) %>
+
+development:
+  <<: *default
+  database: estimator_web_development
+  host: <%= ENV.fetch("DB_HOST", "localhost") %>
+  username: <%= ENV.fetch("DB_USER", "estimator") %>
+  password: <%= ENV.fetch("DB_PASSWORD", "estimator-dev") %>
+
+test:
+  <<: *default
+  database: estimator_web_test
+  host: <%= ENV.fetch("DB_HOST", "localhost") %>
+  username: <%= ENV.fetch("DB_USER", "estimator") %>
+  password: <%= ENV.fetch("DB_PASSWORD", "estimator-dev") %>
+
+production:
+  <<: *default
+  url: <%= ENV["DATABASE_URL"] %>

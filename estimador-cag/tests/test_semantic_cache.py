@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.schemas import EstimationRequest, EstimationResult
-from app.services import semantic_cache
-from app.services.cache import CachedEstimation
-from app.services.semantic_cache import SemanticCache, attributes, index_name, semantic_text
+from app.domain.schemas import EstimationRequest, EstimationResult
+from app.generation.cag import semantic as semantic_cache
+from app.generation.cag.exact import CachedEstimation
+from app.generation.cag.semantic import SemanticCache, attributes, index_name, semantic_text
 from tests._fakes import anthropic_settings, openai_settings
 
 RESULT = EstimationResult(
@@ -173,7 +173,7 @@ async def test_redis_failure_is_a_miss(backend):
 
 
 async def test_corrupt_cached_payload_is_a_miss(backend):
-    backend.entries.append({"response": "{no json", "vector": [1.0, 0.0], "filters": attributes(_request(), "v3")})
+    backend.entries.append({"response": "{no json", "vector": [1.0, 0.0], "filters": attributes(_request(), "v3", "gpt-4o-mini")})
     assert await _cache(backend).lookup(_request(), "v3") is None
     backend.entries[0]["response"] = '{"result": {"summary": "x"}}'
     assert await _cache(backend).lookup(_request(), "v3") is None
@@ -185,5 +185,27 @@ def test_semantic_text_includes_reference_projects():
 
 
 def test_index_name_includes_model_and_dimensions():
-    assert index_name(openai_settings()) == "estimation_semantic_text_embedding_3_small_1536"
-    assert index_name(openai_settings(embedding_dimensions=256)).endswith("_256")
+    assert index_name(openai_settings()) == "estimation_semantic_text_embedding_3_small_1536_by_model"
+    assert index_name(openai_settings(embedding_dimensions=256)).endswith("_256_by_model")
+
+
+async def test_entries_are_isolated_by_the_llm_model_that_generated_them(backend):
+    """Tras cambiar de modelo en runtime no se sirve una respuesta generada por otro."""
+    cache = _cache(backend)
+    await cache.store(_request(), "v3", ENTRY.model_copy(update={"model": "gpt-4o-mini"}))
+
+    assert await cache.lookup(_request(), "v3", "gpt-4o-mini") == ENTRY.model_copy(update={"model": "gpt-4o-mini"})
+    assert await cache.lookup(_request(), "v3", "gpt-4o") is None
+    assert await cache.lookup(_request(), "v3", "claude-sonnet-4-5") is None
+
+
+async def test_lookup_without_model_uses_the_configured_primary(backend):
+    cache = _cache(backend)
+    await cache.store(_request(), "v3", ENTRY.model_copy(update={"model": ""}))  # sin modelo: el primario
+
+    assert (await cache.lookup(_request(), "v3")).model == ""
+    assert backend.entries[0]["filters"]["model"] == openai_settings().effective_model()
+
+
+def test_model_is_part_of_the_filters():
+    assert attributes(_request(), "v3", "gpt-4o")["model"] == "gpt-4o"

@@ -1,7 +1,8 @@
-# Aplicación web Rails del estimador (cliente HTTP de la API; sin base de datos propia).
+# Aplicación web Rails del estimador (cliente HTTP de la API; PostgreSQL solo para el historial del Chunking Lab).
 #
 #   docker build -t estimator-web .
-#   docker run --rm -p 3000:3000 -e SECRET_KEY_BASE=... -e ESTIMATOR_API_URL=http://api:8000 estimator-web
+#   docker run --rm -p 3000:3000 -e SECRET_KEY_BASE=... -e ESTIMATOR_API_URL=http://api:8000 \
+#     -e DATABASE_URL=postgres://usuario:clave@host:5432/base estimator-web
 ARG RUBY_VERSION=3.4
 
 # =============================================================================
@@ -10,7 +11,7 @@ ARG RUBY_VERSION=3.4
 FROM ruby:${RUBY_VERSION}-slim AS build
 
 RUN apt-get update -qq \
- && apt-get install -y --no-install-recommends build-essential git libyaml-dev \
+ && apt-get install -y --no-install-recommends build-essential git libyaml-dev libpq-dev \
  && rm -rf /var/lib/apt/lists/*
 
 ENV BUNDLE_DEPLOYMENT=1 \
@@ -23,6 +24,25 @@ RUN bundle install --jobs 4 \
  && rm -rf "${BUNDLE_PATH}"/ruby/*/cache "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git
 
 # =============================================================================
+# Etapa de pruebas — todas las gemas (incluidas las de desarrollo y pruebas); el código se monta en ejecución
+#   docker build --target test -t estimator-web:test .
+# Se declara antes de runtime para que `docker build .` siga generando la imagen de producción.
+# =============================================================================
+FROM ruby:${RUBY_VERSION}-slim AS test
+
+RUN apt-get update -qq \
+ && apt-get install -y --no-install-recommends build-essential git libyaml-dev libpq-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV RAILS_ENV=test
+
+WORKDIR /rails
+COPY Gemfile Gemfile.lock ./
+RUN bundle install --jobs 4
+
+CMD ["bin/rails", "test"]
+
+# =============================================================================
 # Etapa 2 — runtime: imagen mínima, usuario sin privilegios
 # =============================================================================
 FROM ruby:${RUBY_VERSION}-slim AS runtime
@@ -33,7 +53,10 @@ ENV RAILS_ENV=production \
     BUNDLE_WITHOUT="development:test" \
     BUNDLE_PATH=/usr/local/bundle
 
-RUN groupadd --system --gid 10001 rails \
+RUN apt-get update -qq \
+ && apt-get install -y --no-install-recommends libpq5 \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --system --gid 10001 rails \
  && useradd --system --uid 10001 --gid rails --no-create-home --shell /usr/sbin/nologin rails
 
 WORKDIR /rails
@@ -49,5 +72,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD ["ruby", "-rnet/http", "-e", "exit(Net::HTTP.start('127.0.0.1', 3000, read_timeout: 3) { |h| h.get('/up').code == '200' } ? 0 : 1)"]
 
-# SECRET_KEY_BASE y ESTIMATOR_API_URL se inyectan en tiempo de ejecución.
+# SECRET_KEY_BASE, ESTIMATOR_API_URL y DATABASE_URL se inyectan en tiempo de ejecución. El entrypoint prepara la
+# base de datos (si hay DATABASE_URL) antes de arrancar el servidor.
+ENTRYPOINT ["bin/docker-entrypoint"]
 CMD ["bin/rails", "server", "-b", "0.0.0.0", "-p", "3000"]

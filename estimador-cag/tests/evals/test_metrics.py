@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.schemas import EstimationResult
+from app.domain.schemas import EstimationResult
 from evals.dataset import EvalCase
 from evals.metrics import content_recall, cost_bounds, evaluate_case, schema_adherence
 
@@ -222,6 +222,6 @@ def test_evaluate_case_returns_the_three_metrics():
 
 
 def test_existing_structural_evaluation_is_unchanged():
-    from app.services.evaluation import evaluate_estimation
+    from app.domain.evaluation import evaluate_estimation
 
     assert evaluate_estimation("sin formato", "stop").score < 1

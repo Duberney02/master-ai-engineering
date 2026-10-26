@@ -134,7 +134,7 @@ def check_health_endpoint() -> str:
 async def _table_names() -> set[str]:
     from sqlalchemy import inspect
 
-    from app.persistence.database import create_engine_from_settings
+    from app.foundation.persistence.database import create_engine_from_settings
 
     engine = create_engine_from_settings()
     try:
@@ -150,7 +150,7 @@ def check_postgres() -> str:
     expected = {"pseudonym_mappings", "ingestion_jobs", "alembic_version"}
     missing = expected - tables
     if missing:
-        raise RuntimeError(f"missing tables: {sorted(missing)}; run `python -m app.persistence.migrate`")
+        raise RuntimeError(f"missing tables: {sorted(missing)}; run `python -m app.foundation.persistence.migrate`")
     return f"tables OK: {sorted(expected)}"
 
 

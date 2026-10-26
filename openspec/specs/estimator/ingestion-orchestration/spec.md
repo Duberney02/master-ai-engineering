@@ -21,7 +21,7 @@ Ejecutar la ingesta de una fuente incluida del catálogo en segundo plano y expo
 - **THEN** se lanza `IngestionRejected` y el trabajo no pasa a `running`.
 
 ### Requirement: Iniciar una ingesta
-`POST /api/v1/ingestion/runs` con `{"source_name": "..."}` SHALL validar la fuente, registrar el trabajo, ejecutarlo mediante `BackgroundTasks` y responder HTTP 202 con `job_id`, `source_name` y `status`. SHALL responder 404 `{"reason": "unknown_source"}` para una fuente desconocida y 400 `{"reason": "source_not_included", "decision", "decision_reason"}` para fuentes `review` o `exclude`. La tarea en segundo plano SHALL usar su propia sesión de base de datos. (Referencia: `app/routers/ingestion.py`, `app/schemas/ingestion.py`.)
+`POST /api/v1/ingestion/runs` con `{"source_name": "..."}` SHALL validar la fuente, registrar el trabajo, ejecutarlo mediante `BackgroundTasks` y responder HTTP 202 con `job_id`, `source_name` y `status`. SHALL responder 404 `{"reason": "unknown_source"}` para una fuente desconocida y 400 `{"reason": "source_not_included", "decision", "decision_reason"}` para fuentes `review` o `exclude`. La tarea en segundo plano SHALL usar su propia sesión de base de datos. (Referencia: `app/api/ingestion.py`, `app/domain/schemas/ingestion.py`.)
 
 #### Scenario: Aceptada
 - **WHEN** se solicita una fuente incluida

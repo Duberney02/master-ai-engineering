@@ -60,8 +60,8 @@ class Settings(BaseSettings):
     database_url: str | None = None
     # Intentos totales para obtener un resultado que cumpla las reglas de negocio.
     validation_max_attempts: int = Field(default=3, ge=1, le=5)
-    # Sesiones conversacionales en memoria del proceso (ver app.services.sessions): turnos
-    # (pares usuario+asistente) que conserva cada sesión —6 es app.services.sessions.MAX_TURNS—,
+    # Sesiones conversacionales en memoria del proceso (ver app.generation.conversation.sessions): turnos
+    # (pares usuario+asistente) que conserva cada sesión —6 es app.generation.conversation.sessions.MAX_TURNS—,
     # inactividad tras la que caduca y número máximo de sesiones simultáneas.
     session_max_turns: int = Field(default=6, ge=1, le=50)
     session_ttl_seconds: float = Field(default=6 * 3600, gt=0)
@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     metadata_model: str | None = Field(default=None, min_length=1, max_length=100)
     summary_model: str | None = Field(default=None, min_length=1, max_length=100)
     critic_model: str | None = Field(default=None, min_length=1, max_length=100)
+    # Modelos de las estrategias de chunking que llaman a un LLM (Sesión 7). Proposicional: modelo de OpenAI;
+    # contextual retrieval: modelo de Anthropic (usa prompt caching).
+    propositional_chunker_model: str = Field(default="gpt-4o-mini", min_length=1, max_length=100)
+    contextual_chunker_model: str = Field(default="claude-sonnet-4-5", min_length=1, max_length=100)
+    # Catálogo de modelos seleccionables en runtime (PUT /api/v1/config/models), separado por comas. La API lo filtra
+    # por las claves configuradas. Distinto de `allowed_models`, que restringe el campo `model` de cada solicitud.
+    available_models: str = "gpt-4o-mini,gpt-4o,claude-haiku-4-5,claude-sonnet-4-5"
     # Detección de anclas de memoria: reglas locales o una llamada al LLM (con las reglas como respaldo).
     anchor_detection_mode: Literal["heuristic", "llm"] = "heuristic"
     # Versión del prompt de estimación que usan las sesiones cuando la solicitud no indica `prompt_version`.
@@ -110,6 +117,9 @@ class Settings(BaseSettings):
         if self.fallback_provider and not getattr(self, f"{self.fallback_provider}_api_key"):
             raise ValueError("API key for FALLBACK_PROVIDER is required")
         return self
+
+    def available_models_list(self) -> list[str]:
+        return [m.strip() for m in self.available_models.split(",") if m.strip()]
 
     def allowed_models_list(self) -> list[str]:
         return [m.strip() for m in self.allowed_models.split(",") if m.strip()]

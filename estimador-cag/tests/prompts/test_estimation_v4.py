@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.prompts.loader import OUTPUT_CONTRACT_MARKER, available_versions, render_system_prompt
+from app.foundation.prompts.loader import OUTPUT_CONTRACT_MARKER, available_versions, render_system_prompt
 from tests.prompts.test_estimation_v1 import make_request
 
 FOCUS = {
@@ -18,7 +18,7 @@ def system(audience: str, version: str = "v4") -> str:
 
 
 def test_v4_is_available_and_v3_stays_the_default_of_the_stateless_endpoint():
-    from app.prompts.loader import DEFAULT_PROMPT_VERSION
+    from app.foundation.prompts.loader import DEFAULT_PROMPT_VERSION
 
     assert "v4" in available_versions() and DEFAULT_PROMPT_VERSION == "v3"
 
@@ -70,7 +70,7 @@ def test_previous_versions_ignore_the_audience(version):
 
 
 def test_v4_includes_the_session_metadata_block_like_the_other_versions():
-    from app.services.sessions import ProjectMetadata
+    from app.generation.conversation.sessions import ProjectMetadata
 
     text = render_system_prompt(make_request(), "v4", ProjectMetadata(project_name="Orion"), "pm")
 

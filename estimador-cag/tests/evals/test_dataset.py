@@ -57,7 +57,7 @@ def test_vague_cases_expect_out_of_scope_and_one_adversarial_case_expects_reject
 
 
 def test_the_injection_case_really_triggers_the_guardrail():
-    from app.services.guardrails import detect_prompt_injection
+    from app.foundation.guardrails.input import detect_prompt_injection
 
     case = next(c for c in load_dataset().cases if c.id == "adversarial-01")
 
@@ -65,7 +65,7 @@ def test_the_injection_case_really_triggers_the_guardrail():
 
 
 def test_no_other_case_trips_the_input_guardrails():
-    from app.services.guardrails import detect_pii, detect_prompt_injection
+    from app.foundation.guardrails.input import detect_pii, detect_prompt_injection
 
     for case in load_dataset().cases:
         if case.id != "adversarial-01":

@@ -6,10 +6,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.routers.estimations import router
-from app.schemas.estimation import EstimationRequest
-from app.services.evaluation import evaluate_estimation
-from app.services.llm_service import GenerationOptions, StreamMetrics, generate_estimation, generate_estimation_stream
+from app.api.estimations import router
+from app.domain.evaluation import evaluate_estimation
+from app.domain.schemas.estimation import EstimationRequest
+from app.foundation.llm.service import GenerationOptions, StreamMetrics, generate_estimation, generate_estimation_stream
 from app.streamlit_client import EstimationStreamError, parse_sse, stream_estimation
 from tests._fakes import (
     LONG_TRANSCRIPTION,

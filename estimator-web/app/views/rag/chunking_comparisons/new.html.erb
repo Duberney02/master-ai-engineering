@@ -1,0 +1,8 @@
+<% content_for :title, "Nueva comparación · Chunking Lab" %>
+<h1>Chunking Lab</h1>
+<p class="hint">
+  Compara estrategias de chunking sobre <%= EstimatorAi::BudgetCorpus.budgets.size %> presupuestos históricos.
+  Cada ejecución se guarda: <a href="<%= rag_chunking_comparisons_path %>">consulta el historial</a> antes de repetir una de pago.
+</p>
+
+<%= render "form" %>

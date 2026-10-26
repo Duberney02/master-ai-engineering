@@ -6,13 +6,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api import config as runtime_config_api
+from app.api import estimations, history, ingestion, project_estimations, prompts, sessions
+from app.api.embeddings import router as embeddings_router
 from app.config import get_settings
-from app.embedding_pipeline.router import router as embeddings_router
+from app.dependencies import close_history
+from app.foundation.guardrails.input import GuardrailViolation
+from app.foundation.persistence.database import close_engine
 from app.logging_config import configure_logging
-from app.persistence.database import close_engine
-from app.routers import estimations, history, ingestion, project_estimations, prompts, sessions
-from app.services.guardrails import GuardrailViolation
-from app.services.history import close_history
 
 logger = structlog.get_logger(__name__)
 
@@ -68,6 +69,7 @@ app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
 app.include_router(ingestion.router, prefix="/api/v1")
 app.include_router(estimations.router, prefix="/api/v1/transcription", tags=["transcription"])
 app.include_router(embeddings_router, prefix="/embeddings")
+app.include_router(runtime_config_api.router)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 

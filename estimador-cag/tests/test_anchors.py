@@ -4,14 +4,14 @@ import json
 
 import pytest
 
-from app.services.anchors import (
+from app.foundation.llm.wrapper import Completion
+from app.generation.conversation.anchors import (
     AnchorVerdict,
     HeuristicAnchorDetector,
     LLMAnchorDetector,
     build_anchor_detector,
     fold,
 )
-from app.services.llm_wrapper import Completion
 from tests._fakes import openai_settings
 
 detector = HeuristicAnchorDetector()

@@ -5,11 +5,11 @@ import json
 import pytest
 from fastapi import HTTPException
 
-from app.schemas import EstimationRequest
-from app.services.acb import ActorCriticBoss
-from app.services.critic import CriticService
-from app.services.session_estimation import SessionEstimationService
-from app.services.sessions import ConversationHistory, Session
+from app.domain.acb import ActorCriticBoss
+from app.domain.schemas import EstimationRequest
+from app.domain.session_estimation import SessionEstimationService
+from app.generation.agentic.critic import CriticService
+from app.generation.conversation.sessions import ConversationHistory, Session
 from tests._acb import ScriptedGenerator, accept, estimation, needs_iteration, reject
 from tests._fakes import openai_settings
 
@@ -216,7 +216,7 @@ async def test_actor_failure_after_a_regeneration_request_leaves_the_session_unt
 
 
 async def test_tier_is_passed_to_the_prompt_and_the_critic_and_recorded_in_the_session():
-    from app.services.audience import Audience
+    from app.domain.audience import Audience
 
     generate = ScriptedGenerator()
 
@@ -242,7 +242,7 @@ async def test_metrics_add_up_every_actor_and_critic_call():
 
 
 async def test_sessions_with_guardrail_violations_never_reach_the_llm():
-    from app.services.guardrails import GuardrailViolation
+    from app.foundation.guardrails.input import GuardrailViolation
 
     generate = ScriptedGenerator()
     acb = build(generate)

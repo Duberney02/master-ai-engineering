@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.prompts.loader import (
+from app.foundation.prompts.loader import (
     UnknownPromptVersionError,
     available_auxiliary_versions,
     render_auxiliary_prompt,

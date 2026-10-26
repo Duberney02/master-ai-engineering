@@ -1,0 +1,17 @@
+<% max = response.max_ingestion_cost_usd %>
+<% if max.zero? %>
+  <p id="cost-free">Todas las estrategias de esta ejecución son gratuitas: no tienen coste de ingesta.</p>
+<% else %>
+  <div id="cost-bars">
+    <% response.strategy_names.each do |name| %>
+      <% stats = response.stats_for(name) %>
+      <% cost = stats.ingestion_cost_usd.to_f %>
+      <div class="bar-row" id="cost-<%= name %>">
+        <span><%= Rag::Strategy.label_for(name) %></span>
+        <div class="bar" role="img" aria-label="Coste de <%= Rag::Strategy.label_for(name) %>"><span style="width: <%= (cost / max * 100).round(1) %>%"></span></div>
+        <span class="num"><%= cost.zero? ? "gratis" : format_usd(cost) %></span>
+      </div>
+    <% end %>
+  </div>
+  <p class="hint">Total: <%= format_usd(response.total_ingestion_cost_usd) %>. Es una estimación con tarifas de referencia, no la factura.</p>
+<% end %>

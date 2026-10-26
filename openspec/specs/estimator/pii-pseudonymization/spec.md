@@ -40,7 +40,7 @@ El sistema SHALL ofrecer `build_analyzer()` que devuelva un `AnalyzerEngine` de 
 - **THEN** se devuelve sin cambios y sin sustituciones.
 
 ### Requirement: Stores intercambiables y borrado de un mapping
-El sistema SHALL ofrecer `MappingStore` con `lookup_or_create` y `forget`, y las implementaciones `InMemoryMappingStore` (pruebas) y `PostgresMappingStore`. La persistencia SHALL guardar tipo de entidad, hash y seudónimo, nunca el valor original en texto plano, y SHALL conservar la unicidad de `(entity_type, original_hash)` y la convergencia ante inserciones concurrentes. `forget` SHALL eliminar únicamente el mapping y devolver si existía. La seudonimización no es reversible: no existe desseudonimización, endpoint de borrado ni eliminación del corpus. (Referencia: `app/ingestion/pii/mapping_store.py`, `app/persistence/repositories/mappings.py`.)
+El sistema SHALL ofrecer `MappingStore` con `lookup_or_create` y `forget`, y las implementaciones `InMemoryMappingStore` (pruebas) y `PostgresMappingStore`. La persistencia SHALL guardar tipo de entidad, hash y seudónimo, nunca el valor original en texto plano, y SHALL conservar la unicidad de `(entity_type, original_hash)` y la convergencia ante inserciones concurrentes. `forget` SHALL eliminar únicamente el mapping y devolver si existía. La seudonimización no es reversible: no existe desseudonimización, endpoint de borrado ni eliminación del corpus. (Referencia: `app/ingestion/pii/mapping_store.py`, `app/foundation/persistence/repositories/mappings.py`.)
 
 #### Scenario: Creación única
 - **WHEN** se consulta dos veces el mismo `(entity_type, hash)`

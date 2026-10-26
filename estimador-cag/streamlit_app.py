@@ -12,8 +12,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from app.prompts.loader import render_system_prompt
-from app.schemas import (
+from app.domain.schemas import (
     MAX_DESCRIPTION_CHARS,
     MIN_DESCRIPTION_CHARS,
     DetailLevel,
@@ -22,8 +21,9 @@ from app.schemas import (
     OutputFormat,
     ProjectType,
 )
-from app.schemas.project_estimation import OUT_OF_SCOPE_PREFIX
-from app.services.sessions import ProjectMetadata
+from app.domain.schemas.project_estimation import OUT_OF_SCOPE_PREFIX
+from app.foundation.prompts.loader import render_system_prompt
+from app.generation.conversation.sessions import ProjectMetadata
 from app.streamlit_client import (
     PROMPT_VERSIONS,
     EstimationStreamError,

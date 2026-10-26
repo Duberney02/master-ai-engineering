@@ -2,14 +2,14 @@
 
 import pytest
 
-from app.services.audience import (
+from app.domain.audience import (
     AUDIENCE_RULES,
     SMALL_TEAM_MAX,
     TECH_TERMS_THRESHOLD,
     Audience,
     resolve_audience,
 )
-from app.services.sessions import ProjectMetadata
+from app.generation.conversation.sessions import ProjectMetadata
 
 PLAIN = "Queremos una aplicación sencilla para que los vecinos reporten incidencias del barrio."
 REGULATORY = "Los datos son personales y debemos cumplir el RGPD."

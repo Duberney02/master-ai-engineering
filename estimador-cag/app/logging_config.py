@@ -63,6 +63,20 @@ SAFE_FIELDS = frozenset(
         "total_budgets",
         "total_chunks",
         "estimated_cost_usd",
+        # Chunking (sesión 7): estrategia, cantidades y coste de la ingesta; nunca texto de los documentos.
+        "strategy",
+        "n_chunks",
+        "n_input_documents",
+        "extra_api_calls",
+        "extra_cost_usd",
+        "strategies_count",
+        "queries_count",
+        "reason",
+        # Modelos en runtime: knob y modelos (nombres públicos), nunca claves.
+        "key",
+        "old_effective",
+        "new_value",
+        "reset",
         # Adjuntos: páginas ilegibles y recortes (sin nombres de archivo ni texto).
         "page",
         "original_chars",

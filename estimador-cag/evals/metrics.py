@@ -2,15 +2,15 @@
 
 Son funciones puras (sin LLM ni E/S). Cada una devuelve un `MetricResult` con una puntuación entre 0 y 1,
 si aprueba y el detalle de lo comprobado. Las evaluaciones del flujo de transcripción
-(`app/services/evaluation.py`) siguen siendo independientes.
+(`app/domain/evaluation.py`) siguen siendo independientes.
 """
 
 from dataclasses import dataclass, field
 
-from app.schemas import EstimationResult
-from app.schemas.project_estimation import OUT_OF_SCOPE_PREFIX
-from app.services.anchors import fold
-from app.services.validation import PLACEHOLDER_PHASE_NAME, business_rule_errors
+from app.domain.schemas import EstimationResult
+from app.domain.schemas.project_estimation import OUT_OF_SCOPE_PREFIX
+from app.domain.validation import PLACEHOLDER_PHASE_NAME, business_rule_errors
+from app.generation.conversation.anchors import fold
 from evals.dataset import EvalCase
 
 # Las fases pueden solaparse, así que la duración total no es la suma: debe quedar entre la fase más

@@ -6,7 +6,7 @@ from typing import Annotated, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from app.schemas import MIN_DESCRIPTION_CHARS, ProjectType
+from app.domain.schemas import MIN_DESCRIPTION_CHARS, ProjectType
 
 DATASETS_DIR = Path(__file__).parent / "datasets"
 DEFAULT_DATASET = DATASETS_DIR / "reference_v1.json"

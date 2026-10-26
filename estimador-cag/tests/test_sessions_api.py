@@ -13,9 +13,10 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
+from app.dependencies import get_session_store, reset_session_store
+from app.domain.schemas import EstimationResult
+from app.generation.conversation.sessions import MAX_TURNS
 from app.main import app
-from app.schemas import EstimationResult
-from app.services.sessions import MAX_TURNS, get_session_store, reset_session_store
 from tests._documents import make_blank_pdf, make_docx, make_pdf
 from tests._fakes import openai_response, openai_settings, patch_settings
 
@@ -61,7 +62,7 @@ class ScriptedLLM:
         create = AsyncMock(side_effect=create)
         client = MagicMock()
         client.chat.completions.create = create
-        mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=client)
+        mocker.patch("app.foundation.llm.service.AsyncOpenAI", return_value=client)
 
     async def __call__(self, **kwargs):
         messages = kwargs["messages"]
@@ -396,7 +397,7 @@ async def test_provider_failure_during_metadata_extraction_does_not_fail_the_est
 
     sdk = MagicMock()
     sdk.chat.completions.create = AsyncMock(side_effect=create)
-    mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=sdk)
+    mocker.patch("app.foundation.llm.service.AsyncOpenAI", return_value=sdk)
     session_id = await new_session(client)
 
     response = await estimate(client, session_id)
@@ -517,8 +518,8 @@ async def test_attachment_with_a_mismatched_content_is_415(client, llm):
 
 
 async def test_oversized_attachment_is_413(client, llm, monkeypatch):
-    monkeypatch.setattr("app.services.attachments.MAX_ATTACHMENT_BYTES", 100)
-    monkeypatch.setattr("app.routers.sessions.MAX_ATTACHMENT_BYTES", 100)
+    monkeypatch.setattr("app.foundation.attachments.extractor.MAX_ATTACHMENT_BYTES", 100)
+    monkeypatch.setattr("app.api.sessions.MAX_ATTACHMENT_BYTES", 100)
 
     response = await estimate(
         client, await new_session(client), files=[("grande.pdf", make_pdf("x" * 500), "application/pdf")]
@@ -571,7 +572,7 @@ async def test_provider_error_details_are_not_exposed(client, mocker):
     patch_settings(mocker, openai_settings(moderation_enabled=False, llm_retries=0))
     sdk = MagicMock()
     sdk.chat.completions.create = AsyncMock(side_effect=RuntimeError("sk-secret-key leaked"))
-    mocker.patch("app.services.llm_service.AsyncOpenAI", return_value=sdk)
+    mocker.patch("app.foundation.llm.service.AsyncOpenAI", return_value=sdk)
     session_id = await new_session(client)
 
     response = await estimate(client, session_id)

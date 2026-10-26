@@ -5,8 +5,8 @@ from fastapi import HTTPException
 from pypdf import PageObject
 
 from app.config import Settings
-from app.services import attachments
-from app.services.attachments import (
+from app.foundation.attachments import extractor as attachments
+from app.foundation.attachments.extractor import (
     AttachmentError,
     combine_text,
     extract_attachments,

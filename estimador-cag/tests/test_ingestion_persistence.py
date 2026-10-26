@@ -11,12 +11,12 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.domain.history import Base as HistoryBase
+from app.domain.history import EstimationRecord
+from app.foundation.persistence.migrate import upgrade_to_head
+from app.foundation.persistence.models import Base, IngestionJobRow, PseudonymMappingRow
+from app.foundation.persistence.repositories.jobs import JobsRepository, list_jobs
 from app.ingestion.pii import InMemoryMappingStore
-from app.persistence.migrate import upgrade_to_head
-from app.persistence.models import Base, IngestionJobRow, PseudonymMappingRow
-from app.persistence.repositories.jobs import JobsRepository, list_jobs
-from app.services.history import Base as HistoryBase
-from app.services.history import EstimationRecord
 
 
 @pytest.fixture
@@ -143,7 +143,7 @@ def test_downgrade_removes_the_tables(sqlite_url):
     from alembic.config import Config
 
     from alembic import command
-    from app.persistence.migrate import ALEMBIC_INI
+    from app.foundation.persistence.migrate import ALEMBIC_INI
 
     upgrade_to_head()
     config = Config(str(ALEMBIC_INI))
@@ -176,6 +176,6 @@ def test_migration_does_not_touch_the_history_table(sqlite_url):
 
 def test_without_database_url_migrations_are_skipped(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setattr("app.persistence.migrate.get_settings", lambda: type("S", (), {"database_url": None})())
+    monkeypatch.setattr("app.foundation.persistence.migrate.get_settings", lambda: type("S", (), {"database_url": None})())
 
     assert upgrade_to_head() is False

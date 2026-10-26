@@ -5,8 +5,8 @@ import json
 import pytest
 from pydantic import BaseModel, Field
 
-from app.services.llm_wrapper import Completion
-from app.services.structured import StructuredOutputError, generate_structured
+from app.foundation.llm.structured import StructuredOutputError, generate_structured
+from app.foundation.llm.wrapper import Completion
 
 
 class Verdict(BaseModel):

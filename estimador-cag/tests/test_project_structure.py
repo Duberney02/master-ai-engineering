@@ -111,6 +111,7 @@ def test_root_compose_defines_all_services_on_a_shared_network():
         "estimador-cag",
         "estimador-cag-chat",
         "estimator-web",
+        "estimator-web-db",
         "estimator-web-react",
         "redis",
         "postgres",
@@ -174,9 +175,9 @@ def test_web_app_files_exist():
         "Dockerfile",
         "Gemfile",
         "Gemfile.lock",
-        "app/services/estimator_api.rb",
+        "app/services/estimator_ai/base_client.rb",
         "app/controllers/estimations_controller.rb",
-        "test/services/estimator_api_test.rb",
+        "test/services/estimator_ai/estimations_client_test.rb",
     ]:
         assert (web / relative).exists(), relative
     assert "USER rails" in (web / "Dockerfile").read_text(encoding="utf-8")

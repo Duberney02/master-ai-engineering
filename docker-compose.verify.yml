@@ -54,47 +54,63 @@ services:
     environment:
       UV_PROJECT_ENVIRONMENT: /opt/venv
 
-  # Cliente Rails: base de datos efímera y pruebas/lint en contenedor (el código se monta, sin reconstruir).
-  #   docker compose -f docker-compose.verify.yml run --rm web-test                # bin/rails test
-  #   docker compose -f docker-compose.verify.yml run --rm web-test test test/models/rag   # un subconjunto
-  #   docker compose -f docker-compose.verify.yml run --rm web-lint                # rubocop
+  # Servicio web en Go: base de datos efímera y pruebas/lint en contenedor (el código se monta, sin reconstruir).
+  #   docker compose -f docker-compose.verify.yml run --rm web-test                  # go test ./...
+  #   docker compose -f docker-compose.verify.yml run --rm web-test ./internal/rag/... -run Store   # un subconjunto
+  #   docker compose -f docker-compose.verify.yml run --rm web-lint                  # gofmt + go vet
   web-db:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: estimator
       POSTGRES_PASSWORD: estimator-dev
+      POSTGRES_DB: estimator_web_test
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U estimator"]
+      test: ["CMD-SHELL", "pg_isready -U estimator -d estimator_web_test"]
       interval: 2s
       timeout: 3s
       retries: 20
 
   web-test:
     build:
-      context: ./estimator-web
+      context: ./estimator-web-go
       target: test
-    image: estimator-web:test
+    image: estimator-web-go:test
     volumes:
-      - ./estimator-web:/rails
-    working_dir: /rails
+      - ./estimator-web-go:/src
+      - web_go_cache:/go
+    working_dir: /src
     environment:
-      RAILS_ENV: test
-      DB_HOST: web-db
+      TEST_DATABASE_URL: postgres://estimator:estimator-dev@web-db:5432/estimator_web_test?sslmode=disable
     depends_on:
       web-db:
         condition: service_healthy
-    entrypoint: ["sh", "-c", "bin/rails db:prepare && exec bin/rails \"$@\"", "--"]
-    command: ["test"]
+    # -p 1: los paquetes con pruebas de persistencia comparten la misma base efímera.
+    entrypoint: ["go", "test", "-p", "1"]
+    command: ["./..."]
 
   web-lint:
     build:
-      context: ./estimator-web
+      context: ./estimator-web-go
       target: test
-    image: estimator-web:test
+    image: estimator-web-go:test
     volumes:
-      - ./estimator-web:/rails
-    working_dir: /rails
-    entrypoint: ["bundle", "exec", "rubocop"]
+      - ./estimator-web-go:/src
+      - web_go_cache:/go
+    working_dir: /src
+    entrypoint: ["sh", "-c", "test -z \"$$(gofmt -l .)\" || { echo 'gofmt: archivos sin formatear:'; gofmt -l .; exit 1; }; exec go vet ./..."]
+
+  # Utilidad para dependencias del módulo Go (go mod tidy, go get…).
+  #   docker compose -f docker-compose.verify.yml run --rm web-go mod tidy
+  web-go:
+    build:
+      context: ./estimator-web-go
+      target: test
+    image: estimator-web-go:test
+    volumes:
+      - ./estimator-web-go:/src
+      - web_go_cache:/go
+    working_dir: /src
+    entrypoint: ["go"]
 
   openspec:
     build:
@@ -103,3 +119,6 @@ services:
     volumes:
       - .:/repo
     working_dir: /repo
+
+volumes:
+  web_go_cache:

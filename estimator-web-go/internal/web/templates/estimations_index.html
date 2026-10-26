@@ -1,0 +1,29 @@
+{{define "content"}}
+<h1>Historial</h1>
+
+{{if .Data.Error}}
+  <div class="alert warn" id="history-error">{{.Data.Error}}</div>
+{{else if not .Data.Estimations}}
+  <div class="card" id="history-empty">Todavía no hay estimaciones. <a href="/estimations/new">Crea la primera</a>.</div>
+{{else}}
+  <div class="card">
+    <table id="history">
+      <thead>
+        <tr><th>Fecha</th><th>Tipo</th><th class="num">Confianza</th><th class="num">Coste</th><th>Procedencia</th><th>Descripción</th></tr>
+      </thead>
+      <tbody>
+        {{range .Data.Estimations}}
+          <tr>
+            <td><a href="/estimations/{{.S "id"}}">{{formatTime (.Get "requested_at")}}</a></td>
+            <td>{{labelFor (.Get "project_type")}}</td>
+            <td class="num">{{.S "confidence_pct"}}%</td>
+            <td class="num">{{if .Truthy "out_of_scope"}}No estimable{{else}}{{formatCost (.Get "total_cost_eur")}}{{end}}</td>
+            <td>{{cacheSourceLabel (.Get "cache_source")}}</td>
+            <td>{{truncate (.Get "description_excerpt") 90}}</td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+{{end}}
+{{end}}

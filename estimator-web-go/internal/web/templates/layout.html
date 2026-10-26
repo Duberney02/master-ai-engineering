@@ -1,0 +1,52 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <title>{{.Title}}</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="csrf-param" content="authenticity_token" />
+    <meta name="csrf-token" content="{{.CSRF}}" />
+    {{template "styles"}}
+  </head>
+  <body>
+    <header>
+      <nav>
+        {{if .Sidebar}}<button type="button" id="sidebar-toggle" aria-controls="sidebar" aria-expanded="true" title="Mostrar u ocultar el contexto del prompt">«</button>{{end}}
+        {{template "navlink" (navLink "Inicio" "/" "home" .Section)}}
+        {{template "navlink" (navLink "Nueva estimación" "/estimations/new" "new_estimation" .Section)}}
+        {{template "navlink" (navLink "Historial" "/estimations" "history" .Section)}}
+        {{template "navlink" (navLink "Chunking Lab" "/rag/chunking_comparisons" "rag" .Section)}}
+        {{template "navlink" (navLink "Ajustes" "/ai_settings" "settings" .Section)}}
+        {{if .PrimaryModel}}
+          <a href="/ai_settings" class="model-badge" id="primary-model" title="Modelo primario del servicio IA">{{.PrimaryModel}}</a>
+        {{end}}
+      </nav>
+    </header>
+    <div class="layout{{if not .Sidebar}} no-sidebar{{end}}" id="layout">
+      {{if .Sidebar}}
+        <aside id="sidebar">{{template "sidebar" .}}</aside>
+      {{end}}
+      <main>
+        {{range .Flashes}}
+          <div class="{{if eq .Type "notice"}}notice{{else}}alert error{{end}}" id="flash-{{.Type}}" role="status">{{.Message}}</div>
+        {{end}}
+        {{template "content" .}}
+      </main>
+    </div>
+    {{if .Sidebar}}
+      <script>
+        (function () {
+          var toggle = document.getElementById("sidebar-toggle");
+          var layout = document.getElementById("layout");
+          toggle.addEventListener("click", function () {
+            var collapsed = layout.classList.toggle("collapsed");
+            toggle.textContent = collapsed ? "»" : "«";
+            toggle.setAttribute("aria-expanded", String(!collapsed));
+          });
+        })();
+      </script>
+    {{end}}
+  </body>
+</html>
+{{end}}
+
+{{define "navlink"}}{{if .Active}}<a class="active" aria-current="page" href="{{.Path}}">{{.Label}}</a>{{else}}<a href="{{.Path}}">{{.Label}}</a>{{end}}{{end}}

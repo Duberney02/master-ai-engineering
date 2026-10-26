@@ -1,0 +1,56 @@
+{{define "content"}}
+{{$catalog := .Data.Catalog}}
+<h1>Ajustes del servicio IA</h1>
+
+{{if not $catalog}}
+  <div class="card" id="settings-unavailable">
+    <p>No se puede mostrar la configuración ahora mismo. <a href="/ai_settings">Reintentar</a>.</p>
+  </div>
+{{else}}
+  <p class="hint">
+    Los modelos se cambian en tiempo de ejecución: el cambio aplica desde la siguiente solicitud, sin reiniciar el servicio ni tocar <code>.env</code>.
+    Un campo vacío usa el valor por defecto. Solo aparecen los modelos de los proveedores con clave configurada.
+  </p>
+
+  <form id="settings-form" action="/ai_settings" accept-charset="UTF-8" method="post">
+    <input type="hidden" name="_method" value="patch" autocomplete="off" />
+    <input type="hidden" name="authenticity_token" value="{{.CSRF}}" autocomplete="off" />
+    <div class="card">
+      <table id="models-table">
+        <thead>
+          <tr><th>Uso</th><th>Por defecto</th><th>Vigente</th><th>Modelo</th></tr>
+        </thead>
+        <tbody>
+          {{range $catalog.ModelConfigs}}
+            {{$config := .}}
+            <tr id="knob-{{.Key}}">
+              <td>
+                <strong>{{.Label}}</strong>
+                <div class="meta">{{.Description}}</div>
+              </td>
+              <td><code>{{if .Default}}{{.Default}}{{else}}—{{end}}</code></td>
+              <td>
+                <code>{{if .Effective}}{{.Effective}}{{else}}—{{end}}</code>
+                {{if .Overridden}}<span class="badge parent" title="Hay un override en tiempo de ejecución">override</span>{{end}}
+              </td>
+              <td>
+                <select name="models[{{.Key}}]" id="models_{{.Key}}" aria-label="{{.Label}}">
+                  <option value="">Valor por defecto{{if .Default}} ({{.Default}}){{end}}</option>
+                  {{range $catalog.OptionsFor $config}}<option value="{{.}}"{{if and (ne $config.Selected "") (eq . $config.Selected)}} selected="selected"{{end}}>{{.}}</option>{{end}}
+                </select>
+              </td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+      <button type="submit">Guardar</button>
+    </div>
+  </form>
+
+  <div class="card" id="embedding-model">
+    <h2>Modelo de embeddings</h2>
+    <p><code>{{$catalog.EmbeddingModel}}</code></p>
+    <p class="meta">{{if $catalog.EmbeddingModelNote}}{{$catalog.EmbeddingModelNote}}{{else}}Solo lectura: cambiarlo invalidaría todos los vectores guardados.{{end}}</p>
+  </div>
+{{end}}
+{{end}}

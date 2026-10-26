@@ -1,0 +1,68 @@
+{{define "lab_form"}}
+{{$page := .Data}}
+<form id="lab-form" action="/rag/chunking_comparisons" accept-charset="UTF-8" method="post">
+  <input type="hidden" name="authenticity_token" value="{{.CSRF}}" autocomplete="off" />
+  <div class="card">
+    <h2>Estrategias</h2>
+    <p class="hint">Las gratuitas vienen marcadas. Las de pago llaman a un LLM o a embeddings durante el chunking: son opcionales, cuestan dinero y pueden tardar minutos.</p>
+    {{range catalog}}
+      <div class="strategy">
+        <input type="checkbox" name="strategies[]" id="strategy_{{.Name}}" value="{{.Name}}"{{if contains $page.SelectedStrategies .Name}} checked="checked"{{end}} data-paid="{{.Paid}}" />
+        <div>
+          <label for="strategy_{{.Name}}">
+            {{.Label}}
+            <span class="badge {{.CostTier}}">
+              {{.CostLabel}}
+            </span>
+            {{if .KeyName}}
+              <span class="badge">requiere {{.KeyName}}</span>
+            {{end}}
+          </label>
+          <p class="meta">{{.Description}}</p>
+        </div>
+      </div>
+    {{end}}
+    <div class="alert warn" id="paid-warning" hidden>
+      Has marcado estrategias de pago: llamarán a proveedores externos con tu clave del servicio IA y pueden tardar varios minutos (hasta {{$page.CompareTimeout}} s).
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Consultas</h2>
+    <p class="hint">Sin consultas solo se calculan las estadísticas. Con consultas se compara qué chunks recupera cada estrategia (requiere <code>OPENAI_API_KEY</code> en el servicio).</p>
+    {{range $index, $query := sampleQueries}}
+      <div class="strategy">
+        <input type="checkbox" name="queries[]" id="query_{{$index}}" value="{{$query}}"{{if contains $page.Queries $query}} checked="checked"{{end}} />
+        <label for="query_{{$index}}">{{$query}}</label>
+      </div>
+    {{end}}
+    <label for="custom_queries">Consultas propias (una por línea)</label>
+    <textarea name="custom_queries" id="custom_queries" rows="3">
+</textarea>
+
+    <label for="top_k">Resultados por consulta (top-k)</label>
+    <input type="number" name="top_k" id="top_k" value="{{$page.TopK}}" min="1" max="10" />
+  </div>
+
+  <button type="submit" id="lab-submit">Comparar</button>
+  <div id="loading" role="status"><div class="spinner"></div><span>Calculando… las estrategias de pago pueden tardar varios minutos.</span></div>
+</form>
+
+<script>
+  (function () {
+    var form = document.getElementById("lab-form");
+    var warning = document.getElementById("paid-warning");
+    var boxes = form.querySelectorAll("input[name='strategies[]']");
+    function refresh() {
+      var paid = Array.prototype.some.call(boxes, function (box) { return box.checked && box.dataset.paid === "true"; });
+      warning.hidden = !paid;
+    }
+    Array.prototype.forEach.call(boxes, function (box) { box.addEventListener("change", refresh); });
+    refresh();
+    form.addEventListener("submit", function () {
+      document.getElementById("lab-submit").disabled = true;
+      document.getElementById("loading").classList.add("active");
+    });
+  })();
+</script>
+{{end}}

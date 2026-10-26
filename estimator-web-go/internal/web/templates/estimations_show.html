@@ -1,0 +1,26 @@
+{{define "content"}}
+{{$estimation := .Data}}
+<h1>Estimación{{if $estimation.Truthy "id"}} #{{$estimation.S "id"}}{{end}}</h1>
+
+<div class="card">
+  <p class="meta" id="estimation-meta">
+    {{$options := $estimation.Doc "options"}}
+    {{labelFor ($options.Get "project_type")}} · detalle {{lower (labelFor ($options.Get "detail_level"))}} ·
+    {{lower (labelFor ($options.Get "output_format"))}} · prompt {{$estimation.S "prompt_version"}} ·
+    {{cacheSourceLabel ($estimation.Get "cache_source")}}
+    {{if $estimation.Truthy "requested_at"}} · {{formatTime ($estimation.Get "requested_at")}}{{end}}
+  </p>
+  {{template "result" $estimation}}
+</div>
+
+<div class="card">
+  <h2>Descripción</h2>
+  {{$description := $estimation.S "description"}}
+  <p id="description-text" style="white-space: pre-wrap;">{{truncate $description 2000}}</p>
+  {{if gt (runeCount $description) 2000}}
+    <p class="meta">{{delimited (runeCount $description)}} caracteres en total.</p>
+  {{end}}
+</div>
+
+<p><a href="/estimations">← Historial</a> · <a href="/estimations/new">Nueva estimación</a></p>
+{{end}}

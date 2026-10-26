@@ -31,7 +31,7 @@ app/
 │   ├── attachments/#   extracción de texto de PDF/DOCX
 │   └── persistence/#   engine SQLAlchemy, modelos, repositorios y migraciones de la ingesta
 ├── domain/         # contrato y conductor
-│   ├── schemas/    #   contratos Pydantic que consumen los clientes (Rails, React, Streamlit)
+│   ├── schemas/    #   contratos Pydantic que consumen los clientes (web Go, React, Streamlit)
 │   ├── pipeline.py #   conductor de /estimate: guardrails → cag → prompt → llm → validación → cag
 │   ├── session_estimation.py · acb.py   # conductores conversacional y Actor–Crítico–Boss
 │   └── validation.py · audience.py · history.py · evaluation.py   # reglas de negocio y servicios de dominio
@@ -117,7 +117,7 @@ Las sesiones (`/api/v1/sessions/*`) pasan por `domain/session_estimation.py` (me
 ## 7. Contratos que no se rompen
 
 - **Rutas HTTP**: `/api/v1/estimate`, `/api/v1/transcription/*`, `/api/v1/sessions/*`, `/api/v1/estimations`,
-  `/api/v1/prompts/*`, `/api/v1/ingestion/*`, `/embeddings/ingest`. Los clientes Rails, React y Streamlit
+  `/api/v1/prompts/*`, `/api/v1/ingestion/*`, `/embeddings/ingest`. Los clientes web Go, React y Streamlit
   dependen de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/api/v1/config/models`),
   nunca cambios de forma de las existentes.
 - **`EstimationResult`** (`domain/schemas/`): el orden de campos importa para la salida estructurada y sus

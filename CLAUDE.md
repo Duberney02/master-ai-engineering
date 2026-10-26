@@ -8,7 +8,7 @@ los encabezados estructurales y las palabras SHALL/MUST de las specs, en inglés
 Monorepo del máster en AI Engineering. Un mismo producto (estimador de proyectos con IA) con varios proyectos:
 
 - `estimador-cag/`: servicio FastAPI (Python 3.11, uv). **Todo el trabajo de IA vive aquí.**
-- `estimator-web/`: cliente Rails 8 organizado por contextos ([`ARCHITECTURE.md`](estimator-web/ARCHITECTURE.md)): Faraday, Minitest, WebMock y PostgreSQL solo para el historial del Chunking Lab.
+- `estimator-web-go/`: servicio web en Go (net/http + html/template) organizado por contextos ([`ARCHITECTURE.md`](estimator-web-go/ARCHITECTURE.md)): `go test` con la API de IA simulada y PostgreSQL solo para el historial del Chunking Lab. Sustituye al cliente Rails original (servicio `estimator-web` del Compose, puerto 3000).
 - `estimator-web-react/`: el mismo cliente en React + TypeScript.
 - `openspec/`: specs (`specs/estimator/`) y cambios (`changes/`). El trabajo nuevo sigue OpenSpec.
 - `.agents/skills/`: skills de OpenSpec (`openspec-propose`, `-apply-change`, `-sync-specs`, `-archive-change`).
@@ -23,10 +23,11 @@ docker compose -f docker-compose.verify.yml run --rm api-test tests/test_x.py -k
 docker compose -f docker-compose.verify.yml run --rm api-lint              # ruff check
 docker compose -f docker-compose.verify.yml run --rm api-lint check . --fix
 docker compose -f docker-compose.verify.yml run --rm api-uv lock           # regenerar uv.lock
-docker compose -f docker-compose.verify.yml run --rm web-test              # cliente Rails: bin/rails test (con PostgreSQL efímero)
-docker compose -f docker-compose.verify.yml run --rm web-lint              # cliente Rails: RuboCop
+docker compose -f docker-compose.verify.yml run --rm web-test              # servicio web Go: go test -p 1 ./... (con PostgreSQL efímero)
+docker compose -f docker-compose.verify.yml run --rm web-lint              # servicio web Go: gofmt + go vet
+docker compose -f docker-compose.verify.yml run --rm web-go mod tidy      # dependencias del módulo Go
 docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
-docker compose up --build                                                   # stack completo (API 8000, Rails 3000, React 3001, Streamlit 8501)
+docker compose up --build                                                   # stack completo (API 8000, web Go 3000, React 3001, Streamlit 8501)
 ```
 
 Si cambian las dependencias (`pyproject.toml`), reconstruye la imagen de pruebas:
@@ -59,7 +60,7 @@ conductor (`agentic` puede usar `conversation`); **todas las fábricas viven en 
 - Settings en minúsculas en `Settings` (pydantic-settings); variables de entorno en mayúsculas.
 - SDK **asíncronos** (OpenAI, Anthropic, Redis, SQLAlchemy async). No bloquees el event loop.
 - **Errores saneados**: nunca devuelvas trazas, claves, URLs internas ni cuerpos de proveedor; el detalle va al log.
-- **Contratos aditivos**: no cambies rutas ni la forma JSON que consumen Rails, React y Streamlit.
+- **Contratos aditivos**: no cambies rutas ni la forma JSON que consumen el servicio web Go, React y Streamlit.
 - Salida de usuario y comentarios en español.
 
 ## Trampas

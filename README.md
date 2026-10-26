@@ -22,7 +22,7 @@ master-ai-engineering/
 │   ├── tests/                    ← suite de pytest
 │   ├── docs/                    ← documentación e historial de diseño
 │   └── README.md                 ← documentación completa del proyecto
-├── estimator-web/                ← aplicación web Rails (cliente HTTP de la API)
+├── estimator-web-go/             ← aplicación web en Go (cliente HTTP de la API; sustituye al cliente Rails)
 ├── estimator-web-react/          ← la misma web en React + TypeScript (SPA con proxy nginx)
 ├── docker-compose.yml            ← stack completo: API + webs + Redis Stack + PostgreSQL
 ├── docker-compose.verify.yml     ← pruebas, lint, evaluación y OpenSpec en contenedores
@@ -36,7 +36,7 @@ master-ai-engineering/
 |---|---|---|
 | [`estimador-cag/`](./estimador-cag/README.md) | API FastAPI que genera estimaciones iniciales de proyectos de software a partir de transcripciones de reuniones con clientes, usando CAG (Context-Augmented Generation): los ejemplos históricos se inyectan directamente en el prompt del LLM, sin embeddings ni vector store. Soporta OpenAI y Anthropic como proveedores. | Python 3.11, FastAPI, Pydantic, uv, OpenAI SDK, Anthropic SDK |
 
-| [`estimator-web/`](./estimator-web/README.md) | Aplicación web Rails para el estimador: formulario con carga de transcripciones `.txt` (hasta 80 000 caracteres), historial de estimaciones y vista del resultado con duración, coste, confianza y tabla de fases; **Chunking Lab** (comparación de estrategias con historial en PostgreSQL) y **Ajustes** (modelos del LLM en tiempo de ejecución). Consume la API por HTTP con Faraday, organizado por contextos. | Ruby 3.4, Rails 8, Faraday, Minitest |
+| [`estimator-web-go/`](./estimator-web-go/README.md) | Servicio web en Go para el estimador (reemplaza al cliente Rails original, con las mismas pantallas): formulario con carga de transcripciones `.txt` (hasta 80 000 caracteres), historial de estimaciones y vista del resultado con duración, coste, confianza y tabla de fases; **Chunking Lab** (comparación de estrategias con historial en PostgreSQL) y **Ajustes** (modelos del LLM en tiempo de ejecución). Consume la API por HTTP, organizado por contextos. | Go 1.25, net/http, html/template, pgx |
 | [`estimator-web-react/`](./estimator-web-react/README.md) | La misma web del estimador en React: formulario con carga de `.txt`, historial, resultado y barra lateral del prompt, como componentes reutilizables. Se sirve con nginx, que reenvía `/api/` a la API (sin CORS). | React 19, TypeScript, Vite, Vitest, nginx |
 
 A medida que se agreguen nuevos proyectos del máster (RAG, agentes,
@@ -52,14 +52,14 @@ cp estimador-cag/.env.example estimador-cag/.env   # completa la API key del pro
 docker compose up --build
 ```
 
-Web Rails en <http://localhost:3000>, web React en <http://localhost:3001>, chat Streamlit en <http://localhost:8501> y API en <http://localhost:8000/docs>. Solo esos cuatro puertos se publican. Variables
+Web Go en <http://localhost:3000>, web React en <http://localhost:3001>, chat Streamlit en <http://localhost:8501> y API en <http://localhost:8000/docs>. Solo esos cuatro puertos se publican. Variables
 opcionales (`POSTGRES_PASSWORD`, `SECRET_KEY_BASE`) en [`.env.example`](./.env.example).
 
 ## Conversación con memoria y adjuntos
 
 La API admite **sesiones conversacionales** (`POST /api/v1/sessions` y `POST /api/v1/sessions/{id}/estimate`): recuerdan
 los últimos 6 turnos y los metadatos del proyecto (nombre, equipo, tecnologías, alcance) y aceptan adjuntos PDF/Word cuyo
-texto se extrae en local. Las tres interfaces (chat Streamlit, web Rails y web React) crean la sesión al cargar la página,
+texto se extrae en local. Las tres interfaces (chat Streamlit, web Go y web React) crean la sesión al cargar la página,
 permiten transcripción más varios archivos, muestran los metadatos en la barra lateral y ofrecen «Nueva conversación». Las
 sesiones viven en memoria de la API (se pierden al reiniciar). Detalle, decisiones y límites en el
 [README de `estimador-cag`](./estimador-cag/README.md#conversación-con-memoria-sesiones).

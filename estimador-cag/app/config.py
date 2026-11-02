@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     semantic_cache_max_chars: int = Field(default=8000, gt=0)
     # PostgreSQL del historial (postgresql+asyncpg://...). Sin valor, el historial se desactiva.
     database_url: str | None = None
+    # Candidatos que explora el índice HNSW por consulta (`SET LOCAL hnsw.ef_search`): más alto = más recall y
+    # más latencia. Valor elegido con el barrido de `scripts/sweep_ef_search_s08.py` (ver docs/session-08-ef-search.md).
+    hnsw_ef_search: int = Field(default=40, ge=1, le=1000)
     # Intentos totales para obtener un resultado que cumpla las reglas de negocio.
     validation_max_attempts: int = Field(default=3, ge=1, le=5)
     # Sesiones conversacionales en memoria del proceso (ver app.generation.conversation.sessions): turnos

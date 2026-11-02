@@ -32,12 +32,28 @@ config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
+# Índices HNSW de la migración 0003: son sobre una expresión (`embedding::halfvec(1536)`) con operator class, que
+# `alembic check` no sabe comparar con el modelo; viven solo en la migración y se excluyen de la comparación.
+MIGRATION_ONLY_INDEXES = frozenset({"chunks_embedding_halfvec_idx", "chunks_embedding_idx"})
+
+
+def include_object(obj, name, type_, reflected, compare_to) -> bool:
+    """Solo se comparan las tablas del modelo (no `estimations`, del historial) y no los índices solo-migración."""
+    if type_ == "table" and reflected and name not in target_metadata.tables:
+        return False
+    if type_ == "index" and name in MIGRATION_ONLY_INDEXES:
+        return False
+    if type_ == "index" and reflected and obj.table.name not in target_metadata.tables:
+        return False
+    return True
+
 
 def run_migrations_offline() -> None:
     """Genera el SQL sin conexión (`alembic upgrade --sql`)."""
     context.configure(
         url=database_url,
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -48,7 +64,8 @@ def run_migrations_offline() -> None:
 def _run_migrations(connection: Connection) -> None:
     # Sin esto Alembic no reconoce `vector` al reflejar la base y `alembic check` ve diferencias fantasma.
     connection.dialect.ischema_names["vector"] = pgvector.sqlalchemy.Vector
-    context.configure(connection=connection, target_metadata=target_metadata)
+    connection.dialect.ischema_names["halfvec"] = pgvector.sqlalchemy.HALFVEC
+    context.configure(connection=connection, target_metadata=target_metadata, include_object=include_object)
     with context.begin_transaction():
         context.run_migrations()
 

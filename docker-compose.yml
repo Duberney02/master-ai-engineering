@@ -150,6 +150,18 @@ services:
     # PostgreSQL + pgvector: historial, ingesta (Sesión 6) y presupuestos vectorizados (Sesión 8).
     # pg17 como antes: el volumen postgres_data existente no es legible por otra versión mayor.
     image: pgvector/pgvector:pg17
+    # Los builds HNSW paralelos usan memoria compartida (/dev/shm); el 64 MB por defecto de Docker se queda corto.
+    shm_size: 1gb
+    # Tuning para construir índices vectoriales. Son valores CONSERVADORES de desarrollo (máquina de ~2-4 GB);
+    # en producción escalan con la RAM: shared_buffers ≈ 25 %, effective_cache_size ≈ 75 %, y maintenance_work_mem
+    # lo bastante grande para que el grafo HNSW quepa en memoria durante el build.
+    command: >
+      postgres
+      -c shared_buffers=512MB
+      -c effective_cache_size=1536MB
+      -c work_mem=64MB
+      -c maintenance_work_mem=512MB
+      -c max_parallel_maintenance_workers=2
     environment:
       POSTGRES_USER: estimator
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-estimator-dev}

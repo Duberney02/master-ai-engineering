@@ -143,7 +143,7 @@ def get_document_store(
     embedder: OpenAIEmbedder = Depends(get_embedder),
 ) -> DocumentStore:
     """Almacén vectorial de la solicitud: la sesión async es la de la solicitud (una transacción por ingesta)."""
-    return DocumentStore(session, chunker, embedder)
+    return DocumentStore(session, chunker, embedder, ef_search=get_settings().hnsw_ef_search)
 
 
 async def get_chunker_builder() -> Callable[[list[str]], list[Chunker]]:

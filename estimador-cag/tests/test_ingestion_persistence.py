@@ -136,7 +136,7 @@ def test_upgrade_creates_both_tables_and_is_repeatable(sqlite_url):
     engine = create_engine(sqlite_url)
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all() == [
-            "0002_pgvector_documents_chunks"
+            "0003_hnsw_indexes"
         ]
     engine.dispose()
 

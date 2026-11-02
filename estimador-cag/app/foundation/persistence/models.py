@@ -11,7 +11,9 @@ Sesión 8: presupuestos vectorizados para la búsqueda semántica.
 
 * `documents`: un presupuesto ingestado (`source_path` único) con sus metadatos estables.
 * `chunks`: sus fragmentos con el embedding (`vector(1536)`, `text-embedding-3-small`); `ON DELETE CASCADE`.
-  Sin índice vectorial a propósito: el *sequential scan* es la línea base para medir.
+  Índices HNSW (migración `0003`) sobre la *expresión* `embedding::halfvec(1536)`: la columna sigue en full precision y
+  solo el índice usa media precisión (≈50 % de tamaño). Declararlos aquí no es posible sin que `alembic check` los
+  vea como diferencias, así que viven solo en la migración; `halfvec_embedding()` da la expresión exacta del índice.
 
 Usa una base declarativa propia (no la del historial) para que Alembic solo gestione estas tablas.
 """
@@ -19,8 +21,8 @@ Usa una base declarativa propia (no la del historial) para que Alembic solo gest
 import uuid
 from datetime import datetime
 
-from pgvector.sqlalchemy import Vector
-from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid, func, text
+from pgvector.sqlalchemy import HALFVEC, Vector
+from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid, cast, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import DateTime
@@ -92,3 +94,11 @@ class Chunk(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+def halfvec_embedding():
+    """`embedding::halfvec(1536)`: la expresión EXACTA del índice HNSW halfvec.
+
+    Si el `ORDER BY` de una búsqueda no usa esta expresión con el operador `<=>`, Postgres ignora el índice sin avisar.
+    """
+    return cast(Chunk.embedding, HALFVEC(EMBEDDING_DIMENSIONS))

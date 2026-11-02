@@ -9,14 +9,18 @@ import os
 
 import httpx
 import pytest
+from alembic.config import Config
 from sqlalchemy import func, select, text
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from alembic import command
 from app.dependencies import get_embedder
 from app.foundation.persistence.database import get_session
-from app.foundation.persistence.migrate import upgrade_to_head
+from app.foundation.persistence.migrate import ALEMBIC_INI, upgrade_to_head
 from app.foundation.persistence.models import Chunk, Document
+from app.generation.rag.store.documents import search_statement
 from app.main import app
 from tests._rag_fakes import FakeEmbedder, make_budget
 
@@ -88,7 +92,7 @@ async def _counts(client) -> tuple[int, int]:
 # --- Migración -----------------------------------------------------------------------------------------------
 
 
-async def test_migration_creates_the_schema_without_a_vector_index(engine):
+async def test_migration_creates_the_schema_and_the_hnsw_indexes(engine):
     async with engine.connect() as connection:
         extensions = set((await connection.execute(text("SELECT extname FROM pg_extension"))).scalars())
         indexes = dict(
@@ -99,11 +103,56 @@ async def test_migration_creates_the_schema_without_a_vector_index(engine):
                 text("SELECT format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = 'chunks'::regclass AND attname = 'embedding'")
             )
         ).scalar_one()
+        invalid = (
+            await connection.execute(text("SELECT count(*) FROM pg_index WHERE indrelid = 'chunks'::regclass AND NOT indisvalid"))
+        ).scalar_one()
 
-    assert "vector" in extensions and column == "vector(1536)"
+    assert "vector" in extensions and column == "vector(1536)"  # la columna sigue en full precision
     assert {"ix_chunks_document_id", "ix_chunks_chunk_type", "ix_chunks_metadata_gin"} <= set(indexes)
     assert "gin" in indexes["ix_chunks_metadata_gin"].lower()
-    assert not any("hnsw" in definition.lower() or "ivfflat" in definition.lower() for definition in indexes.values())
+    halfvec, full = indexes["chunks_embedding_halfvec_idx"], indexes["chunks_embedding_idx"]
+    assert "USING hnsw" in halfvec and "halfvec_cosine_ops" in halfvec and "halfvec(1536)" in halfvec
+    assert "m='16'" in halfvec and "ef_construction='128'" in halfvec
+    assert "USING hnsw" in full and "vector_cosine_ops" in full and "halfvec" not in full
+    assert invalid == 0
+
+
+async def test_search_query_uses_the_halfvec_index(engine):
+    statement = search_statement([0.1] * DIMENSIONS, 5)
+    compiled = statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
+    async with engine.connect() as connection:
+        await connection.execute(text("SET enable_seqscan = off"))  # tabla vacía: el planner preferiría el seq scan
+        plan = " ".join((await connection.execute(text(f"EXPLAIN {compiled}"))).scalars())
+
+    assert "Index Scan using chunks_embedding_halfvec_idx" in plan
+
+
+async def test_the_unaligned_expression_ignores_the_halfvec_index(engine):
+    """El antipatrón: `embedding <=> q` sin castear no puede usar el índice halfvec (usa el `vector`, si existe)."""
+    vector = "[" + ",".join(["0.1"] * DIMENSIONS) + "]"
+    async with engine.connect() as connection:
+        await connection.execute(text("SET enable_seqscan = off"))
+        plan = " ".join(
+            (await connection.execute(text(f"EXPLAIN SELECT id FROM chunks ORDER BY embedding <=> '{vector}' LIMIT 5"))).scalars()
+        )
+
+    assert "chunks_embedding_halfvec_idx" not in plan
+
+
+async def test_migration_downgrade_and_upgrade_are_reversible_and_alembic_check_is_clean(engine):
+    config = Config(str(ALEMBIC_INI))
+    config.set_main_option("script_location", str(ALEMBIC_INI.parent / "alembic"))
+
+    async def index_names() -> set[str]:
+        async with engine.connect() as connection:
+            return set((await connection.execute(text("SELECT indexname FROM pg_indexes WHERE tablename = 'chunks'"))).scalars())
+
+    await asyncio.to_thread(command.check, config)
+    await asyncio.to_thread(command.downgrade, config, "0002_pgvector_documents_chunks")
+    assert not {"chunks_embedding_idx", "chunks_embedding_halfvec_idx"} & await index_names()
+    await asyncio.to_thread(command.upgrade, config, "head")
+    assert {"chunks_embedding_idx", "chunks_embedding_halfvec_idx"} <= await index_names()
+    await asyncio.to_thread(command.check, config)
 
 
 async def test_deleting_a_document_cascades_to_its_chunks(api):

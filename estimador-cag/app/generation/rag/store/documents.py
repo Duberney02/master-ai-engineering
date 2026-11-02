@@ -1,18 +1,19 @@
 """Almacén vectorial sobre PostgreSQL + pgvector: ingesta transaccional de presupuestos y búsqueda semántica.
 
 La ingesta usa una sola sesión y una sola transacción: el `document` y sus `chunks` se confirman juntos o no se
-confirma nada (un fallo del embedder no deja documentos huérfanos). La búsqueda es un *sequential scan* ordenado por
-distancia coseno: no hay índice vectorial a propósito, es la línea base que se mide antes de añadirlo.
+confirma nada (un fallo del embedder no deja documentos huérfanos). La búsqueda ordena por distancia coseno con la
+expresión del índice HNSW halfvec (migración `0003`) y fija `hnsw.ef_search` en su transacción.
 """
 
 import time
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import Select, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.foundation.persistence.models import EMBEDDING_DIMENSIONS, Chunk, Document
+from app.config import get_settings
+from app.foundation.persistence.models import EMBEDDING_DIMENSIONS, Chunk, Document, halfvec_embedding
 from app.generation.rag.chunking.base import Chunker
 from app.generation.rag.chunking.structural import budget_metadata
 from app.generation.rag.embedding.embedder import OpenAIEmbedder
@@ -42,11 +43,32 @@ def _elapsed_ms(started: float) -> int:
     return round((time.perf_counter() - started) * 1000)
 
 
+def search_statement(vector: list[float], k: int) -> Select:
+    """Los `k` chunks más cercanos por distancia coseno, con la expresión EXACTA del índice HNSW halfvec.
+
+    `CAST(embedding AS HALFVEC(1536)) <=> :q` coincide con `chunks_embedding_halfvec_idx` (`halfvec_cosine_ops`); con
+    otra expresión u operador Postgres ignora el índice y vuelve al *sequential scan* sin avisar.
+    """
+    distance = halfvec_embedding().cosine_distance(vector).label("distance")
+    return (
+        select(Chunk.id, Chunk.document_id, Chunk.chunk_type, Chunk.content, Chunk.metadata_, distance)
+        .where(Chunk.embedding.is_not(None))  # un chunk sin vectorizar no tiene distancia
+        .order_by(distance)
+        .limit(k)
+    )
+
+
 class DocumentStore:
-    def __init__(self, session: AsyncSession, chunker: Chunker, embedder: OpenAIEmbedder) -> None:
+    def __init__(
+        self, session: AsyncSession, chunker: Chunker, embedder: OpenAIEmbedder, ef_search: int | None = None
+    ) -> None:
         self._session = session
         self._chunker = chunker
         self._embedder = embedder
+        self._configured_ef_search = ef_search
+
+    def _ef_search(self) -> int:
+        return self._configured_ef_search or get_settings().hnsw_ef_search
 
     async def ingest(self, request: IngestRequest) -> IngestResponse:
         """Persiste el presupuesto como un `document` y sus `chunks` con embedding, en una sola transacción."""
@@ -110,18 +132,14 @@ class DocumentStore:
         return response
 
     async def search(self, query: str, k: int) -> SearchResponse:
-        """Los `k` chunks más cercanos a la consulta por distancia coseno (operador `<=>`)."""
+        """Los `k` chunks más cercanos a la consulta por distancia coseno (operador `<=>`, índice HNSW halfvec)."""
         started = time.perf_counter()
         vector = await self._embedder.embed_one(query)
         _check_dimension(vector)
 
-        distance = Chunk.embedding.cosine_distance(vector).label("distance")
-        statement = (
-            select(Chunk.id, Chunk.document_id, Chunk.chunk_type, Chunk.content, Chunk.metadata_, distance)
-            .where(Chunk.embedding.is_not(None))  # un chunk sin vectorizar no tiene distancia
-            .order_by(distance)
-            .limit(k)
-        )
+        statement = search_statement(vector, k)
+        # `SET LOCAL` dura lo que la transacción; no admite parámetros enlazados, pero `ef_search` es un `int` validado.
+        await self._session.execute(text(f"SET LOCAL hnsw.ef_search = {int(self._ef_search())}"))
         rows = (await self._session.execute(statement)).all()
         results = [
             SearchResult(

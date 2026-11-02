@@ -78,7 +78,7 @@ La web SHALL mostrar a la izquierda, como el cliente Streamlit, el prompt de sis
 - **THEN** se muestra un mensaje explicativo y no un error técnico.
 
 ### Requirement: Manejo de errores del cliente HTTP
-El cliente Faraday SHALL usar la URL `ESTIMATOR_API_URL`, tiempos de espera acotados y SHALL traducir los fallos a mensajes saneados en español: fallo de conexión o de tiempo, 400 con el `message` del guardrail, 422, 404 y 5xx. SHALL NOT mostrar cuerpos de respuesta crudos, trazas ni la URL interna. Un cuerpo no JSON o fuera de contrato SHALL tratarse como respuesta inválida.
+El cliente HTTP SHALL usar la URL `ESTIMATOR_API_URL`, tiempos de espera acotados y SHALL traducir los fallos a mensajes saneados en español: fallo de conexión o de tiempo, 400 con el `message` del guardrail, 422, 404 y 5xx. SHALL NOT mostrar cuerpos de respuesta crudos, trazas ni la URL interna. Un cuerpo no JSON o fuera de contrato SHALL tratarse como respuesta inválida.
 
 #### Scenario: API caída
 - **WHEN** la API no acepta la conexión o excede el tiempo

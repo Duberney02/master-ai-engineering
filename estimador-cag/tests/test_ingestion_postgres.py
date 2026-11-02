@@ -45,8 +45,8 @@ async def test_migrations_create_the_tables_and_keep_the_history_table(sessions)
         )
         version = (await session.execute(text("SELECT version_num FROM alembic_version"))).scalar()
 
-    assert {"ingestion_jobs", "pseudonym_mappings", "alembic_version"} <= tables
-    assert version == "0001_session6_initial"
+    assert {"ingestion_jobs", "pseudonym_mappings", "documents", "chunks", "alembic_version"} <= tables
+    assert version == "0002_pgvector_documents_chunks"
 
 
 async def test_job_lifecycle_and_native_uuid_column(sessions):

@@ -18,12 +18,14 @@ from app.domain.history import EstimationHistory
 from app.domain.pipeline import EstimationPipeline
 from app.domain.session_estimation import SessionEstimationService
 from app.foundation.llm.runtime_config import RuntimeModelConfig, effective_settings
+from app.foundation.persistence.database import get_session
 from app.generation.agentic.critic import CriticService
 from app.generation.conversation.sessions import SessionStore
 from app.generation.rag.chunking.base import Chunker
 from app.generation.rag.chunking.registry import build_chunkers
 from app.generation.rag.chunking.structural import JSONStructuralChunker
 from app.generation.rag.embedding.embedder import OpenAIEmbedder
+from app.generation.rag.store.documents import DocumentStore
 from app.ingestion.catalog import DataCatalog, load_catalog
 from app.ingestion.loaders.filesystem import FileSystemLoader
 from app.ingestion.parsers.registry import ParserRegistry, default_registry
@@ -133,6 +135,15 @@ def get_chunker() -> JSONStructuralChunker:
 @lru_cache
 def get_embedder() -> OpenAIEmbedder:
     return OpenAIEmbedder()
+
+
+def get_document_store(
+    session: AsyncSession = Depends(get_session),
+    chunker: JSONStructuralChunker = Depends(get_chunker),
+    embedder: OpenAIEmbedder = Depends(get_embedder),
+) -> DocumentStore:
+    """Almacén vectorial de la solicitud: la sesión async es la de la solicitud (una transacción por ingesta)."""
+    return DocumentStore(session, chunker, embedder)
 
 
 async def get_chunker_builder() -> Callable[[list[str]], list[Chunker]]:

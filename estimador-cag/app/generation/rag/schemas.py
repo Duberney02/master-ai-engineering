@@ -64,18 +64,44 @@ class EmbeddedChunk(Chunk):
 
 
 class IngestRequest(BaseModel):
-    budgets: list[Budget] = Field(min_length=1)
+    """Un presupuesto histórico a persistir: `content` es el JSON completo de un `Budget`."""
 
-    @model_validator(mode="after")
-    def _unique_budget_ids(self) -> "IngestRequest":
-        ids = [budget.budget_id for budget in self.budgets]
-        duplicated = sorted({i for i in ids if ids.count(i) > 1})
-        if duplicated:
-            raise ValueError(f"duplicate budget_id in request: {duplicated}")
-        return self
+    source_path: str = Field(min_length=1)
+    document_type: str = Field(min_length=1, max_length=50)
+    content: Budget
 
 
 class IngestResponse(BaseModel):
-    chunks: list[EmbeddedChunk]
-    # total_budgets, total_chunks, total_tokens, estimated_cost_usd
-    stats: dict[str, int | float]
+    document_id: int
+    chunks_created: int
+    embedding_dimension: int
+    ingestion_time_ms: int
+
+
+class SearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    k: int = Field(default=5, ge=1, le=50)
+
+    @field_validator("query")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value
+
+
+class SearchResult(BaseModel):
+    chunk_id: int
+    document_id: int
+    chunk_type: str
+    content: str
+    # Distancia coseno (`<=>`): 0 = misma dirección, 2 = opuestos. Menor es más parecido.
+    distance: float
+    metadata: dict[str, Any]
+
+
+class SearchResponse(BaseModel):
+    query: str
+    k: int
+    search_time_ms: int
+    results: list[SearchResult]

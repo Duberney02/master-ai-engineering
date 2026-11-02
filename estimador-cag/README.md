@@ -381,29 +381,52 @@ docker compose up -d estimador-cag
 Si el puerto 8000 está ocupado por otro stack, publica otro puerto con un override temporal
 (p. ej. `ports: !override ["8010:8000"]` en un segundo archivo `-f`).
 
-**Endpoint** `POST /embeddings/ingest` (cuerpo `{"budgets": [...]}`; `data/budgets_sample.json` es la lista de 15
-presupuestos, por lo que hay que envolverla):
+**Endpoints** `POST /embeddings/ingest` (ingesta persistente) y `POST /search` (búsqueda semántica): ver la sección
+siguiente. `POST /embeddings/compare` compara estrategias de chunking sin persistir nada.
+
+### Persistencia vectorial y búsqueda semántica (sesión 8)
+
+Cada presupuesto se guarda como un `document` más sus `chunks` (uno por componente, con embedding
+`text-embedding-3-small`, 1536 dimensiones) en PostgreSQL + pgvector (`pgvector/pgvector:pg17`, esquema bajo Alembic:
+`alembic/versions/0002_pgvector_documents_chunks.py`). La búsqueda es un *sequential scan* ordenado por distancia coseno.
 
 ```bash
-python -c "import json; print(json.dumps({'budgets': json.load(open('data/budgets_sample.json', encoding='utf-8'))}))" > /tmp/ingest.json
-curl -s -X POST http://localhost:8000/embeddings/ingest -H "Content-Type: application/json" -d @/tmp/ingest.json \
-  | python -c "import sys, json; d = json.load(sys.stdin); print(d['stats'], len(d['chunks'][0]['embedding']))"
+docker compose up -d --build                                            # API + PostgreSQL con pgvector (migraciones al arrancar)
+docker compose exec estimador-cag python scripts/ingest_corpus.py   # ingesta los 15 presupuestos de ejemplo
+docker compose exec estimador-cag python scripts/query_examples.py  # 5 consultas; salida de referencia: output_examples.txt
+# (exec, no run: el contenedor de `run` también responde al alias del servicio y no alcanzaría la API)
 ```
 
-Respuestas: `200` (`chunks` vectorizados y `stats` con `total_budgets`, `total_chunks`, `total_tokens`,
-`estimated_cost_usd`), `422` (entrada inválida) y `500` (error del proveedor, mensaje genérico; el detalle va al log).
+`POST /embeddings/ingest` recibe `{"source_path", "document_type", "content": <JSON del presupuesto>}` y responde `200`
+`{"document_id", "chunks_created", "embedding_dimension", "ingestion_time_ms"}`, `409`
+`{"detail": "Document already ingested", "document_id"}` si el `source_path` ya existe, `422`, `503` (sin `DATABASE_URL`)
+o `500` genérico (detalle en el log). Todo ocurre en una transacción: si el embedder falla no queda ningún `document`.
+`POST /search` recibe `{"query", "k"}` (1–50, por defecto 5) y devuelve `results` con `chunk_id`, `document_id`,
+`chunk_type`, `content`, `distance` y `metadata`, de menor a mayor distancia.
 
-**CLI de similitud coseno** (`scripts/compare.py`, cálculo manual con la biblioteca estándar):
+**Por qué este diseño**
 
-```bash
-# Dentro del contenedor (Compose monta ./scripts y ./data)
-docker compose exec estimador-cag python scripts/compare.py \
-  --text-a "OAuth 2.0 authentication backend for fintech" \
-  --text-b "JWT-based authorization service for banking app"
-
-# Fuera del contenedor: Python 3.11+, `uv sync` hecho y OPENAI_API_KEY en .env (se lee desde estimador-cag/)
-uv run python scripts/compare.py --text-a "..." --text-b "..."
-```
+- **Dos tablas, no una.** `documents` guarda una vez lo que es del presupuesto (ruta, tipo, metadatos) y `chunks` lo
+  que es del fragmento. Una sola tabla repetiría la metadata del documento en cada chunk, no permitiría una clave
+  única por `source_path` y borrar un presupuesto exigiría limpiar filas a mano. Con la FK `ON DELETE CASCADE` la base
+  garantiza integridad referencial: no hay chunks huérfanos y borrar el documento borra sus chunks.
+- **Metadata en JSONB.** Lo estable y tipado (`source_path`, `document_type`, `chunk_type`, fechas) son columnas, con
+  su tipo, sus `NOT NULL` y sus índices. Lo variable (sector, tecnología, año, complejidad…) cambia con el corpus y
+  vive en `metadata JSONB`; el índice GIN (`ix_chunks_metadata_gin`) deja preparados los filtros futuros sin una
+  migración por cada atributo nuevo.
+- **`cosine_distance` (`<=>`), no L2 ni producto interno.** Los embeddings de OpenAI van normalizados, así que el
+  coseno y el producto interno ordenan igual, pero el coseno es la convención en RAG y no depende de la norma. L2
+  también ordena igual con vectores unitarios, pero su escala no es interpretable como similitud. Además `<=>`
+  coincide con la clase de operadores `vector_cosine_ops` que usará el futuro índice HNSW: si la consulta usara otro
+  operador, Postgres ignoraría el índice y haría *sequential scan* sin avisar.
+- **Sin índice vectorial todavía.** El *sequential scan* (exacto, sin parámetros) es la línea base: primero se mide
+  `search_time_ms` con el corpus real y después se añade HNSW para comparar latencia y recall con datos, no con
+  suposiciones. Tampoco hay filtros por metadata, búsqueda híbrida ni ajustes de Postgres (valores por defecto).
+- **`vector(1536)` fijo.** pgvector necesita la dimensión en el tipo para validar las inserciones y construir índices;
+  es la de `text-embedding-3-small`. Cambiar de modelo o de dimensión implica una migración (y re-embeber), y la API
+  rechaza vectores de otra dimensión en lugar de guardarlos mal.
+- **`embedding` nulable.** Permite guardar el chunk antes de vectorizarlo, reintentar o re-embeber con otro modelo sin
+  perder el texto. La búsqueda ignora los chunks sin vector.
 
 ### Comparación de estrategias de chunking (sesión 7)
 
@@ -468,7 +491,7 @@ estimador-cag/
 │                             estimations (transcripción), embeddings (ingest y compare) y config (modelos en runtime)
 ├── alembic/ · alembic.ini  — migraciones de la ingesta (ingestion_jobs, pseudonym_mappings)
 ├── data/                   — catálogo (catalog/), corpus de ejemplo (seed/), presupuestos y consultas de chunking
-├── scripts/                — demos y preflight de la sesión 6, compare.py y compare_chunkers.py
+├── scripts/                — demos y preflight de la sesión 6, compare_chunkers.py, ingest_corpus.py y query_examples.py
 ├── evals/                  — dataset de referencia, métricas deterministas, runner y stress test (no va en la imagen)
 ├── tests/
 ├── ARCHITECTURE.md · Dockerfile · docker-compose.yml · pyproject.toml · README.md
@@ -872,15 +895,12 @@ docker run --rm -v "$PWD:/app" estimador-cag:test pytest -v tests/test_sessions_
 uv run pytest -v
 ```
 
-La suite no llama a los proveedores reales (los SDK se simulan) y usa SQLite en memoria para el historial y la ingesta; `tests/test_history_postgres.py` y `tests/test_ingestion_postgres.py` (migraciones Alembic, concurrencia de `lookup_or_create`, ingesta real) se activan con `TEST_DATABASE_URL` y ejercitan un PostgreSQL real. Con el stack raíz levantado, desde la raíz del repositorio y sobre una base de pruebas aparte (no toca el historial):
-
-```bash
-docker compose exec postgres psql -U estimator -d postgres -c "CREATE DATABASE estimator_test"
-docker run --rm --network estimator_estimator-net -v "$PWD/estimador-cag:/app" -w /app \
-  -e OPENAI_API_KEY=sk-test-dummy \
-  -e TEST_DATABASE_URL=postgresql+asyncpg://estimator:estimator-dev@postgres:5432/estimator_test \
-  estimador-cag:test pytest -q
-```
+La suite no llama a los proveedores reales (los SDK se simulan). Desde la raíz del repositorio, `api-test` levanta su propio
+PostgreSQL con pgvector (`api-db`, efímero) y define `TEST_DATABASE_URL`, de modo que se ejecutan también las pruebas contra un
+PostgreSQL real: `tests/test_history_postgres.py`, `tests/test_ingestion_postgres.py` (migraciones Alembic, concurrencia,
+ingesta) y `tests/test_vector_store.py` (esquema pgvector, `/embeddings/ingest`, `/search`). Sin `TEST_DATABASE_URL` esas pruebas
+se omiten; el resto usa SQLite en memoria. Las de pgvector vacían `documents` y `chunks`, por lo que exigen una base cuyo
+nombre termine en `test`.
 
 La ingesta (`docker compose exec estimador-cag python scripts/preflight_s06.py`, demos y CLI) se describe en «Ingesta de datos (sesión 6)». Las migraciones se aplican solas al arrancar la API cuando hay `DATABASE_URL` (`python -m app.foundation.persistence.migrate`; manualmente: `docker compose exec estimador-cag alembic upgrade head`). `tests/prompts/` prueba las
 plantillas en milisegundos (descripción literal, formato, detalle, referencias, versiones

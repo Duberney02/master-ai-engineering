@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import config as runtime_config_api
 from app.api import estimations, history, ingestion, project_estimations, prompts, sessions
 from app.api.embeddings import router as embeddings_router
+from app.api.search import router as search_router
 from app.config import get_settings
 from app.dependencies import close_history
 from app.foundation.guardrails.input import GuardrailViolation
@@ -69,6 +70,7 @@ app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
 app.include_router(ingestion.router, prefix="/api/v1")
 app.include_router(estimations.router, prefix="/api/v1/transcription", tags=["transcription"])
 app.include_router(embeddings_router, prefix="/embeddings")
+app.include_router(search_router)
 app.include_router(runtime_config_api.router)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 

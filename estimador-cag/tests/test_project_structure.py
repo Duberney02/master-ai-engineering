@@ -158,14 +158,16 @@ def test_root_compose_wires_services_and_keeps_keys_out_of_the_web():
     assert "env_file" not in services["estimator-web"]
 
 
-def test_root_compose_publishes_only_api_chat_and_web_ports():
+def test_root_compose_publishes_api_chat_web_and_postgres_ports():
     services = _root_compose()["services"]
 
     assert services["estimador-cag"]["ports"] == ["8000:8000"]
     assert services["estimator-web"]["ports"] == ["3000:3000"]
     assert services["estimador-cag-chat"]["ports"] == ["8501:8501"]
     assert services["estimador-cag-chat"]["environment"] == {"ESTIMATOR_API_BASE_URL": "http://estimador-cag:8000"}
-    assert "ports" not in services["redis"] and "ports" not in services["postgres"]
+    # Sesión 8: PostgreSQL publica 5432 solo para desarrollo (psql desde el host); Redis sigue siendo interno.
+    assert services["postgres"]["ports"] == ["5432:5432"]
+    assert "ports" not in services["redis"]
 
 
 def test_web_app_files_exist():

@@ -4,15 +4,16 @@ from collections.abc import Callable
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
 from app.config import Settings, get_settings
-from app.dependencies import get_chunker, get_chunker_builder, get_embedder
+from app.dependencies import get_chunker_builder, get_document_store, get_embedder
 from app.generation.rag.analysis.comparison import ChunkingComparator, CompareRequest, CompareResponse
 from app.generation.rag.chunking.base import Chunker
 from app.generation.rag.chunking.registry import FREE_STRATEGIES, StrategyUnavailableError, UnknownStrategyError
-from app.generation.rag.chunking.structural import JSONStructuralChunker
-from app.generation.rag.embedding.embedder import OpenAIEmbedder, estimate_cost_usd
+from app.generation.rag.embedding.embedder import OpenAIEmbedder
 from app.generation.rag.schemas import IngestRequest, IngestResponse
+from app.generation.rag.store.documents import DocumentAlreadyIngestedError, DocumentStore
 
 logger = structlog.get_logger(__name__)
 
@@ -22,35 +23,25 @@ router = APIRouter(tags=["embeddings"])
 @router.post(
     "/ingest",
     response_model=IngestResponse,
-    responses={500: {"description": "Error del proveedor de embeddings (mensaje genérico; el detalle va al log)."}},
+    responses={
+        409: {"description": "Ya existe un documento con ese `source_path` (incluye su `document_id`)."},
+        503: {"description": "No hay base de datos configurada (`DATABASE_URL`)."},
+        500: {"description": "Error del proveedor de embeddings o de la base (mensaje genérico; detalle en el log)."},
+    },
 )
 async def ingest(
-    request: IngestRequest,
-    chunker: JSONStructuralChunker = Depends(get_chunker),
-    embedder: OpenAIEmbedder = Depends(get_embedder),
-) -> IngestResponse:
-    chunks = await chunker.chunk(request.budgets)
+    request: IngestRequest, store: DocumentStore = Depends(get_document_store)
+) -> IngestResponse | JSONResponse:
+    """Persiste un presupuesto como `document` + `chunks` con embedding, todo en una sola transacción."""
     try:
-        embedded = await embedder.embed_many(chunks)
+        return await store.ingest(request)
+    except DocumentAlreadyIngestedError as exc:
+        return JSONResponse(
+            status_code=409, content={"detail": "Document already ingested", "document_id": exc.document_id}
+        )
     except Exception as exc:
         logger.error("embeddings_ingest_failed", error_type=type(exc).__name__)
-        raise HTTPException(status_code=500, detail="No se pudieron generar los embeddings.") from exc
-
-    total_tokens = sum(chunk.token_count for chunk in embedded)
-    stats = {
-        "total_budgets": len(request.budgets),
-        "total_chunks": len(embedded),
-        "total_tokens": total_tokens,
-        "estimated_cost_usd": estimate_cost_usd(total_tokens),
-    }
-    logger.info(
-        "embeddings_ingest_completed",
-        total_budgets=stats["total_budgets"],
-        total_chunks=stats["total_chunks"],
-        total_tokens=total_tokens,
-        estimated_cost_usd=stats["estimated_cost_usd"],
-    )
-    return IngestResponse(chunks=embedded, stats=stats)
+        raise HTTPException(status_code=500, detail="No se pudo ingestar el presupuesto.") from exc
 
 
 @router.post(
@@ -59,7 +50,7 @@ async def ingest(
     responses={
         400: {"description": "Estrategia desconocida."},
         503: {"description": "Falta la clave del proveedor que necesita alguna estrategia o los embeddings."},
-        500: {"description": "Fallo al calcular la comparación (mensaje genérico; el detalle va al log)."},
+        500: {"description": "Fallo al calcular la comparación (mensaje genérico; detalle en el log)."},
     },
 )
 async def compare(

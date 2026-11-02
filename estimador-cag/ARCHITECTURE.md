@@ -12,7 +12,8 @@ El estimador apila tres arquitecturas **de forma aditiva** sobre una base común
   (acierto exacto por SHA-256 y acierto semántico por similitud vectorial). Los ejemplos históricos también
   se inyectan en el prompt (Context-Augmented Generation, `foundation/prompts/examples.py`).
 - **RAG** (`app/generation/rag/`): convierte presupuestos históricos en chunks y embeddings. La Sesión 7 añade
-  la comparación de estrategias de chunking; la persistencia y la recuperación llegan en la Sesión 8.
+  la comparación de estrategias de chunking; la Sesión 8 persiste los chunks en PostgreSQL + pgvector y expone la
+  búsqueda semántica (`POST /search`).
 - **Agéntica** (`app/generation/agentic/`): bucle Actor–Crítico–Boss que audita la estimación antes de
   aceptarla, apoyado en la conversación multi-turno (`app/generation/conversation/`).
 
@@ -104,7 +105,7 @@ Las sesiones (`/api/v1/sessions/*`) pasan por `domain/session_estimation.py` (me
 | Backend LLM, plantilla de prompt, guardrail, adjunto, persistencia | `foundation/` |
 | Modelo seleccionable en runtime (knob nuevo) | `foundation/llm/runtime_config.py` (`MODEL_KNOBS`) y su ruta en `api/config.py` |
 | Estrategia de chunking, embeddings, comparación | `generation/rag/` |
-| Vector store o retriever (Sesión 8) | `generation/rag/store/` y `generation/rag/retriever.py` |
+| Vector store (Sesión 8) o retriever | `generation/rag/store/` (`DocumentStore`) y `generation/rag/retriever.py` |
 | Estrategia de caché | `generation/cag/` |
 | Rol de agente | `generation/agentic/` |
 | Memoria conversacional | `generation/conversation/` |
@@ -117,8 +118,9 @@ Las sesiones (`/api/v1/sessions/*`) pasan por `domain/session_estimation.py` (me
 ## 7. Contratos que no se rompen
 
 - **Rutas HTTP**: `/api/v1/estimate`, `/api/v1/transcription/*`, `/api/v1/sessions/*`, `/api/v1/estimations`,
-  `/api/v1/prompts/*`, `/api/v1/ingestion/*`, `/embeddings/ingest`. Los clientes web Go, React y Streamlit
-  dependen de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/api/v1/config/models`),
+  `/api/v1/prompts/*`, `/api/v1/ingestion/*`. (`/embeddings/ingest` cambió de contrato en la Sesión 8 —ahora persiste— tras
+  comprobar que ningún cliente lo usaba.) Los clientes web Go, React y Streamlit
+  dependen de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/search`, `/api/v1/config/models`),
   nunca cambios de forma de las existentes.
 - **`EstimationResult`** (`domain/schemas/`): el orden de campos importa para la salida estructurada y sus
   validadores disparan el re-prompt.
@@ -126,12 +128,13 @@ Las sesiones (`/api/v1/sessions/*`) pasan por `domain/session_estimation.py` (me
 - **SDK asíncronos**: ninguna llamada bloqueante en el event loop.
 - **Pruebas sin claves reales**: fakes, `fakeredis`, mocks.
 
-## 8. Huecos reservados (Sesión 8)
+## 8. Huecos reservados
 
-- `generation/rag/store/`: persistencia pgvector con índice HNSW.
-- `generation/rag/retriever.py`: recuperación semántica con filtrado por metadatos.
+- `generation/rag/store/`: ya persiste y busca (Sesión 8, *sequential scan*). Pendiente: índice HNSW, filtros por
+  metadata y búsqueda híbrida.
+- `generation/rag/retriever.py`: recuperación semántica con filtrado por metadatos (placeholder).
 
-Ambos son placeholders documentados; cuando RAG entre en la petición, el paso se añade al conductor.
+Cuando RAG entre en la petición de estimación, el paso se añade al conductor.
 
 ## Apéndice: mapa de migración (ruta antigua → nueva)
 

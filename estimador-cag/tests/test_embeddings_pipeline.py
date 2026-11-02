@@ -295,14 +295,6 @@ def _payload(**extra) -> dict:
     return {"budgets": [make_budget("B-1", ["oauth tokens. refresh flow."]).model_dump()], **extra}
 
 
-def test_ingest_still_returns_vectors_and_stats(client):
-    response = client.post("/embeddings/ingest", json=_payload())
-
-    body = response.json()
-    assert response.status_code == 200
-    assert body["stats"]["total_chunks"] == 1 and len(body["chunks"][0]["embedding"]) == 32
-
-
 def test_compare_defaults_to_the_free_strategies(client):
     response = client.post("/embeddings/compare", json=_payload())
 

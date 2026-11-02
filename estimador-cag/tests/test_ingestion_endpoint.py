@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.dependencies import get_catalog, get_filesystem_loader, get_parser_registry
 from app.foundation.persistence.database import get_session
-from app.foundation.persistence.models import Base
+from app.foundation.persistence.models import Base, IngestionJobRow, PseudonymMappingRow
 from app.ingestion.catalog.loader import load_catalog
 from app.ingestion.loaders.filesystem import FileSystemLoader
 from app.ingestion.parsers.registry import default_registry
@@ -67,7 +67,8 @@ async def ingestion_client(tmp_path, monkeypatch):
 
     engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool)
     async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+        # Solo las tablas de la ingesta: `documents`/`chunks` usan tipos de PostgreSQL (pgvector, JSONB).
+        await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=[IngestionJobRow.__table__, PseudonymMappingRow.__table__]))
     sessions = async_sessionmaker(engine, expire_on_commit=False)
 
     async def override_session():

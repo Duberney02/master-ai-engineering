@@ -5,7 +5,7 @@
 #   docker compose up --build
 #
 # Web Go: http://localhost:3000 · Web React: http://localhost:3001 · Chat Streamlit: http://localhost:8501 · API (docs): http://localhost:8000/docs
-# Solo la API, las webs y el chat publican puertos; Redis y PostgreSQL son internos a la red `estimator-net`.
+# La API, las webs, el chat y PostgreSQL (5432, para psql en desarrollo) publican puertos; Redis es interno a la red.
 # Para desarrollar solo el backend con recarga en caliente usa estimador-cag/docker-compose.yml.
 
 name: estimator
@@ -147,21 +147,25 @@ services:
       retries: 3
 
   postgres:
-    # Historial persistente de estimaciones.
-    image: postgres:17-alpine
+    # PostgreSQL + pgvector: historial, ingesta (Sesión 6) y presupuestos vectorizados (Sesión 8).
+    # pg17 como antes: el volumen postgres_data existente no es legible por otra versión mayor.
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: estimator
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-estimator-dev}
       POSTGRES_DB: estimator
+    # Solo desarrollo: permite psql desde el host.
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks: [estimator-net]
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U estimator -d estimator"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 networks:
   estimator-net:

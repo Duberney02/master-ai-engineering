@@ -1,8 +1,8 @@
 ## 1. Infraestructura (Postgres con pgvector)
 
-- [ ] 1.1 `docker-compose.yml`: servicio `postgres` con `pgvector/pgvector:pg17`, puerto 5432, healthcheck 5 s/5 s/10; checkpoint con `psql SELECT version()`
-- [ ] 1.2 `docker-compose.verify.yml` y CI: base pgvector efímera y `TEST_DATABASE_URL` en `api-test`
-- [ ] 1.3 Dependencia `pgvector>=0.3` en `pyproject.toml` y regenerar `uv.lock`; reconstruir la imagen de pruebas
+- [x] 1.1 `docker-compose.yml`: servicio `postgres` con `pgvector/pgvector:pg17`, puerto 5432, healthcheck 5 s/5 s/10; checkpoint con `psql SELECT version()`
+- [x] 1.2 `docker-compose.verify.yml` y CI: base pgvector efímera y `TEST_DATABASE_URL` en `api-test`
+- [x] 1.3 Dependencia `pgvector>=0.3` en `pyproject.toml` y regenerar `uv.lock`; reconstruir la imagen de pruebas
 
 ## 2. Esquema y migraciones
 

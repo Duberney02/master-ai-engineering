@@ -9,7 +9,8 @@
 #   docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
 #   docker compose -f docker-compose.verify.yml run --rm api-uv lock         # regenerar uv.lock
 #   docker compose -f docker-compose.verify.yml run --rm --entrypoint python api-test scripts/demo_cleaning_s06.py   # demos de la sesión 6
-# El preflight y las pruebas contra PostgreSQL real se ejecutan con el stack raíz levantado (ver estimador-cag/README.md).
+# api-test levanta su propio PostgreSQL con pgvector (api-db): las pruebas de integración ya no se omiten.
+# El preflight se ejecuta con el stack raíz levantado (ver estimador-cag/README.md).
 
 name: estimator-verify
 
@@ -27,8 +28,28 @@ x-api-dev: &api-dev
     OPENAI_API_KEY: sk-test-dummy
 
 services:
+  # PostgreSQL + pgvector efímero para las pruebas de integración (migraciones, ingesta y búsqueda).
+  api-db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: estimator
+      POSTGRES_PASSWORD: estimator-dev
+      POSTGRES_DB: estimator_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U estimator -d estimator_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
   api-test:
     <<: *api-dev
+    environment:
+      LLM_PROVIDER: openai
+      OPENAI_API_KEY: sk-test-dummy
+      TEST_DATABASE_URL: postgresql+asyncpg://estimator:estimator-dev@api-db:5432/estimator_test
+    depends_on:
+      api-db:
+        condition: service_healthy
     entrypoint: ["pytest"]
     command: ["-q"]
 

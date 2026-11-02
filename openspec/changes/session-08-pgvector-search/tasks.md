@@ -6,30 +6,30 @@
 
 ## 2. Esquema y migraciones
 
-- [ ] 2.1 `alembic/env.py`: registrar `ischema_names["vector"]` en la ejecución de migraciones
-- [ ] 2.2 Modelos ORM `Document` y `Chunk` en `foundation/persistence/models.py`
-- [ ] 2.3 Migración `0002_pgvector_documents_chunks` (extensión, tablas, índices no vectoriales)
-- [ ] 2.4 `alembic upgrade head` y `alembic check` limpios en Docker; ajustar la prueba que fija la revisión `0001`
+- [x] 2.1 `alembic/env.py`: registrar `ischema_names["vector"]` en la ejecución de migraciones
+- [x] 2.2 Modelos ORM `Document` y `Chunk` en `foundation/persistence/models.py`
+- [x] 2.3 Migración `0002_pgvector_documents_chunks` (extensión, tablas, índices no vectoriales)
+- [x] 2.4 `alembic upgrade head` y `alembic check` limpios en Docker; ajustar la prueba que fija la revisión `0001`
 
 ## 3. Ingesta persistente
 
-- [ ] 3.1 Contratos `IngestRequest`/`IngestResponse` nuevos y `SearchRequest`/`SearchResponse`
-- [ ] 3.2 `DocumentStore.ingest` (transacción única, duplicados, dimensión) en `generation/rag/store/`
-- [ ] 3.3 Refactor de `POST /embeddings/ingest` (200/409/422/503/500) y fábrica en `dependencies.py`
-- [ ] 3.4 Pruebas: ingesta OK, 409, rollback si falla el embedder, dimensión incompatible; retirar la prueba del contrato antiguo
+- [x] 3.1 Contratos `IngestRequest`/`IngestResponse` nuevos y `SearchRequest`/`SearchResponse`
+- [x] 3.2 `DocumentStore.ingest` (transacción única, duplicados, dimensión) en `generation/rag/store/`
+- [x] 3.3 Refactor de `POST /embeddings/ingest` (200/409/422/503/500) y fábrica en `dependencies.py`
+- [x] 3.4 Pruebas: ingesta OK, 409, rollback si falla el embedder, dimensión incompatible; retirar la prueba del contrato antiguo
 
 ## 4. Búsqueda semántica
 
-- [ ] 4.1 `DocumentStore.search` con `cosine_distance`
-- [ ] 4.2 `POST /search` y registro del router en `main.py`
-- [ ] 4.3 Pruebas de `/search`: top-k ordenado, k fuera de rango, base vacía, fallo del proveedor
+- [x] 4.1 `DocumentStore.search` con `cosine_distance`
+- [x] 4.2 `POST /search` y registro del router en `main.py`
+- [x] 4.3 Pruebas de `/search`: top-k ordenado, k fuera de rango, base vacía, fallo del proveedor
 
 ## 5. Scripts y corpus
 
-- [ ] 5.1 `scripts/ingest_corpus.py` e ingesta del corpus de ejemplo contra el stack
-- [ ] 5.2 `scripts/query_examples.py` (reemplaza `scripts/compare.py`) y `output_examples.txt`
+- [x] 5.1 `scripts/ingest_corpus.py` e ingesta del corpus de ejemplo contra el stack
+- [x] 5.2 `scripts/query_examples.py` (reemplaza `scripts/compare.py`) y `output_examples.txt`
 
 ## 6. Documentación y verificación
 
-- [ ] 6.1 Sección del README con las justificaciones; actualizar `ARCHITECTURE.md` y comandos obsoletos
-- [ ] 6.2 `api-test`, `api-lint` y `openspec validate --all --strict` en verde; revisión de que nada queda fuera de alcance
+- [x] 6.1 Sección del README con las justificaciones; actualizar `ARCHITECTURE.md` y comandos obsoletos
+- [x] 6.2 `api-test`, `api-lint` y `openspec validate --all --strict` en verde; revisión de que nada queda fuera de alcance

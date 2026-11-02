@@ -388,7 +388,8 @@ siguiente. `POST /embeddings/compare` compara estrategias de chunking sin persis
 
 Cada presupuesto se guarda como un `document` más sus `chunks` (uno por componente, con embedding
 `text-embedding-3-small`, 1536 dimensiones) en PostgreSQL + pgvector (`pgvector/pgvector:pg17`, esquema bajo Alembic:
-`alembic/versions/0002_pgvector_documents_chunks.py`). La búsqueda es un *sequential scan* ordenado por distancia coseno.
+`alembic/versions/0002_pgvector_documents_chunks.py`). La búsqueda ordena por distancia coseno y, desde la migración
+`0003_hnsw_indexes.py`, la sirve un índice HNSW halfvec (ver [Sesión 08 en vivo](#sesión-08-en-vivo--indexación-vectorial-y-operación)).
 
 ```bash
 docker compose up -d --build                                            # API + PostgreSQL con pgvector (migraciones al arrancar)
@@ -417,16 +418,93 @@ o `500` genérico (detalle en el log). Todo ocurre en una transacción: si el em
 - **`cosine_distance` (`<=>`), no L2 ni producto interno.** Los embeddings de OpenAI van normalizados, así que el
   coseno y el producto interno ordenan igual, pero el coseno es la convención en RAG y no depende de la norma. L2
   también ordena igual con vectores unitarios, pero su escala no es interpretable como similitud. Además `<=>`
-  coincide con la clase de operadores `vector_cosine_ops` que usará el futuro índice HNSW: si la consulta usara otro
-  operador, Postgres ignoraría el índice y haría *sequential scan* sin avisar.
-- **Sin índice vectorial todavía.** El *sequential scan* (exacto, sin parámetros) es la línea base: primero se mide
-  `search_time_ms` con el corpus real y después se añade HNSW para comparar latencia y recall con datos, no con
-  suposiciones. Tampoco hay filtros por metadata, búsqueda híbrida ni ajustes de Postgres (valores por defecto).
+  coincide con las clases de operadores `vector_cosine_ops`/`halfvec_cosine_ops` de los índices HNSW: si la consulta
+  usara otro operador, Postgres ignoraría el índice y haría *sequential scan* sin avisar.
+- **(d) Índice HNSW halfvec, medido antes de adoptarlo.** La Sesión 8 empezó sin índice a propósito: el *sequential
+  scan* (exacto, sin parámetros) fue la línea base (≈ 767 ms de media con 30 052 chunks). Con los datos en la mano se
+  añadió HNSW (`m=16`, `ef_construction=128`) sobre la *expresión* `embedding::halfvec(1536)`: baja a ≈ 3.7 ms, el
+  índice ocupa el 50 % del de `vector` (117 MB frente a 235 MB) y el top-5 es idéntico (overlap 1.00). La columna sigue
+  en full precision; solo el índice usa media precisión. HNSW en lugar de IVFFlat porque no necesita entrenarse con
+  datos previos ni reentrenarse al crecer el corpus. Siguen fuera de alcance los filtros por metadata y la búsqueda
+  híbrida. Detalle de la medición en [`docs/session-08-ef-search.md`](docs/session-08-ef-search.md).
 - **`vector(1536)` fijo.** pgvector necesita la dimensión en el tipo para validar las inserciones y construir índices;
   es la de `text-embedding-3-small`. Cambiar de modelo o de dimensión implica una migración (y re-embeber), y la API
   rechaza vectores de otra dimensión en lugar de guardarlos mal.
 - **`embedding` nulable.** Permite guardar el chunk antes de vectorizarlo, reintentar o re-embeber con otro modelo sin
   perder el texto. La búsqueda ignora los chunks sin vector.
+
+### Sesión 08 en vivo — Indexación vectorial y operación
+
+Índices HNSW versionados con Alembic (`0003_hnsw_indexes.py`, `CREATE INDEX CONCURRENTLY`), `/search` alineado con el
+índice halfvec y herramientas para medir, comparar y operar. Todo se ejecuta en Docker, desde la raíz del repo.
+
+**Regla clave: la expresión del `ORDER BY` debe ser exactamente la del índice.** `/search` ordena por
+`CAST(chunks.embedding AS HALFVEC(1536)) <=> :q` (`halfvec_embedding()` en `models.py`), que es la expresión de
+`chunks_embedding_halfvec_idx` (`halfvec_cosine_ops`). Con otro cast, otro operador (`<->`, `<#>`) u otra clase de
+operadores Postgres ignora el índice **sin error ni aviso**.
+
+**Scripts** (`docker compose run --rm estimador-cag python scripts/<script>`; necesitan `OPENAI_API_KEY` para embeber
+las 5 queries una sola vez, fuera de los tiempos):
+
+| Script | Qué hace |
+|--------|----------|
+| `measure_baseline_s08.py` | Latencia SQL de las 5 queries (1 calentamiento + 2 mediciones); se ejecuta antes y después del índice. Imprime el literal vector de la query 1 para `psql`. |
+| `sweep_ef_search_s08.py` | Barre `hnsw.ef_search` en [10, 20, 40, 80, 120, 200]: latencia y recall@5 frente al top-10 exacto; ★ en el menor valor con recall ≥ mejor − 0.005. |
+| `compare_indexes_s08.py` | Índice `vector` frente a `halfvec` (forzados por expresión, verificados con `EXPLAIN`): top-5, overlap y latencias. Falla con mensaje claro si falta un índice. |
+| `report_index_sizes_s08.py` | Índices de `chunks`: tipo, tamaño, `idx_scan`, `last_idx_scan`. |
+| `insert_synthetic_chunks_s08.py [N]` | Inserta `N` chunks sintéticos (por defecto 100; `30000` para medir) bajo `document_type='synthetic_test'`. Idempotente en el documento. |
+
+**Snippets SQL** (`docker compose exec -T postgres psql -U estimator -d estimator < estimador-cag/scripts/sql_s08/<archivo>`),
+en el orden de la demo:
+
+| # | Archivo | Qué muestra |
+|---|---------|-------------|
+| 1 | `01_create_hnsw.sql` | Estado previo, `CREATE INDEX CONCURRENTLY` HNSW `vector_cosine_ops` (m=16, ef_construction=128) y tamaños. |
+| 2 | `02_test_antipatron.sql` | `EXPLAIN ANALYZE` con `<=>` (Index Scan) frente a `<->` (Seq Scan) y el `idx_scan` que lo delata. |
+| 3 | `03_create_halfvec.sql` | Índice halfvec, comparación de tamaños (≈ 50 %) y `EXPLAIN` con la expresión casteada. |
+| 4 | `04_monitoring_queries.sql` | Monitorización: `pg_stat_user_indexes`, filas vivas/muertas, operator class de cada índice. |
+| 5 | `05_maintenance_cycle.sql` | `ANALYZE` → `VACUUM` → `REINDEX INDEX CONCURRENTLY` (fuera de transacción). |
+| 99 | `99_revert_live_session.sql` | Reversión idempotente (`-v keep_synthetic=N`, `-v drop_indexes=1`). |
+
+`01` y `03` usan `IF NOT EXISTS`: la migración `0003` ya crea esos índices. `99` conserva por defecto los índices de la
+migración (para no desalinear la base de `alembic_version`); borra los sintéticos extra, el override
+`ALTER DATABASE estimator RESET hnsw.ef_search`, y hace `pg_stat_reset()` + `ANALYZE`. Para quitar también los índices,
+`alembic downgrade 0002` (o `-v drop_indexes=1` y luego `downgrade 0002 && upgrade head`).
+
+**Consulta canónica de monitorización**
+
+```sql
+SELECT schemaname, relname AS tabla, indexrelname AS indice, idx_scan, last_idx_scan,
+       pg_size_pretty(pg_relation_size(indexrelid)) AS tamano
+FROM pg_stat_user_indexes
+WHERE relname = 'chunks'
+ORDER BY pg_relation_size(indexrelid) DESC;
+```
+
+**Diagnóstico de `idx_scan = 0`.** Un índice vectorial que existe pero nunca se usa casi siempre significa que el
+`ORDER BY` no coincide: operador distinto (`<->`/`<#>` frente a `<=>`), cast ausente o diferente (`embedding <=> q`
+no usa el índice sobre `embedding::halfvec(1536)`), dimensión distinta o clase de operadores incorrecta. Se confirma con
+`EXPLAIN` (debe decir `Index Scan using …`) y comparando `pg_stat_user_indexes` antes y después de lanzar la query.
+Otras causas: tabla pequeña (el planner prefiere Seq Scan; con ~30 000 filas el coste del índice también depende de
+`ef_search`, ver `docs/session-08-ef-search.md`) o estadísticas obsoletas (`ANALYZE chunks`).
+
+**Flags de tuning del Compose** (servicio `postgres`): `shm_size: 1gb` (los builds HNSW paralelos usan memoria
+compartida) y `-c shared_buffers=512MB -c effective_cache_size=1536MB -c work_mem=64MB -c maintenance_work_mem=512MB
+-c max_parallel_maintenance_workers=2`. Son valores **conservadores de desarrollo**; en producción escalan con la RAM
+(`shared_buffers` ≈ 25 %, `effective_cache_size` ≈ 75 %, y `maintenance_work_mem` suficiente para que el grafo quepa en
+memoria al construir). `HNSW_EF_SEARCH` (1–1000, por defecto 40) se aplica con `SET LOCAL hnsw.ef_search` en cada búsqueda.
+
+**Orden de ejecución recomendado**
+
+1. `docker compose up -d --build` y `SHOW shared_buffers;` (512MB). Ingesta: `scripts/ingest_corpus.py`.
+2. Corpus grande y **baseline sin índice**: `alembic downgrade 0002_pgvector_documents_chunks`,
+   `insert_synthetic_chunks_s08.py 30000` y `measure_baseline_s08.py`.
+3. `alembic upgrade head` (crea los índices HNSW; `alembic check` sin diferencias).
+4. **Baseline con índice**: `measure_baseline_s08.py`.
+5. **Barrido**: `sweep_ef_search_s08.py` → fija `HNSW_EF_SEARCH`.
+6. **Comparación**: `compare_indexes_s08.py`.
+7. **Informe**: `report_index_sizes_s08.py` y `sql_s08/04_monitoring_queries.sql`.
+8. **Mantenimiento**: `sql_s08/05_maintenance_cycle.sql`; al terminar, `sql_s08/99_revert_live_session.sql`.
 
 ### Comparación de estrategias de chunking (sesión 7)
 

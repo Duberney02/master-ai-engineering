@@ -38,7 +38,7 @@ app/
 │   └── validation.py · audience.py · history.py · evaluation.py   # reglas de negocio y servicios de dominio
 ├── generation/     # las arquitecturas que componen
 │   ├── cag/        #   exact.py (resultados validados) + semantic.py (redisvl)
-│   ├── rag/        #   chunking/ · embedding/ · analysis/ · schemas.py · store/ (S8) · retriever.py (S8)
+│   ├── rag/        #   chunking/ · embedding/ · analysis/ · schemas.py · store/ (S8, índice HNSW halfvec) · retriever.py (S8)
 │   ├── agentic/    #   boss.py + critic.py
 │   └── conversation/ # sesiones en memoria, anclas, compresión y resumen
 ├── ingestion/      # pipeline batch offline (catálogo, loaders, parsers, limpieza, PII, orquestador)
@@ -130,8 +130,19 @@ Las sesiones (`/api/v1/sessions/*`) pasan por `domain/session_estimation.py` (me
 
 ## 8. Huecos reservados
 
-- `generation/rag/store/`: ya persiste y busca (Sesión 8, *sequential scan*). Pendiente: índice HNSW, filtros por
-  metadata y búsqueda híbrida.
+- `generation/rag/store/`: persiste y busca (Sesión 8) con índice HNSW halfvec. Pendiente: filtros por metadata y
+  búsqueda híbrida.
+
+### Índice vectorial: regla de alineación expresión/operator class
+
+`chunks.embedding` es `vector(1536)` (full precision); la migración `0003` crea `chunks_embedding_halfvec_idx`, un
+HNSW sobre la *expresión* `embedding::halfvec(1536)` con `halfvec_cosine_ops` (≈ 50 % del tamaño del índice `vector`,
+que se conserva como `chunks_embedding_idx` solo para comparar). Para que Postgres use el índice, el `ORDER BY` de la
+consulta debe repetir **exactamente** esa expresión con el operador `<=>`: `CAST(embedding AS HALFVEC(1536)) <=> :q`.
+Si no coincide (otro cast, otro operador, otra dimensión) Postgres cae a *Seq Scan* sin avisar. La expresión vive en un
+único sitio (`halfvec_embedding()` en `foundation/persistence/models.py`, con `EMBEDDING_DIMENSIONS`) y la usa
+`generation/rag/store/documents.py::search_statement`; `tests/test_vector_store.py` comprueba con `EXPLAIN` que el plan
+usa el índice. La búsqueda fija `hnsw.ef_search` (`HNSW_EF_SEARCH`) con `SET LOCAL` en su transacción.
 - `generation/rag/retriever.py`: recuperación semántica con filtrado por metadatos (placeholder).
 
 Cuando RAG entre en la petición de estimación, el paso se añade al conductor.

@@ -1,10 +1,10 @@
-# Stack completo: API del estimador, chat Streamlit, aplicaciones web Rails y React, Redis Stack y PostgreSQL.
+# Stack completo: API del estimador, chat Streamlit, aplicaciones web (Go y React), Redis Stack y PostgreSQL.
 #
 #   cp estimador-cag/.env.example estimador-cag/.env   # y completa la API key del proveedor elegido
 #   cp .env.example .env                               # opcional: contraseñas y secretos propios
 #   docker compose up --build
 #
-# Web Rails: http://localhost:3000 · Web React: http://localhost:3001 · Chat Streamlit: http://localhost:8501 · API (docs): http://localhost:8000/docs
+# Web Go: http://localhost:3000 · Web React: http://localhost:3001 · Chat Streamlit: http://localhost:8501 · API (docs): http://localhost:8000/docs
 # Solo la API, las webs y el chat publican puertos; Redis y PostgreSQL son internos a la red `estimator-net`.
 # Para desarrollar solo el backend con recarga en caliente usa estimador-cag/docker-compose.yml.
 
@@ -63,7 +63,8 @@ services:
 
   estimator-web:
     build:
-      context: ./estimator-web
+      context: ./estimator-web-go
+      target: runtime
     image: estimator-web:latest
     ports:
       - "3000:3000"
@@ -85,14 +86,15 @@ services:
     init: true
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "ruby", "-rnet/http", "-e", "exit(Net::HTTP.start('127.0.0.1', 3000, read_timeout: 3) { |h| h.get('/up').code == '200' } ? 0 : 1)"]
+      # Imagen sin shell ni curl: el propio binario hace GET /up.
+      test: ["CMD", "/estimator-web", "healthcheck"]
       interval: 15s
       timeout: 5s
       start_period: 20s
       retries: 3
 
   estimator-web-db:
-    # Base de datos del cliente Rails: solo el historial de comparaciones del Chunking Lab.
+    # Base de datos del servicio web Go: solo el historial de comparaciones del Chunking Lab.
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: estimator

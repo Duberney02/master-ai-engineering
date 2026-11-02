@@ -454,7 +454,7 @@ estimador-cag/
 │   │   ├── attachments/    — extracción local de PDF y Word
 │   │   └── persistence/    — SQLAlchemy asíncrono, modelos, repositorios y migrate.py
 │   ├── domain/             — contrato y conductores
-│   │   ├── schemas/        — contratos Pydantic (compartidos con Rails, React y Streamlit)
+│   │   ├── schemas/        — contratos Pydantic (compartidos con la web Go, React y Streamlit)
 │   │   ├── pipeline.py · session_estimation.py · acb.py — conductores (estimar, sesión, Actor–Critic–Boss)
 │   │   └── validation.py · audience.py · history.py · evaluation.py
 │   ├── generation/

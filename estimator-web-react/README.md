@@ -1,7 +1,7 @@
 # estimator-web-react
 
 Versión React + TypeScript de la web del [estimador](../estimador-cag/README.md), con la misma funcionalidad que la
-[web Rails](../estimator-web/README.md) (que se conserva). No tiene claves de proveedores: el navegador habla solo con
+[web Go](../estimator-web-go/README.md) (que reemplazó al cliente Rails original; el código Rails sigue en el historial de git). No tiene claves de proveedores: el navegador habla solo con
 su propio origen y nginx reenvía `/api/` y `/health` a la API, así que no hace falta CORS ni exponer la URL de la API.
 
 ## Funcionalidad

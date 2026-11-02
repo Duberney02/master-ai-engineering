@@ -1,0 +1,28 @@
+{{define "content"}}
+<h1>Chunking Lab · historial</h1>
+<p><a class="button" href="/rag/chunking_comparisons/new">Nueva comparación</a></p>
+
+{{if not .Data}}
+  <div class="card" id="lab-history-empty">Todavía no hay comparaciones guardadas. <a href="/rag/chunking_comparisons/new">Crea la primera</a>.</div>
+{{else}}
+  <div class="card">
+    <table id="lab-history">
+      <thead>
+        <tr><th>Fecha</th><th>Estrategias</th><th class="num">Consultas</th><th class="num">Coste</th><th class="num">Duración</th><th></th></tr>
+      </thead>
+      <tbody>
+        {{range .Data}}
+          <tr>
+            <td>{{formatTime (isoTime .CreatedAt)}}</td>
+            <td>{{join .StrategyLabels ", "}}</td>
+            <td class="num">{{len .Queries}}</td>
+            <td class="num">{{formatUSD .TotalCostUSD}}</td>
+            <td class="num">{{with durationSeconds .}}{{.}} s{{else}}—{{end}}</td>
+            <td><a href="/rag/chunking_comparisons/{{.ID}}">Ver</a></td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+{{end}}
+{{end}}

@@ -1,8 +1,0 @@
-/log/*
-/tmp/*
-!/log/.keep
-!/tmp/.keep
-/config/master.key
-/config/credentials/*.key
-/vendor/bundle
-/.bundle

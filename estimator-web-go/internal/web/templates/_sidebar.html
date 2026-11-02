@@ -1,0 +1,50 @@
+{{define "sidebar"}}{{/* Barra lateral equivalente a la de Streamlit: metadatos del proyecto, contexto del prompt, ejemplos few-shot y última llamada. */}}
+{{$side := .Sidebar}}
+{{$metadata := $side.Metadata}}
+
+<h2>Metadatos del proyecto</h2>
+{{if $metadata.Present}}
+  <dl id="project-metadata">
+    <div><dt>Nombre</dt><dd id="metadata-name">{{if $metadata.ProjectName}}{{$metadata.ProjectName}}{{else}}—{{end}}</dd></div>
+    <div><dt>Equipo supuesto</dt><dd id="metadata-team">{{if $metadata.AssumedTeamSize}}{{$metadata.AssumedTeamSize}}{{else}}—{{end}}</dd></div>
+    <div><dt>Tecnologías</dt><dd id="metadata-technologies">{{if $metadata.MentionedTechnologies}}{{join $metadata.MentionedTechnologies ", "}}{{else}}—{{end}}</dd></div>
+    <div><dt>Alcance acordado</dt><dd id="metadata-scope">{{if $metadata.AgreedScope}}{{$metadata.AgreedScope}}{{else}}—{{end}}</dd></div>
+  </dl>
+{{else}}
+  <p class="hint" id="no-project-metadata">Aún no hay datos del proyecto: se irán recogiendo durante la conversación.</p>
+{{end}}
+<form class="button_to" method="post" action="/conversation"><button id="new-conversation" type="submit">Nueva conversación</button><input type="hidden" name="authenticity_token" value="{{.CSRF}}" autocomplete="off" /></form>
+
+<h2>Contexto del prompt</h2>
+{{with $side.Preview}}
+  <label for="system-prompt">System prompt</label>
+  <textarea id="system-prompt" readonly rows="14">{{.S "system_prompt"}}</textarea>
+  <p class="hint">Plantillas {{.S "prompt_version"}} renderizadas por la API para estas opciones.</p>
+
+  <h3>Ejemplos few-shot</h3>
+  <div id="few-shot">
+    {{range .List "examples"}}
+      <p class="example"><strong>{{.S "title"}}</strong><br><span class="hint">{{.S "description"}}</span></p>
+    {{end}}
+  </div>
+{{else}}
+  <p class="hint" id="prompt-unavailable">El contexto del prompt no está disponible en este momento.</p>
+{{end}}
+
+<h3>Última llamada</h3>
+{{if $side.HasMetrics}}
+  {{$metrics := $side.Metrics}}
+  {{$usage := $metrics.Doc "usage"}}
+  <dl id="last-call">
+    <div><dt>Modelo</dt><dd id="metric-model">{{if $metrics.Present "model"}}{{$metrics.S "model"}}{{else}}Desconocido{{end}}</dd></div>
+    <div><dt>Versión del prompt</dt><dd id="metric-prompt-version">{{$side.PromptVersion}}</dd></div>
+    <div><dt>Tokens de entrada</dt><dd id="metric-input-tokens">{{delimited ($usage.Get "input_tokens")}}</dd></div>
+    <div><dt>Tokens de salida</dt><dd id="metric-output-tokens">{{delimited ($usage.Get "output_tokens")}}</dd></div>
+    <div><dt>Latencia (ms)</dt><dd id="metric-latency">{{delimited ($metrics.Get "latency_ms")}}</dd></div>
+    <div><dt>Coste de solicitud</dt><dd id="metric-cost">{{formatUSD ($metrics.Get "request_cost_usd")}}</dd></div>
+  </dl>
+  <p class="hint" id="metric-cache">{{if $metrics.Truthy "cache_hit"}}Respuesta de caché{{else}}Respuesta generada{{end}}</p>
+{{else}}
+  <p class="hint" id="no-metrics">Aún no se ha generado ninguna estimación.</p>
+{{end}}
+{{end}}

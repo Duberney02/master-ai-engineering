@@ -4,9 +4,9 @@ name: estimador-cag CI
 on:
   push:
     branches: [master]
-    paths: ["estimador-cag/**", "estimator-web/**", "estimator-web-react/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
+    paths: ["estimador-cag/**", "estimator-web-go/**", "estimator-web-react/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
   pull_request:
-    paths: ["estimador-cag/**", "estimator-web/**", "estimator-web-react/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
+    paths: ["estimador-cag/**", "estimator-web-go/**", "estimator-web-react/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
 
 jobs:
   specs:
@@ -126,8 +126,8 @@ jobs:
           exit 1
 
   web:
-    # Pruebas Minitest + WebMock de estimator-web (nunca llaman a la API real) y lint. PostgreSQL real para el
-    # historial del Chunking Lab.
+    # Pruebas Go de estimator-web-go (la API de IA está simulada: nunca llaman a la real), gofmt y go vet. PostgreSQL real
+    # para el historial del Chunking Lab.
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -135,26 +135,26 @@ jobs:
         env:
           POSTGRES_USER: estimator
           POSTGRES_PASSWORD: estimator-dev
+          POSTGRES_DB: estimator_web_test
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U estimator"
+          --health-cmd "pg_isready -U estimator -d estimator_web_test"
           --health-interval 5s --health-timeout 3s --health-retries 10
     env:
-      RAILS_ENV: test
-      DB_HOST: localhost
+      TEST_DATABASE_URL: postgres://estimator:estimator-dev@localhost:5432/estimator_web_test?sslmode=disable
     defaults:
       run:
-        working-directory: estimator-web
+        working-directory: estimator-web-go
     steps:
       - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
+      - uses: actions/setup-go@v5
         with:
-          ruby-version: "3.4"
-          bundler-cache: true
-          working-directory: estimator-web
-      - run: bundle exec rubocop
-      - run: bin/rails db:prepare
-      - run: bin/rails test
+          go-version-file: estimator-web-go/go.mod
+          cache-dependency-path: estimator-web-go/go.sum
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test -p 1 ./...
 
   web-react:
     # Pruebas Vitest y compilación (tsc + vite) de estimator-web-react (sin red ni claves reales).

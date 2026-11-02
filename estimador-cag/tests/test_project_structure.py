@@ -132,7 +132,8 @@ def test_root_compose_has_named_volumes_and_healthchecks():
     assert "pg_isready" in str(compose["services"]["postgres"]["healthcheck"]["test"])
     assert "redis-cli" in str(compose["services"]["redis"]["healthcheck"]["test"])
     assert "/health" in str(compose["services"]["estimador-cag"]["healthcheck"]["test"])
-    assert "/up" in str(compose["services"]["estimator-web"]["healthcheck"]["test"])
+    # La imagen de la web (Go, distroless) no tiene shell ni curl: el propio binario hace GET /up.
+    assert "healthcheck" in str(compose["services"]["estimator-web"]["healthcheck"]["test"])
     assert "/healthz" in str(compose["services"]["estimator-web-react"]["healthcheck"]["test"])
 
 
@@ -168,16 +169,17 @@ def test_root_compose_publishes_only_api_chat_and_web_ports():
 
 
 def test_web_app_files_exist():
-    web = REPO_ROOT / "estimator-web"
+    web = REPO_ROOT / "estimator-web-go"
     if not web.exists():
-        pytest.skip("estimator-web no disponible")
+        pytest.skip("estimator-web-go no disponible")
     for relative in [
         "Dockerfile",
-        "Gemfile",
-        "Gemfile.lock",
-        "app/services/estimator_ai/base_client.rb",
-        "app/controllers/estimations_controller.rb",
-        "test/services/estimator_ai/estimations_client_test.rb",
+        "go.mod",
+        "go.sum",
+        "cmd/server/main.go",
+        "internal/estimatorai/base.go",
+        "internal/web/estimations.go",
+        "internal/web/estimations_test.go",
     ]:
         assert (web / relative).exists(), relative
-    assert "USER rails" in (web / "Dockerfile").read_text(encoding="utf-8")
+    assert "USER nonroot" in (web / "Dockerfile").read_text(encoding="utf-8")

@@ -1,0 +1,31 @@
+{{define "result"}}
+{{$result := .Doc "result"}}
+{{if $result.Truthy "out_of_scope"}}
+  <div class="alert warn" id="out-of-scope">
+    <strong>No estimable.</strong> {{outOfScopeReason ($result.Get "summary")}}
+    <div class="meta">Confianza {{$result.S "confidence_pct"}}% (por debajo del 30% no se ofrecen cifras).</div>
+  </div>
+{{else}}
+  <p>{{$result.S "summary"}}</p>
+  <div class="metrics">
+    <div class="metric"><span>Confianza</span><strong id="confidence">{{$result.S "confidence_pct"}}%</strong></div>
+    <div class="metric"><span>Duración total</span><strong id="duration">{{formatWeeks ($result.Get "total_duration_weeks")}}</strong></div>
+    <div class="metric"><span>Coste total</span><strong id="cost">{{formatCost ($result.Get "total_cost_eur")}}</strong></div>
+  </div>
+  <table id="phases">
+    <thead>
+      <tr><th>Fase</th><th>Descripción</th><th class="num">Semanas</th><th class="num">Coste</th></tr>
+    </thead>
+    <tbody>
+      {{range $result.List "phases"}}
+        <tr>
+          <td>{{.S "name"}}</td>
+          <td>{{.S "description"}}</td>
+          <td class="num">{{numPrec1Strip (.Get "duration_weeks")}}</td>
+          <td class="num">{{formatCost (.Get "cost_eur")}}</td>
+        </tr>
+      {{end}}
+    </tbody>
+  </table>
+{{end}}
+{{end}}

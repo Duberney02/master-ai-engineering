@@ -1,0 +1,26 @@
+{{define "playground"}}
+{{range $index, $query := .Queries}}
+  <section class="card" id="query-{{$index}}">
+    <h3>«{{$query}}»</h3>
+    <div class="strategies-grid">
+      {{range ($.ResultsByStrategyFor $query)}}
+        <div id="query-{{$index}}-{{.Name}}">
+          <h4>{{strategyLabel .Name}}</h4>
+          {{range .Result.TopK}}
+            <div class="hit">
+              <div class="bar" role="img" aria-label="Similitud {{.CosinePct}}%"><span style="width: {{.CosinePct}}%"></span></div>
+              <div>
+                <strong>{{numPrec3 .Cosine}}</strong>
+                <code>{{.ChunkID}}</code>
+                {{if .Parent}}<span class="badge parent">padre</span>{{end}}
+                {{if .Child}}<span class="badge">hijo de <code>{{.ParentChunkID}}</code></span>{{end}}
+              </div>
+              <div class="meta">{{.TextPreview}}</div>
+            </div>
+          {{end}}
+        </div>
+      {{end}}
+    </div>
+  </section>
+{{end}}
+{{end}}

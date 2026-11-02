@@ -1,0 +1,34 @@
+{{define "content"}}
+{{$comparison := .Data.Comparison}}
+{{$response := .Data.Response}}
+<h1>Resultado de la comparación</h1>
+<p class="meta">
+  {{if $comparison.Saved}}Ejecutada el {{formatTime (isoTime $comparison.CreatedAt)}} · {{end}}
+  {{$comparison.CorpusCount}} presupuestos
+  {{with durationSeconds $comparison}} · {{.}} s{{end}}
+  · coste de ingesta {{formatUSD $response.TotalIngestionCostUSD}}
+</p>
+<p>
+  <a href="/rag/chunking_comparisons/new">← Nueva comparación</a> ·
+  <a href="/rag/chunking_comparisons">Historial</a>
+</p>
+
+<section class="card" id="lab-stats">
+  <h2>Estadísticas por estrategia</h2>
+  {{template "stats_table" $response}}
+</section>
+
+<section class="card" id="lab-cost">
+  <h2>Coste de la ingesta</h2>
+  {{template "cost_bars" $response}}
+</section>
+
+{{if $response.AnyQueries}}
+  <section id="lab-playground">
+    <h2>Recuperación por consulta</h2>
+    {{template "playground" $response}}
+  </section>
+{{else}}
+  <div class="card" id="lab-no-queries">Esta ejecución no tuvo consultas: solo se calcularon las estadísticas.</div>
+{{end}}
+{{end}}

@@ -1,0 +1,38 @@
+{{define "stats_table"}}
+{{$response := .}}
+<table id="stats-table">
+  <thead>
+    <tr>
+      <th>Estrategia</th>
+      <th class="num">Chunks</th>
+      <th class="num">Mín</th>
+      <th class="num">p50</th>
+      <th class="num">p95</th>
+      <th class="num">Máx</th>
+      <th class="num" title="Menos de 20 tokens">Huérfanos</th>
+      <th class="num" title="Más de 800 tokens">Obesos</th>
+      <th class="num">Llamadas extra</th>
+      <th class="num">Segundos</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range $response.StrategyNames}}
+      {{$stats := $response.StatsFor .}}
+      {{$distribution := $stats.TokenDistribution}}
+      <tr id="stats-{{.}}">
+        <td><strong>{{strategyLabel .}}</strong></td>
+        <td class="num">{{$stats.NChunks}}</td>
+        <td class="num">{{plainInt $distribution.Min}}</td>
+        <td class="num">{{numPrec1 $distribution.P50}}</td>
+        <td class="num">{{numPrec1 $distribution.P95}}</td>
+        <td class="num">{{plainInt $distribution.Max}}</td>
+        <td class="num">{{$stats.NOrphanChunks}}{{if $stats.Orphans}} ⚠{{end}}</td>
+        <td class="num">{{$stats.NObeseChunks}}{{if $stats.Obese}} ⚠{{end}}</td>
+        <td class="num">{{$stats.ExtraAPICalls}}</td>
+        <td class="num">{{numPrec2 $stats.IngestionSeconds}}</td>
+      </tr>
+    {{end}}
+  </tbody>
+</table>
+<p class="hint">Huérfanos: chunks de menos de 20 tokens. Obesos: más de 800 tokens. Los percentiles son de tokens por chunk.</p>
+{{end}}

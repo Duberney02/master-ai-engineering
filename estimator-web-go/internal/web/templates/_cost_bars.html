@@ -1,0 +1,20 @@
+{{define "cost_bars"}}
+{{$response := .}}
+{{$max := $response.MaxIngestionCostUSD}}
+{{if eq $max 0.0}}
+  <p id="cost-free">Todas las estrategias de esta ejecución son gratuitas: no tienen coste de ingesta.</p>
+{{else}}
+  <div id="cost-bars">
+    {{range $response.StrategyNames}}
+      {{$stats := $response.StatsFor .}}
+      {{$cost := $stats.IngestionCostUSD}}
+      <div class="bar-row" id="cost-{{.}}">
+        <span>{{strategyLabel .}}</span>
+        <div class="bar" role="img" aria-label="Coste de {{strategyLabel .}}"><span style="width: {{barWidth $cost $max}}%"></span></div>
+        <span class="num">{{if eq $cost 0.0}}gratis{{else}}{{formatUSD $cost}}{{end}}</span>
+      </div>
+    {{end}}
+  </div>
+  <p class="hint">Total: {{formatUSD $response.TotalIngestionCostUSD}}. Es una estimación con tarifas de referencia, no la factura.</p>
+{{end}}
+{{end}}

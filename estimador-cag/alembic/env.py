@@ -3,13 +3,14 @@
 La URL de la base de datos se lee de `app.config.Settings` (no de `alembic.ini`) para que el
 contenedor, el anfitrión y el CI usen la misma fuente de verdad. Es la URL asíncrona de la aplicación
 (`postgresql+asyncpg://…`), por lo que las migraciones se ejecutan con un motor asíncrono. Las
-migraciones se descubren importando `app.foundation.persistence.models`: solo gestionan las tablas de la ingesta,
-no la tabla `estimations` del historial.
+migraciones se descubren importando `app.foundation.persistence.models`: solo gestionan las tablas de la ingesta
+y del almacén vectorial (`documents`, `chunks`), no la tabla `estimations` del historial.
 """
 
 import asyncio
 from logging.config import fileConfig
 
+import pgvector.sqlalchemy
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy.pool import NullPool
@@ -45,6 +46,8 @@ def run_migrations_offline() -> None:
 
 
 def _run_migrations(connection: Connection) -> None:
+    # Sin esto Alembic no reconoce `vector` al reflejar la base y `alembic check` ve diferencias fantasma.
+    connection.dialect.ischema_names["vector"] = pgvector.sqlalchemy.Vector
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()

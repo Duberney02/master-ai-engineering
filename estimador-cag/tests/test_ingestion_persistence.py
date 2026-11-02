@@ -23,7 +23,9 @@ from app.ingestion.pii import InMemoryMappingStore
 async def session():
     engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool)
     async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+        # Solo las tablas de la ingesta: `documents`/`chunks` usan tipos de PostgreSQL (pgvector, JSONB).
+        tables = [IngestionJobRow.__table__, PseudonymMappingRow.__table__]
+        await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))
     async with async_sessionmaker(engine, expire_on_commit=False)() as db_session:
         yield db_session
     await engine.dispose()
@@ -134,7 +136,7 @@ def test_upgrade_creates_both_tables_and_is_repeatable(sqlite_url):
     engine = create_engine(sqlite_url)
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all() == [
-            "0001_session6_initial"
+            "0002_pgvector_documents_chunks"
         ]
     engine.dispose()
 

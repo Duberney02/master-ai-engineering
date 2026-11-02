@@ -7,15 +7,26 @@
 * `ingestion_jobs`: seguimiento de `POST /api/v1/ingestion/runs`. Una tarea en segundo plano lo
   actualiza a `running`, `completed` o `failed` y `GET /api/v1/ingestion/jobs/{id}` lo lee.
 
+Sesión 8: presupuestos vectorizados para la búsqueda semántica.
+
+* `documents`: un presupuesto ingestado (`source_path` único) con sus metadatos estables.
+* `chunks`: sus fragmentos con el embedding (`vector(1536)`, `text-embedding-3-small`); `ON DELETE CASCADE`.
+  Sin índice vectorial a propósito: el *sequential scan* es la línea base para medir.
+
 Usa una base declarativa propia (no la del historial) para que Alembic solo gestione estas tablas.
 """
 
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Index, Integer, String, UniqueConstraint, Uuid, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid, func, text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import DateTime
+
+# Dimensión fija de `chunks.embedding`: la del modelo `text-embedding-3-small`. Cambiar de modelo exige migrar.
+EMBEDDING_DIMENSIONS = 1536
 
 
 class Base(DeclarativeBase):
@@ -47,3 +58,37 @@ class IngestionJobRow(Base):
     error_message: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Document(Base):
+    __tablename__ = "documents"
+    __table_args__ = (Index("ix_documents_source_path", "source_path", unique=True),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    source_path: Mapped[str] = mapped_column(Text, nullable=False)
+    document_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # `metadata` está reservado por SQLAlchemy: el atributo se llama `metadata_` y la columna `metadata`.
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
+    chunks: Mapped[list["Chunk"]] = relationship(back_populates="document", passive_deletes=True)
+
+
+class Chunk(Base):
+    __tablename__ = "chunks"
+    __table_args__ = (
+        Index("ix_chunks_document_id", "document_id"),
+        Index("ix_chunks_chunk_type", "chunk_type"),
+        Index("ix_chunks_metadata_gin", "metadata", postgresql_using="gin"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    chunk_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # Nulable: permite guardar el chunk antes de vectorizarlo (reintentos, re-embedding con otro modelo).
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS), nullable=True)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    document: Mapped[Document] = relationship(back_populates="chunks")

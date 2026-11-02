@@ -101,6 +101,8 @@ flowchart TB
   (`chunking → embedding → DocumentStore → pgvector`).
 - `DocumentStore` solo es alcanzable desde `POST /embeddings/ingest` y `POST /search` (`grep` de
   `get_document_store`): **el flujo que estima (a) nunca consulta pgvector**.
+- **La capa 1 se salta la capa 2.** `estimator-web-react` (nginx `proxy_pass` de `/api/` a `API_UPSTREAM`) y Streamlit
+  (`httpx` a `ESTIMATOR_API_BASE_URL`) llaman directamente a la API IA; solo `estimator-web` (Go) actúa como backend.
 - Si llega una transcripción, lo único que el sistema puede hacer con ella en el lado RAG es tratarla como un
   `query: str` y devolver los `k` chunks más cercanos. Ahí termina.
 
@@ -374,6 +376,8 @@ Resumen (distancia · presupuesto · sector · componente) de las 5 consultas y 
   presupuestos limpios de `data/seed/budgets/` (`BUDGET-2024-000x`).
 - **Corpus pequeño y sesgado:** 15 presupuestos / 52 chunks en 4 sectores, sin precedentes de fidelización ni de
   analítica de ventas para retail; parte de los «malos resultados» son cobertura de datos, no de arquitectura.
+- **Capas saltadas por React y Streamlit.** Ambos hablan directo con la capa 3 (ver Sección 1); la propuesta los
+  reencamina por `estimator-web` para que solo el backend de negocio conozca el servicio IA.
 - **Latencia del primer `/search`:** 2363 ms con la transcripción completa (incluye embeber ~2 kB de texto con una
   llamada externa); no es el cuello de botella hoy, pero se multiplicará con una sub-consulta por necesidad.
 
@@ -381,7 +385,12 @@ Resumen (distancia · presupuesto · sector · componente) de las 5 consultas y 
 
 ## 4. Propuesta de evolución arquitectónica
 
-Leyenda: **verde con borde grueso y ★ = nuevo**; azul/gris = ya existía en la Sección 1; flechas gruesas = flujo nuevo.
+Leyenda: **verde con borde grueso y ★ = nuevo**; azul/gris = ya existía en la Sección 1; flechas gruesas = flujo nuevo
+o cambiado.
+
+**Regla de capas de la propuesta:** la capa 1 solo habla con la capa 2, y **solo el backend de negocio
+(`estimator-web`) llama a la capa 3** (servicio IA). Frente a la Sección 1 cambian dos flechas: React y Streamlit dejan
+de ir directo a la API IA y pasan por el backend.
 
 ```mermaid
 flowchart TB
@@ -423,9 +432,9 @@ flowchart TB
     PG[("PostgreSQL + pgvector<br/>documents · chunks")]:::store
     OAI(["OpenAI API"]):::ext
 
+    REACT ==>|"cambia: solo habla con la capa 2"| GOWEB
+    STREAM ==>|"cambia: solo habla con la capa 2"| GOWEB
     GOWEB --> R_EST
-    REACT --> R_EST
-    STREAM --> R_EST
     GOWEB ==>|"transcripción (llamada nueva)"| R_RAG
 
     R_RAG ==>|"transcripción"| REQ

@@ -1,7 +1,7 @@
 # estimator/architecture-diagnosis Specification
 
 ## Purpose
-TBD - created by archiving change session-09-architecture-diagnosis. Update Purpose after archive.
+Conservar en el repositorio un diagnóstico arquitectónico versionado del flujo RAG (diagrama, trace, fallos y propuesta), de modo que las decisiones de la sesión siguiente partan de evidencia reproducible.
 
 ## Requirements
 

@@ -44,7 +44,7 @@
 
 ## 7. Verificación y cierre
 
-- [ ] 7.1 `docker compose up --build`: stack sano (API 8000, backend Go 3000, React 3001, Streamlit 8501) y un flujo E2E por cada cliente a través del backend (estimar, historial; en React además Lab y Ajustes).
-- [ ] 7.2 Tests y lint en verde en Docker para `estimador-cag`, `estimator-web-go`, `estimator-web-react` y `estimator-streamlit`.
-- [ ] 7.3 `openspec validate --all --strict` antes y después de implementar.
-- [ ] 7.4 Sincronizar specs, completar el `Purpose` de `streamlit-client`, archivar el cambio y abrir el PR contra `master`.
+- [x] 7.1 `docker compose up --build`: stack sano (API 8000, backend Go 3000, React 3001, Streamlit 8501) y un flujo E2E por cada cliente a través del backend (estimar, historial; en React además Lab y Ajustes).
+- [x] 7.2 Tests y lint en verde en Docker para `estimador-cag`, `estimator-web-go`, `estimator-web-react` y `estimator-streamlit`.
+- [x] 7.3 `openspec validate --all --strict` antes y después de implementar.
+- [x] 7.4 Sincronizar specs, completar el `Purpose` de `streamlit-client`, archivar el cambio y abrir el PR contra `master`.

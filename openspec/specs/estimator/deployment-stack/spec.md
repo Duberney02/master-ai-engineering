@@ -6,7 +6,7 @@ Arrancar el sistema completo con un único comando desde la raíz del repositori
 ## Requirements
 
 ### Requirement: Compose raíz con todos los servicios
-El repositorio SHALL incluir un `docker-compose.yml` en su raíz que defina los servicios API (`estimador-cag`), chat Streamlit (`estimador-cag-chat`), aplicación web en Go (`estimator-web`), su base de datos (`estimator-web-db`), aplicación web React (`estimator-web-react`), Redis Stack (`redis`) y PostgreSQL (`postgres`) en una red compartida. La API SHALL recibir `REDIS_URL` y `DATABASE_URL` apuntando a los servicios internos y la web Go SHALL recibir `ESTIMATOR_API_URL` apuntando a la API. La web React SHALL recibir la dirección interna de la API para su proxy inverso. Solo la API (8000), el chat (8501), la web Go (3000) y la web React (3001) SHALL publicar puertos; el chat SHALL recibir `ESTIMATOR_API_BASE_URL` y ninguna clave de proveedor. El Compose SHALL NOT definir ningún servicio Rails.
+El repositorio SHALL incluir un `docker-compose.yml` en su raíz que defina los servicios API (`estimador-cag`), chat Streamlit (`estimador-cag-chat`, construido desde `estimator-streamlit/`), backend en Go (`estimator-web`), su base de datos (`estimator-web-db`), aplicación web React (`estimator-web-react`), Redis Stack (`redis`) y PostgreSQL (`postgres`) en una red compartida. La API SHALL recibir `REDIS_URL` y `DATABASE_URL` apuntando a los servicios internos. Solo `estimator-web` SHALL recibir `ESTIMATOR_API_URL` apuntando a la API. La web React SHALL recibir `API_UPSTREAM` y el chat `ESTIMATOR_WEB_URL`, ambos apuntando a `estimator-web`, y ambos SHALL depender de `estimator-web` saludable y no de la API. Solo la API (8000), el chat (8501), el backend Go (3000) y la web React (3001) SHALL publicar puertos; ni la web React ni el chat SHALL recibir claves de proveedor ni referencias a la API. El Compose SHALL NOT definir ningún servicio Rails.
 
 #### Scenario: Configuración válida
 - **WHEN** se ejecuta `docker compose config` en la raíz con `estimador-cag/.env` presente
@@ -14,11 +14,15 @@ El repositorio SHALL incluir un `docker-compose.yml` en su raíz que defina los 
 
 #### Scenario: Arranque completo
 - **WHEN** se ejecuta `docker compose up --build`
-- **THEN** los servicios llegan a `healthy`, el chat responde en el puerto 8501 y las webs Go (3000) y React (3001) pueden consultar el historial de la API.
+- **THEN** los servicios llegan a `healthy`, el chat responde en el puerto 8501, la web React en 3001 y el backend Go en 3000.
+
+#### Scenario: Clientes solo contra el backend
+- **WHEN** se inspeccionan las variables de `estimator-web-react` y `estimador-cag-chat`
+- **THEN** ambas apuntan a `http://estimator-web:3000` y ninguna a `http://estimador-cag:8000`.
 
 #### Scenario: Web React tras el proxy
 - **WHEN** se abre `http://localhost:3001/estimations`
-- **THEN** la aplicación se sirve desde su propio origen y sus llamadas a `/api/v1/...` llegan a la API sin exponer la dirección interna ni requerir CORS.
+- **THEN** la aplicación se sirve desde su propio origen y sus llamadas a `/api/...` llegan al backend Go sin exponer la dirección interna ni requerir CORS.
 
 ### Requirement: Volúmenes y healthchecks
 PostgreSQL y Redis SHALL usar volúmenes con nombre para conservar sus datos. Cada servicio SHALL declarar un healthcheck (`pg_isready`, `redis-cli ping`, `/health` de la API, `/_stcore/health` del chat, `/up` de la web Go y `/healthz` de la web React) y los servicios dependientes SHALL esperar con `depends_on` y `condition: service_healthy`.

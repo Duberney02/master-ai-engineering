@@ -38,9 +38,9 @@
 
 ## 6. Compose y documentación (commit «chore: Compose en tres capas y documentación»)
 
-- [ ] 6.1 `docker-compose.yml`: `estimador-cag-chat` desde `estimator-streamlit/` dependiendo de `estimator-web`; `estimator-web-react` hacia `estimator-web`; retirar `SECRET_KEY_BASE`; `docker compose config` válido.
-- [ ] 6.2 Actualizar `CLAUDE.md`, `README.md` raíz y `arquitectura-actual.md` (estado resultante).
-- [ ] 6.3 Verificar con `grep` que React y Streamlit no tienen referencias a `estimador-cag`, `:8000` ni `/api/v1`.
+- [x] 6.1 `docker-compose.yml`: `estimador-cag-chat` desde `estimator-streamlit/` dependiendo de `estimator-web`; `estimator-web-react` hacia `estimator-web`; retirar `SECRET_KEY_BASE`; `docker compose config` válido.
+- [x] 6.2 Actualizar `CLAUDE.md`, `README.md` raíz y `arquitectura-actual.md` (estado resultante).
+- [x] 6.3 Verificar con `grep` que React y Streamlit no tienen referencias a `estimador-cag`, `:8000` ni `/api/v1`.
 
 ## 7. Verificación y cierre
 

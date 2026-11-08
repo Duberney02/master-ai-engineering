@@ -1,5 +1,10 @@
 # Diagnóstico arquitectónico — Sesión 09 (pre-work)
 
+> **Actualización (cambio `refactor-clientes-tres-capas`).** Las secciones sobre la capa 1 y la propuesta de tres capas describen el estado
+> *previo* al refactor: React y Streamlit hablaban directamente con `estimador-cag` y Streamlit vivía dentro de él. Tras el cambio,
+> **solo `estimator-web-go` (API JSON bajo `/api/`) llama a `estimador-cag`**; React y `estimator-streamlit/` hablan únicamente con el
+> backend. El diagnóstico se conserva tal cual como punto de partida.
+
 > Estado analizado: cierre de la Sesión 08 (`master`, commit `4138d3c`). Todo el trace se ejecutó contra el stack
 > Docker (`docker compose up -d`). Observaciones en español; comandos, payloads y nombres de campo en inglés.
 >

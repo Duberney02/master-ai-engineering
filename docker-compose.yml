@@ -1,12 +1,13 @@
-# Stack completo: API del estimador, chat Streamlit, aplicaciones web (Go y React), Redis Stack y PostgreSQL.
+# Stack completo en tres capas: frontends (React y Streamlit) → backend Go → servicio de IA, más Redis Stack y PostgreSQL.
 #
 #   cp estimador-cag/.env.example estimador-cag/.env   # y completa la API key del proveedor elegido
-#   cp .env.example .env                               # opcional: contraseñas y secretos propios
+#   cp .env.example .env                               # opcional: contraseñas propias
 #   docker compose up --build
 #
-# Web Go: http://localhost:3000 · Web React: http://localhost:3001 · Chat Streamlit: http://localhost:8501 · API (docs): http://localhost:8000/docs
-# La API, las webs, el chat y PostgreSQL (5432, para psql en desarrollo) publican puertos; Redis es interno a la red.
-# Para desarrollar solo el backend con recarga en caliente usa estimador-cag/docker-compose.yml.
+# Backend Go (API JSON): http://localhost:3000 · Web React: http://localhost:3001 · Chat Streamlit: http://localhost:8501 · API de IA (docs): http://localhost:8000/docs
+# Solo estimator-web (Go) llama a estimador-cag: React y Streamlit hablan únicamente con el backend. Redis es interno a la red;
+# PostgreSQL (5432) publica puerto para psql en desarrollo.
+# Para desarrollar solo el servicio de IA con recarga en caliente usa estimador-cag/docker-compose.yml.
 
 name: estimator
 
@@ -71,15 +72,13 @@ services:
     image: estimator-web:latest
     ports:
       - "3000:3000"
-    # La web solo habla HTTP con la API: no recibe claves de proveedores.
+    # Backend de negocio (capa 2): API JSON y único cliente del servicio de IA; no recibe claves de proveedores.
     environment:
       ESTIMATOR_API_URL: http://estimador-cag:8000
       ESTIMATOR_READ_TIMEOUT: "300"
       ESTIMATOR_COMPARE_TIMEOUT: "600"
       # Historial del Chunking Lab: su propia base, distinta de la de la API.
       DATABASE_URL: postgres://estimator:${WEB_DB_PASSWORD:-estimator-web-dev}@estimator-web-db:5432/estimator_web
-      # Solo desarrollo: define SECRET_KEY_BASE (openssl rand -hex 64) en .env para otro entorno.
-      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-only-secret-key-base-change-me-0123456789abcdef0123456789abcdef0123456789abcdef}
     depends_on:
       estimador-cag:
         condition: service_healthy

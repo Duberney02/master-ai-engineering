@@ -1,11 +1,12 @@
 # Diagnóstico arquitectónico — Sesión 09 (pre-work)
 
-> **Actualización (cambio `refactor-clientes-tres-capas`).** Las secciones sobre la capa 1 y la propuesta de tres capas describen el estado
-> *previo* al refactor: React y Streamlit hablaban directamente con `estimador-cag` y Streamlit vivía dentro de él. Tras el cambio,
-> **solo `estimator-web-go` (API JSON bajo `/api/`) llama a `estimador-cag`**; React y `estimator-streamlit/` hablan únicamente con el
-> backend. El diagnóstico se conserva tal cual como punto de partida.
+> **Estado de las capas (cambio `refactor-clientes-tres-capas`).** Este documento refleja la arquitectura *actual*:
+> **frontends → backend de negocio → servicio IA**, y **solo `estimator-web-go` (API JSON bajo `/api/`) llama a
+> `estimador-cag`**. React (`estimator-web-react`) y Streamlit (`estimator-streamlit/`, proyecto independiente) hablan
+> únicamente con el backend. El trace de la sección 2 y los fallos 1-5 de la sección 3 son del servicio IA (capa 3) y no
+> cambian con el refactor.
 
-> Estado analizado: cierre de la Sesión 08 (`master`, commit `4138d3c`). Todo el trace se ejecutó contra el stack
+> Estado analizado en el trace: cierre de la Sesión 08 (`master`, commit `4138d3c`), contra el stack
 > Docker (`docker compose up -d`). Observaciones en español; comandos, payloads y nombres de campo en inglés.
 >
 > **Equivalencia de nombres.** El enunciado habla de `ingest/`, `embedding_pipeline/` y `storage/`. En este repo
@@ -30,12 +31,12 @@ flowchart TB
     classDef ext fill:#f1f1f1,stroke:#777,color:#333
 
     subgraph L1["CAPA 1 · Frontend"]
-        REACT["estimator-web-react :3001<br/>SPA + nginx (proxy /api/)"]
-        STREAM["Streamlit chat :8501"]
+        REACT["estimator-web-react :3001<br/>SPA + nginx (proxy /api/ → backend Go)"]
+        STREAM["estimator-streamlit :8501<br/>chat (proyecto independiente)"]
     end
 
     subgraph L2["CAPA 2 · Backend de negocio"]
-        GOWEB["estimator-web (Go) :3000<br/>páginas html/template + cliente HTTP de la API IA"]
+        GOWEB["estimator-web (Go) :3000<br/>API JSON /api/... · único cliente de la API IA"]
         WDB[("estimator-web-db<br/>historial del Chunking Lab")]
     end
 
@@ -70,8 +71,8 @@ flowchart TB
     FS[/"data/seed/*<br/>presupuestos y transcripciones"/]:::ext
     STOP{{"⛔ AQUÍ ACABA LO IMPLEMENTADO<br/>/search devuelve chunks crudos y termina:<br/>ningún módulo los consume"}}:::stop
 
-    REACT -- "/api/v1/*" --> R_EST
-    STREAM -- "/api/v1/*" --> R_EST
+    REACT -- "/api/* (JSON)" --> GOWEB
+    STREAM -- "/api/* (JSON)" --> GOWEB
     GOWEB -- "/api/v1/*" --> R_EST
     GOWEB -- "compare" --> R_CMP
     GOWEB --- WDB
@@ -106,8 +107,9 @@ flowchart TB
   (`chunking → embedding → DocumentStore → pgvector`).
 - `DocumentStore` solo es alcanzable desde `POST /embeddings/ingest` y `POST /search` (`grep` de
   `get_document_store`): **el flujo que estima (a) nunca consulta pgvector**.
-- **La capa 1 se salta la capa 2.** `estimator-web-react` (nginx `proxy_pass` de `/api/` a `API_UPSTREAM`) y Streamlit
-  (`httpx` a `ESTIMATOR_API_BASE_URL`) llaman directamente a la API IA; solo `estimator-web` (Go) actúa como backend.
+- **Las capas se respetan.** `estimator-web-react` (nginx `proxy_pass` de `/api/` a `API_UPSTREAM=http://estimator-web:3000`)
+  y Streamlit (`httpx` a `ESTIMATOR_WEB_URL`) solo llaman al backend `estimator-web` (Go), que es el único cliente de la
+  API IA; ni React ni Streamlit tienen referencias de red a `estimador-cag`.
 - Si llega una transcripción, lo único que el sistema puede hacer con ella en el lado RAG es tratarla como un
   `query: str` y devolver los `k` chunks más cercanos. Ahí termina.
 
@@ -381,8 +383,8 @@ Resumen (distancia · presupuesto · sector · componente) de las 5 consultas y 
   presupuestos limpios de `data/seed/budgets/` (`BUDGET-2024-000x`).
 - **Corpus pequeño y sesgado:** 15 presupuestos / 52 chunks en 4 sectores, sin precedentes de fidelización ni de
   analítica de ventas para retail; parte de los «malos resultados» son cobertura de datos, no de arquitectura.
-- **Capas saltadas por React y Streamlit.** Ambos hablan directo con la capa 3 (ver Sección 1); la propuesta los
-  reencamina por `estimator-web` para que solo el backend de negocio conozca el servicio IA.
+- **Capas (resuelto).** Antes React y Streamlit hablaban directo con la capa 3; el cambio `refactor-clientes-tres-capas`
+  los reencaminó por `estimator-web`, de modo que solo el backend de negocio conoce el servicio IA (ver Sección 1).
 - **Latencia del primer `/search`:** 2363 ms con la transcripción completa (incluye embeber ~2 kB de texto con una
   llamada externa); no es el cuello de botella hoy, pero se multiplicará con una sub-consulta por necesidad.
 
@@ -390,12 +392,12 @@ Resumen (distancia · presupuesto · sector · componente) de las 5 consultas y 
 
 ## 4. Propuesta de evolución arquitectónica
 
-Leyenda: **verde con borde grueso y ★ = nuevo**; azul/gris = ya existía en la Sección 1; flechas gruesas = flujo nuevo
-o cambiado.
+Leyenda: **verde con borde grueso y ★ = nuevo** (propuesto, aún no implementado); azul/gris = ya existe en la Sección 1;
+flechas gruesas = flujo nuevo.
 
-**Regla de capas de la propuesta:** la capa 1 solo habla con la capa 2, y **solo el backend de negocio
-(`estimator-web`) llama a la capa 3** (servicio IA). Frente a la Sección 1 cambian dos flechas: React y Streamlit dejan
-de ir directo a la API IA y pasan por el backend.
+**Regla de capas (ya vigente):** la capa 1 solo habla con la capa 2, y **solo el backend de negocio (`estimator-web`)
+llama a la capa 3** (servicio IA). Esta regla ya se cumple en la Sección 1; el diagrama de abajo solo añade el flujo RAG
+propuesto detrás del mismo backend.
 
 ```mermaid
 flowchart TB
@@ -437,8 +439,8 @@ flowchart TB
     PG[("PostgreSQL + pgvector<br/>documents · chunks")]:::store
     OAI(["OpenAI API"]):::ext
 
-    REACT ==>|"cambia: solo habla con la capa 2"| GOWEB
-    STREAM ==>|"cambia: solo habla con la capa 2"| GOWEB
+    REACT -->|"solo habla con la capa 2"| GOWEB
+    STREAM -->|"solo habla con la capa 2"| GOWEB
     GOWEB --> R_EST
     GOWEB ==>|"transcripción (llamada nueva)"| R_RAG
 

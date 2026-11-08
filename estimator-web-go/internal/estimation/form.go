@@ -179,14 +179,6 @@ func (f *Form) addError(message string) bool {
 	return false
 }
 
-// APIAttributes son los campos de la estimación sin sesión (también sirven para la vista previa del prompt).
-func (f *Form) APIAttributes() map[string]string {
-	return map[string]string{
-		"description": f.Description, "project_type": f.ProjectType,
-		"detail_level": f.DetailLevel, "output_format": f.OutputFormat,
-	}
-}
-
 // SessionFields son los campos de `POST /sessions/{id}/estimate` (la transcripción va como `transcript`).
 func (f *Form) SessionFields() [][2]string {
 	return [][2]string{

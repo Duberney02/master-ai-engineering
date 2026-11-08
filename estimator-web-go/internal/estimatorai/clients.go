@@ -17,28 +17,11 @@ import (
 
 // --- Contexto «estimación transaccional»: estimar, historial y vista previa del prompt ---
 
-// EstimationsClient habla con /api/v1/estimate, /api/v1/estimations y /api/v1/prompts/estimation.
+// EstimationsClient habla con /api/v1/estimations y /api/v1/prompts/estimation.
 type EstimationsClient struct{ base baseClient }
 
 func NewEstimationsClient(settings Settings) *EstimationsClient {
 	return &EstimationsClient{base: newBase(settings)}
-}
-
-// CreateEstimation solicita una estimación. Devuelve el cuerpo de la API (con «result», «estimation_id»…).
-func (c *EstimationsClient) CreateEstimation(ctx context.Context, attributes map[string]string, promptVersion string) (jsondoc.Doc, error) {
-	payload, err := json.Marshal(attributes)
-	if err != nil {
-		return nil, newError(ServerError, ServerMessage, 0)
-	}
-	opts := requestOptions{body: bytes.NewReader(payload), contentType: "application/json"}
-	if promptVersion != "" {
-		opts.query = url.Values{"prompt_version": {promptVersion}}
-	}
-	body, err := c.base.request(ctx, http.MethodPost, "/api/v1/estimate", opts)
-	if err != nil {
-		return nil, err
-	}
-	return expectDoc(body, "result")
 }
 
 // ListEstimations devuelve las últimas estimaciones del historial.

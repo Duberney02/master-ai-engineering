@@ -7,23 +7,17 @@ func TestNumbersKeepTheirOriginalText(t *testing.T) {
 	if doc.S("a") != "70" || doc.S("b") != "70.5" || doc.S("c") != "20000.0" || doc.S("d") != "x" || doc.S("e") != "" || doc.S("f") != "true" || doc.S("zz") != "" {
 		t.Errorf("S: %v", doc)
 	}
-	if doc.Float("b") != 70.5 || doc.Int("c") != 20000 || doc.Int("d") != 0 {
-		t.Errorf("números: %v %v", doc.Float("b"), doc.Int("c"))
+	if doc.Float("b") != 70.5 || doc.Float("d") != 0 {
+		t.Errorf("números: %v", doc.Float("b"))
 	}
 }
 
-func TestRubyTruthinessAndPresence(t *testing.T) {
+func TestRubyTruthiness(t *testing.T) {
 	doc := ParseDoc([]byte(`{"zero":0,"no":false,"nulo":null,"blanco":"  ","texto":"x","lista":[],"llena":[1],"objeto":{}}`))
 	truthy := map[string]bool{"zero": true, "no": false, "nulo": false, "blanco": true, "texto": true, "zz": false}
 	for key, want := range truthy {
 		if doc.Truthy(key) != want {
 			t.Errorf("Truthy(%s)", key)
-		}
-	}
-	present := map[string]bool{"zero": true, "no": false, "nulo": false, "blanco": false, "texto": true, "lista": false, "llena": true, "objeto": false}
-	for key, want := range present {
-		if doc.Present(key) != want {
-			t.Errorf("Present(%s)", key)
 		}
 	}
 }
@@ -49,14 +43,5 @@ func TestParseRejectsEmptyAndTrailingData(t *testing.T) {
 	}
 	if ParseDoc([]byte(`[1]`)) != nil {
 		t.Error("un array no es un Doc")
-	}
-}
-
-func TestRubyToI(t *testing.T) {
-	cases := map[string]int{"3": 3, " 12abc": 12, "": 0, "abc": 0, "-5": -5, "+7": 7, "3.9": 3, "99": 99}
-	for text, want := range cases {
-		if got := RubyToI(text); got != want {
-			t.Errorf("RubyToI(%q) = %d, se esperaba %d", text, got, want)
-		}
 	}
 }

@@ -72,15 +72,6 @@ var Catalog = []Strategy{
 		Description: "Un LLM de Anthropic sitúa cada chunk en su presupuesto, con prompt caching (minutos de ejecución)."},
 }
 
-// AllNames devuelve los nombres del catálogo, en orden.
-func AllNames() []string {
-	names := make([]string, len(Catalog))
-	for index, strategy := range Catalog {
-		names[index] = strategy.Name
-	}
-	return names
-}
-
 // Find busca una estrategia por nombre.
 func Find(name string) (Strategy, bool) {
 	for _, strategy := range Catalog {
@@ -100,37 +91,6 @@ func Defaults() []string {
 		}
 	}
 	return names
-}
-
-// IsPaid indica si la estrategia existe y cuesta dinero.
-func IsPaid(name string) bool {
-	strategy, ok := Find(name)
-	return ok && strategy.Paid()
-}
-
-// PaidSelected indica si alguna de las estrategias es de pago.
-func PaidSelected(names []string) bool {
-	for _, name := range names {
-		if IsPaid(name) {
-			return true
-		}
-	}
-	return false
-}
-
-// KeysNeeded devuelve las variables de clave (sin repetir) que necesitan las estrategias.
-func KeysNeeded(names []string) []string {
-	var keys []string
-	seen := map[string]bool{}
-	for _, name := range names {
-		strategy, ok := Find(name)
-		if !ok || strategy.KeyName() == "" || seen[strategy.KeyName()] {
-			continue
-		}
-		seen[strategy.KeyName()] = true
-		keys = append(keys, strategy.KeyName())
-	}
-	return keys
 }
 
 // LabelFor devuelve la etiqueta de una estrategia (o su nombre si no está en el catálogo).

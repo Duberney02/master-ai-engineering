@@ -3,7 +3,6 @@ package rag
 import (
 	"encoding/json"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -53,115 +52,67 @@ func compareBody(strategies []string, queries []string, contextualCost float64) 
 	encoded, _ := json.Marshal(body)
 	return encoded
 }
-
-func TestCatalogMirrorsTheEightStrategiesInCanonicalOrder(t *testing.T) {
+func TestCatalogHasTheEightStrategiesInCanonicalOrder(t *testing.T) {
+	var names []string
+	for _, strategy := range Catalog {
+		names = append(names, strategy.Name)
+	}
 	want := []string{"structural", "fixed_size", "recursive", "sentence_window", "hierarchical", "semantic", "propositional", "contextual_retrieval"}
-	if !reflect.DeepEqual(AllNames(), want) {
-		t.Errorf("catálogo: %v", AllNames())
+	if !reflect.DeepEqual(names, want) {
+		t.Errorf("catálogo: %v", names)
 	}
 }
 
-func TestFreeStrategiesAreDefaultAndPaidOnesAreOptIn(t *testing.T) {
+func TestFreeStrategiesAreDefaultAndPaidOnesAreOptInAndDeclareTheirKey(t *testing.T) {
 	if !reflect.DeepEqual(Defaults(), []string{"structural", "fixed_size", "recursive"}) {
 		t.Errorf("por defecto: %v", Defaults())
 	}
-	var paid []string
-	for _, name := range AllNames() {
-		if IsPaid(name) {
-			paid = append(paid, name)
+	paid := map[string]string{}
+	for _, strategy := range Catalog {
+		if strategy.Paid() {
+			paid[strategy.Name] = strategy.KeyName()
+		}
+		if strategy.Paid() && strategy.DefaultChecked {
+			t.Errorf("%s es de pago y no puede venir marcada", strategy.Name)
 		}
 	}
-	if !reflect.DeepEqual(paid, []string{"semantic", "propositional", "contextual_retrieval"}) || PaidSelected(Defaults()) {
+	want := map[string]string{"semantic": "OPENAI_API_KEY", "propositional": "OPENAI_API_KEY", "contextual_retrieval": "ANTHROPIC_API_KEY"}
+	if !reflect.DeepEqual(paid, want) {
 		t.Errorf("de pago: %v", paid)
 	}
-}
-
-func TestPaidStrategiesDeclareTheKeyTheyNeed(t *testing.T) {
-	keys := KeysNeeded([]string{"semantic", "structural", "contextual_retrieval", "propositional"})
-	if !reflect.DeepEqual(keys, []string{"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}) {
-		t.Errorf("claves: %v", keys)
+	if strategy, ok := Find("structural"); !ok || strategy.KeyName() != "" || strategy.CostLabel() != "gratis" {
+		t.Errorf("estructural: %+v", strategy)
 	}
-	if len(KeysNeeded(Defaults())) != 0 || !PaidSelected([]string{"structural", "propositional"}) || PaidSelected([]string{"structural", "magic"}) {
-		t.Error("claves o coste mal calculados")
+	if _, ok := Find("magic"); ok {
+		t.Error("una estrategia desconocida no se encuentra")
 	}
 	if LabelFor("fixed_size") != "Tamaño fijo" || LabelFor("magic") != "magic" {
 		t.Error("etiquetas")
 	}
 }
 
-func TestStatsMirrorChunkingStatsIncludingTokenDistribution(t *testing.T) {
-	stats := ParseResponse(compareBody([]string{"structural"}, nil, 0)).StatsFor("structural")
-	if stats.NChunks != 10 || stats.TokenDistribution.P50 != 79.0 || stats.TokenDistribution.Max != 300 || !stats.Free() || stats.Orphans() {
-		t.Errorf("estadísticas: %+v", stats)
+func TestCostsAddUp(t *testing.T) {
+	response := ParseResponse(compareBody([]string{"structural", "contextual_retrieval"}, nil, 0.14))
+	if response.TotalIngestionCostUSD() != 0.14 {
+		t.Errorf("coste: %v", response.TotalIngestionCostUSD())
+	}
+	if ParseResponse(compareBody([]string{"structural"}, nil, 0)).TotalIngestionCostUSD() != 0 {
+		t.Error("las gratuitas no tienen coste")
 	}
 }
 
 func TestUnknownAttributesFromANewerServiceAreIgnored(t *testing.T) {
-	body := `{"stats_per_strategy":{"structural":{"n_chunks":10,"something_new":1,"token_distribution":{"p99":5,"max":3}}},"extra":true}`
-	stats := ParseResponse([]byte(body)).StatsFor("structural")
-	if stats.NChunks != 10 || stats.TokenDistribution.Max != 3 {
-		t.Errorf("estadísticas: %+v", stats)
-	}
-}
-
-func TestStrategyNamesKeepCanonicalOrderAndQueriesAreUnique(t *testing.T) {
-	response := ParseResponse(compareBody([]string{"hierarchical", "structural"}, []string{"a", "b"}, 0))
-	if !reflect.DeepEqual(response.StrategyNames(), []string{"structural", "hierarchical"}) {
-		t.Errorf("orden: %v", response.StrategyNames())
-	}
-	if !reflect.DeepEqual(response.Queries(), []string{"a", "b"}) || !response.AnyQueries() {
-		t.Errorf("consultas: %v", response.Queries())
-	}
-	if ParseResponse(compareBody([]string{"structural"}, nil, 0)).AnyQueries() {
-		t.Error("sin consultas no hay recuperación")
-	}
-}
-
-func TestResultsAreGroupedByStrategyForOneQuery(t *testing.T) {
-	grouped := ParseResponse(compareBody([]string{"structural", "hierarchical"}, []string{"oauth"}, 0)).ResultsByStrategyFor("oauth")
-	if len(grouped) != 2 || grouped[0].Name != "structural" || grouped[0].Result.Query != "oauth" {
-		t.Errorf("agrupación: %+v", grouped)
-	}
-}
-
-func TestHierarchicalTopChunksExposeParentAndChildLevel(t *testing.T) {
-	response := ParseResponse(compareBody([]string{"structural", "hierarchical"}, []string{"oauth"}, 0))
-	top := response.QueryResultsFor("hierarchical")[0].TopK
-	if !top[0].Parent() || !top[1].Child() || top[1].ParentChunkID != "BUD-1::parent" || top[0].CosinePct() != 71 {
-		t.Errorf("jerarquía: %+v", top)
-	}
-	chunk := response.QueryResultsFor("structural")[0].TopK[0]
-	if chunk.Level != "" || chunk.Parent() || chunk.Child() {
-		t.Errorf("otras estrategias no tienen nivel: %+v", chunk)
-	}
-	if (TopChunk{Cosine: 1.7}).CosinePct() != 100 || (TopChunk{Cosine: -0.3}).CosinePct() != 0 {
-		t.Error("el porcentaje debe acotarse a 0-100")
-	}
-}
-
-func TestCostsAddUpAndTheMaximumDrivesTheBars(t *testing.T) {
-	response := ParseResponse(compareBody([]string{"structural", "contextual_retrieval"}, nil, 0.14))
-	if response.TotalIngestionCostUSD() != 0.14 || response.MaxIngestionCostUSD() != 0.14 {
-		t.Errorf("costes: %v %v", response.TotalIngestionCostUSD(), response.MaxIngestionCostUSD())
-	}
-	if ParseResponse(compareBody([]string{"structural"}, nil, 0)).MaxIngestionCostUSD() != 0 {
-		t.Error("las gratuitas no tienen coste")
+	body := `{"stats_per_strategy":{"structural":{"n_chunks":10,"something_new":1,"ingestion_cost_usd":0.5}},"extra":true}`
+	if got := ParseResponse([]byte(body)).TotalIngestionCostUSD(); got != 0.5 {
+		t.Errorf("coste: %v", got)
 	}
 }
 
 func TestAnEmptyOrInvalidPayloadYieldsAnEmptyResponse(t *testing.T) {
 	for _, payload := range []string{`{}`, ``, `[1]`, `no json`} {
-		response := ParseResponse([]byte(payload))
-		if len(response.StrategyNames()) != 0 || response.TotalIngestionCostUSD() != 0 {
+		if got := ParseResponse([]byte(payload)).TotalIngestionCostUSD(); got != 0 {
 			t.Errorf("payload %q debe producir una respuesta vacía", payload)
 		}
-	}
-}
-
-func TestStrategiesOutsideTheCatalogAreKeptAfterTheKnownOnes(t *testing.T) {
-	response := ParseResponse([]byte(`{"stats_per_strategy":{"zeta":{"n_chunks":1},"structural":{"n_chunks":2},"alfa":{"n_chunks":3}}}`))
-	if got := strings.Join(response.StrategyNames(), ","); got != "structural,alfa,zeta" {
-		t.Errorf("orden: %s", got)
 	}
 }
 

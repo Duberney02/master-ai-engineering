@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"estimator-web/internal/jsondoc"
 )
 
 // testStore abre el PostgreSQL efímero de `web-test` (TEST_DATABASE_URL), con la tabla vacía.
@@ -56,7 +58,7 @@ func TestStorePersistsTheRequestAndTheFullResponse(t *testing.T) {
 		reloaded.TopK != 3 || reloaded.CorpusLabel != "budgets_sample" || reloaded.CorpusCount != 18 || *reloaded.DurationMS != 1500 {
 		t.Errorf("recargada: %+v", reloaded)
 	}
-	if reloaded.Response().StatsFor("structural").NChunks != 10 {
+	if jsondoc.ParseDoc(reloaded.ResponsePayload).Doc("stats_per_strategy").Doc("structural").Float("n_chunks") != 10 {
 		t.Error("la respuesta completa debe sobrevivir como JSONB")
 	}
 }

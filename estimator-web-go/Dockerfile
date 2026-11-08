@@ -1,7 +1,7 @@
-# Servicio web del estimador en Go (cliente de la API de IA; PostgreSQL solo para el historial del Chunking Lab).
+# Backend del estimador en Go: API JSON, único cliente del servicio de IA (PostgreSQL solo para el historial del Chunking Lab).
 #
 #   docker build -t estimator-web .
-#   docker run --rm -p 3000:3000 -e SECRET_KEY_BASE=... -e ESTIMATOR_API_URL=http://api:8000 \
+#   docker run --rm -p 3000:3000 -e ESTIMATOR_API_URL=http://api:8000 \
 #     -e DATABASE_URL=postgres://usuario:clave@host:5432/base estimator-web
 ARG GO_VERSION=1.25
 
@@ -41,6 +41,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["/estimator-web", "healthcheck"]
 
-# SECRET_KEY_BASE, ESTIMATOR_API_URL y DATABASE_URL se inyectan en tiempo de ejecución. Sin DATABASE_URL el servicio
+# ESTIMATOR_API_URL y DATABASE_URL se inyectan en tiempo de ejecución. Sin DATABASE_URL el servicio
 # funciona igual, solo que el Chunking Lab no podrá guardar sus ejecuciones.
 ENTRYPOINT ["/estimator-web"]

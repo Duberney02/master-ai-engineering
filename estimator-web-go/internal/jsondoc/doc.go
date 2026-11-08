@@ -95,9 +95,6 @@ func (d Doc) IsArray(key string) bool {
 	return ok
 }
 
-// Present replica `present?` de Rails: ni nil, ni false, ni texto en blanco, ni colección vacía.
-func (d Doc) Present(key string) bool { return Present(d[key]) }
-
 // Truthy replica la verdad de Ruby: todo salvo nil y false.
 func (d Doc) Truthy(key string) bool { return Truthy(d[key]) }
 
@@ -107,9 +104,6 @@ func (d Doc) Float(key string) float64 {
 	return number
 }
 
-// Int replica `to_i`: trunca los números y lee el prefijo entero de un texto.
-func (d Doc) Int(key string) int { return ToInt(d[key]) }
-
 // Truthy: todo salvo nil y false.
 func Truthy(value any) bool {
 	if value == nil {
@@ -117,25 +111,6 @@ func Truthy(value any) bool {
 	}
 	if flag, ok := value.(bool); ok {
 		return flag
-	}
-	return true
-}
-
-// Present replica `present?`.
-func Present(value any) bool {
-	switch typed := value.(type) {
-	case nil:
-		return false
-	case bool:
-		return typed
-	case string:
-		return strings.TrimSpace(typed) != ""
-	case []any:
-		return len(typed) > 0
-	case map[string]any:
-		return len(typed) > 0
-	case Doc:
-		return len(typed) > 0
 	}
 	return true
 }
@@ -178,44 +153,4 @@ func ToFloat(value any) (float64, bool) {
 		return number, err == nil
 	}
 	return 0, false
-}
-
-// ToInt replica `to_i` de Ruby.
-func ToInt(value any) int {
-	switch typed := value.(type) {
-	case json.Number:
-		if integer, err := typed.Int64(); err == nil {
-			return int(integer)
-		}
-		number, _ := typed.Float64()
-		return int(number)
-	case float64:
-		return int(typed)
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case string:
-		return RubyToI(typed)
-	}
-	return 0
-}
-
-// RubyToI replica `String#to_i`: lee el prefijo entero (con signo opcional) y devuelve 0 si no hay.
-func RubyToI(text string) int {
-	text = strings.TrimLeft(text, " \t\n\v\f\r")
-	end := 0
-	for end < len(text) {
-		character := text[end]
-		isSign := end == 0 && (character == '-' || character == '+')
-		if !isSign && (character < '0' || character > '9') {
-			break
-		}
-		end++
-	}
-	number, err := strconv.Atoi(text[:end])
-	if err != nil {
-		return 0
-	}
-	return number
 }

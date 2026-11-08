@@ -1,12 +1,9 @@
-// Package config lee la configuración del servicio web desde variables de entorno.
+// Package config lee la configuración del backend desde variables de entorno.
 //
-// Los nombres y valores por defecto son los del cliente Rails (`config/application.rb`), de modo que el Compose y
-// los entornos existentes no cambian.
+// Los nombres y valores por defecto son los de siempre, de modo que el Compose y los entornos existentes no cambian.
 package config
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -22,9 +19,6 @@ type Config struct {
 	CompareTimeout time.Duration
 	BadgeTimeout   time.Duration
 	DatabaseURL    string
-	SecretKeyBase  string
-	// EphemeralSecret indica que SECRET_KEY_BASE no estaba definido y se generó uno aleatorio para este proceso.
-	EphemeralSecret bool
 }
 
 // FromEnv construye la configuración con la función de lectura dada (os.Getenv en producción).
@@ -61,16 +55,6 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	}
 	if cfg.BadgeTimeout, err = seconds("ESTIMATOR_BADGE_TIMEOUT", "2"); err != nil {
 		return Config{}, err
-	}
-
-	cfg.SecretKeyBase = strings.TrimSpace(getenv("SECRET_KEY_BASE"))
-	if cfg.SecretKeyBase == "" {
-		random := make([]byte, 32)
-		if _, err := rand.Read(random); err != nil {
-			return Config{}, fmt.Errorf("no se pudo generar un secreto de sesión: %w", err)
-		}
-		cfg.SecretKeyBase = hex.EncodeToString(random)
-		cfg.EphemeralSecret = true
 	}
 	return cfg, nil
 }

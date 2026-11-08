@@ -30,14 +30,10 @@ func has(form *Form, message string) bool {
 	return false
 }
 
-func TestAValidFormPassesAndExposesTheAPIAttributes(t *testing.T) {
+func TestAValidFormPasses(t *testing.T) {
 	subject := form(nil)
 	if !subject.Valid() {
 		t.Fatalf("debería ser válido: %v", subject.Errors)
-	}
-	attributes := subject.APIAttributes()
-	if len(attributes) != 4 || attributes["prompt_version"] != "" {
-		t.Errorf("atributos de la API: %v", attributes)
 	}
 }
 

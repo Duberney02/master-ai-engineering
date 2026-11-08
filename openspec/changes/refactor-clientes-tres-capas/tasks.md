@@ -18,10 +18,10 @@
 
 ## 3. Backend Go: eliminar la parte web (commit «refactor(web-go): elimina HTML, sesión y CSRF»)
 
-- [ ] 3.1 Borrar `internal/web/templates`, `internal/web/public`, `templates.go`, `format.go` y sus pruebas, el handler `home`, `_method`, CSRF y `internal/session`; quitar `SECRET_KEY_BASE` de `config`.
-- [ ] 3.2 Limpiar dependencias y código muerto (`html/template`, `embed`, helpers sin uso); `web-go mod tidy`.
-- [ ] 3.3 Actualizar `internal/archtest` y `cmd/server/main.go`; `web-test` y `web-lint` en verde.
-- [ ] 3.4 Actualizar `estimator-web-go/ARCHITECTURE.md` y `README.md`.
+- [x] 3.1 Borrar `internal/web/templates`, `internal/web/public`, `templates.go`, `format.go` y sus pruebas, el handler `home`, `_method`, CSRF y `internal/session`; quitar `SECRET_KEY_BASE` de `config`.
+- [x] 3.2 Limpiar dependencias y código muerto (`html/template`, `embed`, helpers sin uso); `web-go mod tidy`.
+- [x] 3.3 Actualizar `internal/archtest` y `cmd/server/main.go`; `web-test` y `web-lint` en verde.
+- [x] 3.4 Actualizar `estimator-web-go/ARCHITECTURE.md` y `README.md`.
 
 ## 4. Streamlit independiente (commit «feat(streamlit): cliente independiente del backend Go»)
 

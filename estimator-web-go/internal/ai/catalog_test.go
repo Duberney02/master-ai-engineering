@@ -58,9 +58,9 @@ func TestExposesEffectiveDefaultAndOverriddenPerKnob(t *testing.T) {
 	}
 }
 
-func TestPrimaryModelAndAnyOverriddenSummarizeTheSnapshot(t *testing.T) {
+func TestAnyOverriddenSummarizesTheSnapshot(t *testing.T) {
 	catalog := FromDoc(configBody(nil))
-	if catalog.PrimaryModel() != "gpt-4o-mini" || catalog.AnyOverridden() || !FromDoc(configBody(map[string]string{"critic_model": "gpt-4o"})).AnyOverridden() {
+	if catalog.AnyOverridden() || !FromDoc(configBody(map[string]string{"critic_model": "gpt-4o"})).AnyOverridden() {
 		t.Error("resumen de la instantánea")
 	}
 }

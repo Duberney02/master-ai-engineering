@@ -129,16 +129,6 @@ func FromDoc(doc jsondoc.Doc) Catalog {
 	return catalog
 }
 
-// PrimaryModel es el modelo primario vigente.
-func (c Catalog) PrimaryModel() string {
-	for _, config := range c.ModelConfigs {
-		if config.Key == "primary_model" {
-			return config.Effective
-		}
-	}
-	return ""
-}
-
 // AnyOverridden indica si algún knob tiene un override en runtime.
 func (c Catalog) AnyOverridden() bool {
 	for _, config := range c.ModelConfigs {

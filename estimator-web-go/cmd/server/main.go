@@ -1,5 +1,5 @@
-// Comando estimator-web: servicio web del estimador. Cliente HTTP de la API de IA (FastAPI); PostgreSQL solo para el
-// historial del Chunking Lab.
+// Comando estimator-web: backend de negocio del estimador (API JSON bajo /api). Único cliente HTTP del servicio de IA
+// (FastAPI); PostgreSQL solo para el historial del Chunking Lab.
 //
 //	estimator-web               arranca el servidor
 //	estimator-web healthcheck   sonda para Docker: GET /up del propio servicio (la imagen no tiene curl ni shell)
@@ -56,10 +56,6 @@ func healthcheck(port string) int {
 func run(cfg config.Config, logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	if cfg.EphemeralSecret {
-		logger.Warn("SECRET_KEY_BASE no está definido: se usa un secreto efímero y las conversaciones se reinician al reiniciar el servicio")
-	}
 
 	store := openStore(ctx, cfg, logger)
 	server := httpapi.New(cfg, store, logger)

@@ -111,7 +111,7 @@ func TestStatusesMapToTypedErrorsWithSanitizedMessages(t *testing.T) {
 
 func TestGuardrailMessageIsTruncated(t *testing.T) {
 	api := newFakeAPI(t, 400, `{"message":"`+strings.Repeat("ñ", 1000)+`"}`)
-	_, err := NewEstimationsClient(api.settings()).CreateEstimation(context.Background(), map[string]string{"description": "x"}, "")
+	_, err := NewEstimationsClient(api.settings()).FindEstimation(context.Background(), "7")
 	if got := len([]rune(mustKind(t, err, GuardrailViolation).Message)); got != MessageLimit {
 		t.Errorf("el mensaje debe acotarse a %d caracteres, tiene %d", MessageLimit, got)
 	}
@@ -132,7 +132,7 @@ func TestHistoryMapsServiceUnavailableToFriendlyMessage(t *testing.T) {
 func TestInvalidResponses(t *testing.T) {
 	for _, body := range []string{"<html>no es json</html>", `{"nope":1}`, `[1,2]`, ``, `{"result":{}} {"x":1}`} {
 		api := newFakeAPI(t, 200, body)
-		_, err := NewEstimationsClient(api.settings()).CreateEstimation(context.Background(), map[string]string{"description": "x"}, "")
+		_, err := NewEstimationsClient(api.settings()).FindEstimation(context.Background(), "7")
 		if typed := mustKind(t, err, InvalidResponse); typed.Message != InvalidResponseMessage {
 			t.Errorf("cuerpo %q: mensaje %q", body, typed.Message)
 		}
@@ -186,21 +186,6 @@ func TestDetailModeShowsAPIDetail(t *testing.T) {
 	_, err := NewConfigClient(api.settings()).Models(context.Background())
 	if typed := mustKind(t, err, InvalidRequest); typed.Message != ValidationMessage || strings.Contains(typed.Message, "privado") {
 		t.Errorf("un detail que no es texto debe caer al mensaje genérico: %q", typed.Message)
-	}
-}
-
-func TestCreateEstimationSendsJSONAndPromptVersion(t *testing.T) {
-	api := newFakeAPI(t, 200, `{"result":{"total_cost_eur":20000},"estimation_id":7}`)
-	doc, err := NewEstimationsClient(api.settings()).CreateEstimation(context.Background(), map[string]string{"description": "x"}, "v2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if doc.S("estimation_id") != "7" || doc.Doc("result").S("total_cost_eur") != "20000" {
-		t.Errorf("respuesta: %v", doc)
-	}
-	request := api.last()
-	if request.method != "POST" || request.rawQuery != "prompt_version=v2" || !strings.HasPrefix(request.contentType, "application/json") {
-		t.Errorf("petición: %+v", request)
 	}
 }
 

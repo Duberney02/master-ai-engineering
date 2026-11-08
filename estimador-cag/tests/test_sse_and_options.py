@@ -1,6 +1,4 @@
-from contextlib import contextmanager
 
-import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -10,7 +8,6 @@ from app.api.estimations import router
 from app.domain.evaluation import evaluate_estimation
 from app.domain.schemas.estimation import EstimationRequest
 from app.foundation.llm.service import GenerationOptions, StreamMetrics, generate_estimation, generate_estimation_stream
-from app.streamlit_client import EstimationStreamError, parse_sse, stream_estimation
 from tests._fakes import (
     LONG_TRANSCRIPTION,
     anthropic_final_message,
@@ -25,6 +22,7 @@ from tests._fakes import (
     patch_openai_stream,
     patch_settings,
 )
+from tests._sse import parse_sse
 
 
 def client():
@@ -188,32 +186,3 @@ def test_invalid_new_options(field, value):
     with pytest.raises(ValidationError):
         EstimationRequest(transcription=LONG_TRANSCRIPTION, **{field: value})
 
-
-def test_sse_parser_multiline_data_comments_and_unicode():
-    events = list(
-        parse_sse(
-            [": heartbeat", "event: token", "data: {", 'data: "text": "á\\nβ"}', "", "event: done", "data: {}", ""]
-        )
-    )
-    assert events == [("token", {"text": "á\nβ"}), ("done", {})]
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        'event: token\ndata: {"text":"partial"}\n\n',
-        'event: error\ndata: {"message":"secret"}\n\n',
-        "event: done\ndata: {}\n\n",
-        "event: token\ndata: invalid\n\n",
-    ],
-)
-def test_client_never_accepts_partial_error_or_missing_metadata(mocker, body):
-    @contextmanager
-    def fake(*args, **kwargs):
-        yield httpx.Response(200, text=body, request=httpx.Request("POST", "http://test"))
-
-    mocker.patch("app.streamlit_client.httpx.stream", fake)
-    metrics = {"old": 1}
-    with pytest.raises(EstimationStreamError) as exc:
-        list(stream_estimation(LONG_TRANSCRIPTION, "http://test", metrics))
-    assert "secret" not in str(exc.value) and metrics == {}

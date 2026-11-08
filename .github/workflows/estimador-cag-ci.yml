@@ -65,7 +65,6 @@ jobs:
         # - test_main.py               -> smoke test: /health, /docs, /openapi.json
         # - tests/prompts/              -> plantillas Jinja2 v1/v2, loader y log del render
         # - test_project_estimations.py -> contrato estructurado, ?prompt_version, mensajes separados
-        # - test_streamlit_app.py      -> formulario tipado y cliente HTTP
         # - test_router.py             -> opciones del endpoint de transcripción, metadatos y evaluación
         # - test_generation_flow.py    -> preprocesamiento (limpieza y dos fases), uso por fase
         # - test_examples.py / test_prompt_options.py -> catálogo, selección y formatos CAG

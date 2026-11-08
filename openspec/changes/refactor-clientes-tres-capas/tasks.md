@@ -32,9 +32,9 @@
 
 ## 5. Limpieza de `estimador-cag` (commit «refactor(cag): retira Streamlit del servicio de IA»)
 
-- [ ] 5.1 Borrar `streamlit_app.py`, `app/streamlit_client.py`, `app/streamlit_support.py` y sus tests; quitar `streamlit` de `pyproject.toml` y regenerar `uv.lock` con `api-uv lock`; reconstruir `api-test`.
-- [ ] 5.2 Quitar el `COPY streamlit_app.py` del `Dockerfile`, el servicio/volumen de Streamlit de `estimador-cag/docker-compose.yml` y la variable de `.env.example`.
-- [ ] 5.3 Actualizar `ARCHITECTURE.md` (incluida la línea «fuera de las capas»), `README.md` y `tests/test_layer_dependencies.py` si lo referencia; `api-test` y `api-lint` en verde.
+- [x] 5.1 Borrar `streamlit_app.py`, `app/streamlit_client.py`, `app/streamlit_support.py` y sus tests; quitar `streamlit` de `pyproject.toml` y regenerar `uv.lock` con `api-uv lock`; reconstruir `api-test`.
+- [x] 5.2 Quitar el `COPY streamlit_app.py` del `Dockerfile`, el servicio/volumen de Streamlit de `estimador-cag/docker-compose.yml` y la variable de `.env.example`.
+- [x] 5.3 Actualizar `ARCHITECTURE.md` (incluida la línea «fuera de las capas»), `README.md` y `tests/test_layer_dependencies.py` si lo referencia; `api-test` y `api-lint` en verde.
 
 ## 6. Compose y documentación (commit «chore: Compose en tres capas y documentación»)
 

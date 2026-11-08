@@ -22,7 +22,7 @@ class SessionEstimationResponse(EstimationResponse):
     project_metadata: ProjectMetadata
     turn_count: int = Field(ge=1, description="Turnos de la conversación, contando este.")
     max_turns: int = Field(ge=1, description="Turnos que conserva la ventana de la sesión.")
-    # Opcionales para que el cliente Streamlit, que valida con esta misma clase, siga aceptando
+    # Opcionales para que los clientes que validan con esta forma sigan aceptando
     # respuestas de servidores anteriores; el servidor siempre las rellena.
     audience: Audience | None = Field(default=None, description="Audiencia aplicada al prompt de este turno.")
     audience_rule: str | None = Field(

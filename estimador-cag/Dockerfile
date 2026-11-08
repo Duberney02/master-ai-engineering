@@ -80,7 +80,6 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /opt/nltk_data /opt/nltk_data
 COPY app/ ./app/
-COPY streamlit_app.py ./streamlit_app.py
 COPY data/ ./data/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./alembic.ini
@@ -88,7 +87,7 @@ COPY scripts/ ./scripts/
 
 USER app
 
-EXPOSE 8000 8501
+EXPOSE 8000
 
 # Sonda sin curl (no existe en -slim): falla si /health no responde 2xx en 3 s.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

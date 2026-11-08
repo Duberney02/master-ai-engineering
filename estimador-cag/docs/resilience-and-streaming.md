@@ -14,7 +14,6 @@ salida española, límites de entrada y evaluación de horas; añade metadatos.
 | `CACHE_TTL` | 86400 | Duración máxima en segundos |
 | `CACHE_TIMEOUT` | 0.5 | Timeout Redis en segundos |
 | `MODEL_PRICES` | `{}` | JSON de precios USD por millón de tokens |
-| `ESTIMATOR_API_BASE_URL` | `http://localhost:8000` | URL de la API usada por Streamlit |
 
 Ejemplo de precios **ficticios para pruebas**, sustituir por tarifas contratadas:
 
@@ -83,12 +82,10 @@ Desconexión sin done significa respuesta incompleta. Entradas inválidas produc
 HTTP 422 antes del stream. `done` confirma fin del transporte: consultar evaluación
 para detectar truncamiento o estructura inválida. Caché puede emitir un único token.
 
-Demo: abrir `/static/sse_demo.html` en la API. Los clientes Python de
-`app.streamlit_client` limitan la lectura a 600 s y la conexión a 10 s;
-configuraciones extremas pueden requerir adaptar el cliente/proxy. Streamlit usa el
-mismo formato de eventos, pero sobre el contrato estructurado
-`POST /api/v1/estimate/stream`, cuyo `metadata` es `EstimationStreamMetadata`
-(ver README).
+Demo: abrir `/static/sse_demo.html` en la API. `POST /api/v1/estimate/stream` usa el mismo formato de eventos sobre el
+contrato estructurado, y su `metadata` es `EstimationStreamMetadata` (ver README). Los clientes que lean el stream deben
+fijar sus propios límites de lectura y de conexión; configuraciones extremas pueden requerir adaptar el cliente o el
+proxy.
 
 ## Opciones adicionales
 

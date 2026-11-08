@@ -1,7 +1,6 @@
 """Contrato tipado entre clientes y servicio IA para `POST /api/v1/estimate`.
 
-Lo comparten el servidor y el cliente Streamlit: ambos importan estas clases
-desde `app.domain.schemas`.
+Lo usa el servidor; los clientes (vía el backend Go) solo dependen de su forma JSON, no importan estas clases.
 """
 
 from enum import Enum

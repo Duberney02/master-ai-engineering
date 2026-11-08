@@ -10,7 +10,6 @@ from app.domain.pipeline import PipelineOutcome
 from app.domain.schemas import EstimationRequest, EstimationResult, EstimationStreamMetadata
 from app.foundation.prompts.loader import render_estimation_prompt
 from app.main import app
-from app.streamlit_client import parse_sse
 from tests._fakes import (
     LONG_TRANSCRIPTION,
     anthropic_response,
@@ -21,6 +20,7 @@ from tests._fakes import (
     patch_openai,
     patch_settings,
 )
+from tests._sse import parse_sse
 
 SECRET = "sk-super-secret-key-123"
 PAYLOAD = {

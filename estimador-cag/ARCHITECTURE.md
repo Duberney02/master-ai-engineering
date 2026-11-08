@@ -32,7 +32,7 @@ app/
 │   ├── attachments/#   extracción de texto de PDF/DOCX
 │   └── persistence/#   engine SQLAlchemy, modelos, repositorios y migraciones de la ingesta
 ├── domain/         # contrato y conductor
-│   ├── schemas/    #   contratos Pydantic que consumen los clientes (web Go, React, Streamlit)
+│   ├── schemas/    #   contratos Pydantic que consume el backend Go (capa 2)
 │   ├── pipeline.py #   conductor de /estimate: guardrails → cag → prompt → llm → validación → cag
 │   ├── session_estimation.py · acb.py   # conductores conversacional y Actor–Crítico–Boss
 │   └── validation.py · audience.py · history.py · evaluation.py   # reglas de negocio y servicios de dominio
@@ -42,8 +42,7 @@ app/
 │   ├── agentic/    #   boss.py + critic.py
 │   └── conversation/ # sesiones en memoria, anclas, compresión y resumen
 ├── ingestion/      # pipeline batch offline (catálogo, loaders, parsers, limpieza, PII, orquestador)
-├── api/            # routers finos: transporte, sin lógica de negocio
-└── streamlit_client.py · streamlit_support.py   # cliente Streamlit: solo habla HTTP; fuera de las capas
+└── api/            # routers finos: transporte, sin lógica de negocio
 ```
 
 Fuera de `app/`: `evals/` (evaluación y stress test, hablan HTTP), `scripts/` (CLIs) y `tests/`.
@@ -119,8 +118,8 @@ Las sesiones (`/api/v1/sessions/*`) pasan por `domain/session_estimation.py` (me
 
 - **Rutas HTTP**: `/api/v1/estimate`, `/api/v1/transcription/*`, `/api/v1/sessions/*`, `/api/v1/estimations`,
   `/api/v1/prompts/*`, `/api/v1/ingestion/*`. (`/embeddings/ingest` cambió de contrato en la Sesión 8 —ahora persiste— tras
-  comprobar que ningún cliente lo usaba.) Los clientes web Go, React y Streamlit
-  dependen de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/search`, `/api/v1/config/models`),
+  comprobar que ningún cliente lo usaba.) El backend Go (`estimator-web-go`, único cliente del servicio)
+  depende de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/search`, `/api/v1/config/models`),
   nunca cambios de forma de las existentes.
 - **`EstimationResult`** (`domain/schemas/`): el orden de campos importa para la salida estructurada y sus
   validadores disparan el re-prompt.

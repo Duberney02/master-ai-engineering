@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"estimator-web/internal/config"
+	"estimator-web/internal/httpapi"
 	"estimator-web/internal/rag"
-	"estimator-web/internal/web"
 )
 
 func main() {
@@ -62,10 +62,7 @@ func run(cfg config.Config, logger *slog.Logger) error {
 	}
 
 	store := openStore(ctx, cfg, logger)
-	server, err := web.New(cfg, store, logger)
-	if err != nil {
-		return err
-	}
+	server := httpapi.New(cfg, store, logger)
 
 	httpServer := &http.Server{
 		Addr:              net.JoinHostPort("", cfg.Port),

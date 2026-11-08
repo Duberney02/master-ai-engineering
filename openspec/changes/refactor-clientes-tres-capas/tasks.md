@@ -1,11 +1,11 @@
 ## 1. Backend Go: API JSON (commit «feat(web-go): API JSON bajo /api»)
 
-- [ ] 1.1 Crear `internal/httpapi` (transporte JSON): router con `GET /up`, recuperación de pánicos, límite de cuerpo y registro; helper de errores `{"detail"}` con el mapeo de `ARCHITECTURE.md`.
-- [ ] 1.2 `POST /api/conversations` y `POST /api/conversations/{id}/estimations` (multipart, validación con `internal/estimation`, 404 por sesión caducada), con pruebas contra una API de IA simulada.
-- [ ] 1.3 `GET /api/estimations`, `GET /api/estimations/{id}` y `GET /api/prompt-preview`, con pruebas.
-- [ ] 1.4 Chunking Lab: `GET /api/chunking-comparisons/options`, `GET|POST /api/chunking-comparisons`, `GET /api/chunking-comparisons/{id}` (historial en PostgreSQL, `saved:false`, 503 sin BD), con pruebas unitarias y de integración.
-- [ ] 1.5 Ajustes: `GET|PUT /api/ai-settings` y `GET /api/primary-model` (caché 15 s, invalidación al guardar), con pruebas.
-- [ ] 1.6 `web-test` y `web-lint` en verde.
+- [x] 1.1 Crear `internal/httpapi` (transporte JSON): router con `GET /up`, recuperación de pánicos, límite de cuerpo y registro; helper de errores `{"detail"}` con el mapeo de `ARCHITECTURE.md`.
+- [x] 1.2 `POST /api/conversations` y `POST /api/conversations/{id}/estimations` (multipart, validación con `internal/estimation`, 404 por sesión caducada), con pruebas contra una API de IA simulada.
+- [x] 1.3 `GET /api/estimations`, `GET /api/estimations/{id}` y `GET /api/prompt-preview`, con pruebas.
+- [x] 1.4 Chunking Lab: `GET /api/chunking-comparisons/options`, `GET|POST /api/chunking-comparisons`, `GET /api/chunking-comparisons/{id}` (historial en PostgreSQL, `saved:false`, 503 sin BD), con pruebas unitarias y de integración.
+- [x] 1.5 Ajustes: `GET|PUT /api/ai-settings` y `GET /api/primary-model` (caché 15 s, invalidación al guardar), con pruebas.
+- [x] 1.6 `web-test` y `web-lint` en verde.
 
 ## 2. React: pantallas migradas y cliente HTTP (commit «feat(react): Chunking Lab, Ajustes y backend Go»)
 

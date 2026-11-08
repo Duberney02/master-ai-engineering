@@ -25,10 +25,10 @@
 
 ## 4. Streamlit independiente (commit «feat(streamlit): cliente independiente del backend Go»)
 
-- [ ] 4.1 Crear `estimator-streamlit/` con `Dockerfile`, `pyproject.toml`, `uv.lock`, `README.md`, `.dockerignore`.
-- [ ] 4.2 Mover y adaptar `streamlit_app.py`, el cliente y el soporte; `models.py` local; `ESTIMATOR_WEB_URL`; prompt vía `/api/prompt-preview`; sin imports de `estimador-cag`; sin código muerto.
-- [ ] 4.3 Mover y adaptar los tests (`test_streamlit_app.py`, `test_streamlit_support.py`) con el backend simulado; añadir prueba de «sin referencias a `estimador-cag`».
-- [ ] 4.4 Añadir `streamlit-test` y `streamlit-lint` a `docker-compose.verify.yml` y dejarlos en verde.
+- [x] 4.1 Crear `estimator-streamlit/` con `Dockerfile`, `pyproject.toml`, `uv.lock`, `README.md`, `.dockerignore`.
+- [x] 4.2 Mover y adaptar `streamlit_app.py`, el cliente y el soporte; `models.py` local; `ESTIMATOR_WEB_URL`; prompt vía `/api/prompt-preview`; sin imports de `estimador-cag`; sin código muerto.
+- [x] 4.3 Mover y adaptar los tests (`test_streamlit_app.py`, `test_streamlit_support.py`) con el backend simulado; añadir prueba de «sin referencias a `estimador-cag`».
+- [x] 4.4 Añadir `streamlit-test` y `streamlit-lint` a `docker-compose.verify.yml` y dejarlos en verde.
 
 ## 5. Limpieza de `estimador-cag` (commit «refactor(cag): retira Streamlit del servicio de IA»)
 

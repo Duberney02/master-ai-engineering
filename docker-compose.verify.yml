@@ -154,6 +154,45 @@ services:
     working_dir: /app
     entrypoint: ["sh", "-c", "npm ci --no-audit --no-fund --loglevel=error && exec npx tsc --noEmit"]
 
+  # Chat Streamlit: pruebas y lint con su propia imagen (etapa `test`); el código se monta, sin reconstruir.
+  #   docker compose -f docker-compose.verify.yml run --rm streamlit-test           # pytest -q
+  #   docker compose -f docker-compose.verify.yml run --rm streamlit-lint           # ruff check
+  #   docker compose -f docker-compose.verify.yml run --rm streamlit-uv lock        # regenerar uv.lock
+  # (la primera vez, sin uv.lock, la imagen no se puede construir: genera el lock con una imagen de uv suelta.)
+  streamlit-test:
+    build:
+      context: ./estimator-streamlit
+      target: test
+    image: estimator-streamlit:test
+    volumes:
+      - ./estimator-streamlit:/app
+    working_dir: /app
+    entrypoint: ["pytest"]
+    command: ["-q"]
+
+  streamlit-lint:
+    build:
+      context: ./estimator-streamlit
+      target: test
+    image: estimator-streamlit:test
+    volumes:
+      - ./estimator-streamlit:/app
+    working_dir: /app
+    entrypoint: ["ruff"]
+    command: ["check", "."]
+
+  streamlit-uv:
+    build:
+      context: ./estimator-streamlit
+      target: test
+    image: estimator-streamlit:test
+    volumes:
+      - ./estimator-streamlit:/app
+    working_dir: /app
+    environment:
+      UV_PROJECT_ENVIRONMENT: /opt/venv
+    entrypoint: ["uv"]
+
   openspec:
     build:
       context: ./openspec
@@ -165,4 +204,3 @@ services:
 volumes:
   web_go_cache:
   web_react_node_modules:
-  streamlit_venv:

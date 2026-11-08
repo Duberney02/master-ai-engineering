@@ -41,15 +41,18 @@ services:
       retries: 3
 
   estimador-cag-chat:
-    # Cliente Streamlit: misma imagen que la API, pero solo habla HTTP con ella (sin claves de proveedores).
-    image: estimador-cag:latest
+    # Chat Streamlit (capa 1): proyecto propio (estimator-streamlit/) que solo habla HTTP con el backend Go.
+    # No recibe claves de proveedores ni conoce el servicio de IA.
+    build:
+      context: ./estimator-streamlit
+      target: runtime
+    image: estimator-streamlit:latest
     ports:
       - "8501:8501"
     environment:
-      ESTIMATOR_API_BASE_URL: http://estimador-cag:8000
-    command: ["streamlit", "run", "streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
+      ESTIMATOR_WEB_URL: http://estimator-web:3000
     depends_on:
-      estimador-cag:
+      estimator-web:
         condition: service_healthy
     networks: [estimator-net]
     init: true

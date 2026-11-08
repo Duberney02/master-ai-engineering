@@ -1,8 +1,9 @@
-// Cliente HTTP de la API del estimador (equivalente de EstimatorApi en Rails).
+// Cliente HTTP del backend del estimador (`estimator-web`, API JSON bajo `/api/`).
 //
 // Es el único módulo que usa `fetch`. Traduce cualquier fallo a EstimatorApiError con un mensaje en
 // español apto para el usuario: nunca expone cuerpos de respuesta crudos, trazas ni URLs.
-// Solo usa rutas relativas: en producción las atiende el proxy nginx y en desarrollo el de Vite.
+// Solo usa rutas relativas: en producción las atiende el proxy nginx y en desarrollo el de Vite, que
+// las reenvían al backend. Esta aplicación no conoce el servicio de IA.
 
 import { EMPTY_METADATA } from "./types";
 import type {
@@ -18,10 +19,13 @@ export const NOT_FOUND_MESSAGE = "No se encontró la estimación solicitada.";
 export const HISTORY_UNAVAILABLE_MESSAGE = "El historial no está disponible en este momento.";
 export const REJECTED_MESSAGE = "La API rechazó la solicitud.";
 export const SESSION_EXPIRED_MESSAGE = "La conversación anterior expiró en el servidor; se inició una nueva. Vuelve a enviar tu mensaje.";
-export const GUARDRAIL_MESSAGE_LIMIT = 300;
+/** Los `detail` del backend se acotan a este número de caracteres. */
+export const DETAIL_MESSAGE_LIMIT = 300;
 
 /** La estimación puede tardar un par de minutos con transcripciones largas. */
 export const ESTIMATE_TIMEOUT_MS = 300_000;
+/** Una comparación del Chunking Lab con estrategias de pago puede tardar varios minutos. */
+export const LAB_TIMEOUT_MS = 600_000;
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
 export class EstimatorApiError extends Error {
@@ -42,48 +46,39 @@ export class SessionExpiredError extends EstimatorApiError {
   }
 }
 
-interface RequestOptions {
-  method?: "GET" | "POST";
+export interface RequestOptions {
+  method?: "GET" | "POST" | "PUT";
   params?: Record<string, string | number | undefined>;
   /** JSON, o `FormData` para multipart (el navegador fija el `Content-Type` con su frontera). */
   body?: unknown;
   history?: boolean;
   /** Llamada de sesión: 404 es sesión caducada y los 413/415/422 traen un `detail` de texto apto para el usuario. */
   session?: boolean;
+  /** Muestra el `detail` saneado que redacta el backend en cualquier fallo (Chunking Lab y Ajustes). */
+  detail?: boolean;
   expectedStatus?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
+export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function guardrailMessage(body: string): string {
-  try {
-    const message = (JSON.parse(body) as { message?: unknown } | null)?.message;
-    return typeof message === "string" && message.trim() !== ""
-      ? Array.from(message).slice(0, GUARDRAIL_MESSAGE_LIMIT).join("")
-      : REJECTED_MESSAGE;
-  } catch {
-    return REJECTED_MESSAGE;
-  }
 }
 
 function detailMessage(body: string): string | null {
   try {
     const detail = (JSON.parse(body) as { detail?: unknown } | null)?.detail;
     return typeof detail === "string" && detail.trim() !== ""
-      ? Array.from(detail).slice(0, GUARDRAIL_MESSAGE_LIMIT).join("")
+      ? Array.from(detail).slice(0, DETAIL_MESSAGE_LIMIT).join("")
       : null;
   } catch {
     return null;
   }
 }
 
-function messageFor(status: number, body: string, history: boolean, session = false): string {
+function messageFor(status: number, body: string, history: boolean, session = false, detail = false): string {
+  if (detail) return detailMessage(body) ?? (status >= 500 ? SERVER_MESSAGE : REJECTED_MESSAGE);
   if (session && [413, 415, 422].includes(status)) return detailMessage(body) ?? (status === 422 ? VALIDATION_MESSAGE : REJECTED_MESSAGE);
-  if (status === 400) return guardrailMessage(body);
   if (status === 404) return NOT_FOUND_MESSAGE;
   if (status === 422) return VALIDATION_MESSAGE;
   if (status === 503) return history ? HISTORY_UNAVAILABLE_MESSAGE : SERVER_MESSAGE;
@@ -100,9 +95,9 @@ function buildUrl(path: string, params?: RequestOptions["params"]): string {
   return text ? `${path}?${text}` : path;
 }
 
-async function request(path: string, options: RequestOptions = {}): Promise<unknown> {
+export async function request(path: string, options: RequestOptions = {}): Promise<unknown> {
   const {
-    method = "GET", params, body, history = false, session = false, expectedStatus = 200,
+    method = "GET", params, body, history = false, session = false, detail = false, expectedStatus = 200,
     timeoutMs = DEFAULT_TIMEOUT_MS, signal,
   } = options;
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
@@ -121,7 +116,7 @@ async function request(path: string, options: RequestOptions = {}): Promise<unkn
     const text = await response.text();
     if (response.status !== expectedStatus) {
       if (session && response.status === 404) throw new SessionExpiredError();
-      throw new EstimatorApiError(messageFor(response.status, text, history, session), response.status);
+      throw new EstimatorApiError(messageFor(response.status, text, history, session, detail), response.status);
     }
     try {
       return JSON.parse(text);
@@ -144,25 +139,11 @@ function expectResult(body: unknown): EstimationResponse {
   return body as unknown as EstimationResponse;
 }
 
-/** Solicita una estimación. Devuelve el cuerpo de la API (con `result`, `estimation_id`...). */
-export async function createEstimation(
-  attributes: Record<string, unknown>,
-  promptVersion?: string,
-): Promise<EstimationResponse> {
-  const body = await request("/api/v1/estimate", {
-    method: "POST",
-    params: { prompt_version: promptVersion },
-    body: attributes,
-    timeoutMs: ESTIMATE_TIMEOUT_MS,
-  });
-  return expectResult(body);
-}
-
-/** Crea una conversación vacía y devuelve su `session_id` (vive en memoria del servicio). */
+/** Abre una conversación vacía y devuelve su `conversation_id` (la sesión vive en memoria del servicio de IA). */
 export async function createSession(): Promise<string> {
-  const body = await request("/api/v1/sessions", { method: "POST", expectedStatus: 201 });
-  if (!isObject(body) || typeof body.session_id !== "string") throw new EstimatorApiError(INVALID_RESPONSE_MESSAGE);
-  return body.session_id;
+  const body = await request("/api/conversations", { method: "POST", expectedStatus: 201 });
+  if (!isObject(body) || typeof body.conversation_id !== "string") throw new EstimatorApiError(INVALID_RESPONSE_MESSAGE);
+  return body.conversation_id;
 }
 
 function expectMetadata(value: unknown): ProjectMetadata {
@@ -174,9 +155,9 @@ function expectMetadata(value: unknown): ProjectMetadata {
   return { ...EMPTY_METADATA, ...(value as Partial<ProjectMetadata>), mentioned_technologies: technologies };
 }
 
-/** Una estimación dentro de la conversación (multipart: `transcript`, opciones y `attachments`). */
+/** Una estimación dentro de la conversación (multipart: `description`, opciones y `attachments`). */
 export async function createSessionEstimation(sessionId: string, form: FormData): Promise<SessionEstimationResponse> {
-  const body = await request(`/api/v1/sessions/${encodeURIComponent(sessionId)}/estimate`, {
+  const body = await request(`/api/conversations/${encodeURIComponent(sessionId)}/estimations`, {
     method: "POST",
     body: form,
     session: true,
@@ -188,14 +169,14 @@ export async function createSessionEstimation(sessionId: string, form: FormData)
 
 /** Últimas estimaciones del historial. */
 export async function listEstimations(limit = 10): Promise<EstimationSummary[]> {
-  const body = await request("/api/v1/estimations", { params: { limit }, history: true });
+  const body = await request("/api/estimations", { params: { limit }, history: true });
   if (!Array.isArray(body) || !body.every(isObject)) throw new EstimatorApiError(INVALID_RESPONSE_MESSAGE);
   return body as unknown as EstimationSummary[];
 }
 
 /** Prompt de sistema renderizado y ejemplos few-shot para unas opciones (barra lateral). */
 export async function promptPreview(params: PromptPreviewParams, signal?: AbortSignal): Promise<PromptPreview> {
-  const body = await request("/api/v1/prompts/estimation", {
+  const body = await request("/api/prompt-preview", {
     params: { ...params },
     signal,
   });
@@ -204,8 +185,8 @@ export async function promptPreview(params: PromptPreviewParams, signal?: AbortS
 }
 
 export async function findEstimation(id: string | number): Promise<EstimationResponse> {
-  // Como `Integer(id)` en Rails: un identificador no numérico es «no encontrada» sin llamar a la API.
+  // Un identificador no numérico es «no encontrada» sin llamar al backend.
   if (!/^\d+$/.test(String(id))) throw new EstimatorApiError(NOT_FOUND_MESSAGE, 404);
-  const body = await request(`/api/v1/estimations/${Number(id)}`, { history: true });
+  const body = await request(`/api/estimations/${Number(id)}`, { history: true });
   return expectResult(body);
 }

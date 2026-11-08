@@ -9,12 +9,12 @@
 
 ## 2. React: pantallas migradas y cliente HTTP (commit «feat(react): Chunking Lab, Ajustes y backend Go»)
 
-- [ ] 2.1 Repuntar `src/api/estimatorApi.ts` (y tipos) a `/api/conversations`, `/api/estimations`, `/api/prompt-preview`; ajustar mocks y pruebas existentes.
-- [ ] 2.2 `chunkingApi.ts`, `settingsApi.ts` y `primaryModel` con sus pruebas.
-- [ ] 2.3 Páginas `ChunkingLabPage`, `ChunkingHistoryPage`, `ChunkingResultPage` con pruebas (formulario, avisos de coste, errores, resultado, historial vacío/503).
-- [ ] 2.4 `SettingsPage` y `PrimaryModelBadge` en `Layout` con pruebas; enlaces «Chunking Lab» y «Ajustes» y rutas en `App.tsx`.
-- [ ] 2.5 nginx: `API_UPSTREAM` hacia `estimator-web`, timeout 600 s para el Lab, eliminar `location = /health`; actualizar `README.md` de React.
-- [ ] 2.6 Añadir `web-react-test` y `web-react-lint` a `docker-compose.verify.yml` y dejarlos en verde.
+- [x] 2.1 Repuntar `src/api/estimatorApi.ts` (y tipos) a `/api/conversations`, `/api/estimations`, `/api/prompt-preview`; ajustar mocks y pruebas existentes.
+- [x] 2.2 `chunkingApi.ts`, `settingsApi.ts` y `primaryModel` con sus pruebas.
+- [x] 2.3 Páginas `ChunkingLabPage`, `ChunkingHistoryPage`, `ChunkingResultPage` con pruebas (formulario, avisos de coste, errores, resultado, historial vacío/503).
+- [x] 2.4 `SettingsPage` y `PrimaryModelBadge` en `Layout` con pruebas; enlaces «Chunking Lab» y «Ajustes» y rutas en `App.tsx`.
+- [x] 2.5 nginx: `API_UPSTREAM` hacia `estimator-web`, timeout 600 s para el Lab, eliminar `location = /health`; actualizar `README.md` de React.
+- [x] 2.6 Añadir `web-react-test` y `web-react-lint` a `docker-compose.verify.yml` y dejarlos en verde.
 
 ## 3. Backend Go: eliminar la parte web (commit «refactor(web-go): elimina HTML, sesión y CSRF»)
 

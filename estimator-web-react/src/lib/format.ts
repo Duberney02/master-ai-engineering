@@ -95,3 +95,8 @@ export function truncate(text: string, limit: number): string {
   const chars = Array.from(text);
   return chars.length <= limit ? text : `${chars.slice(0, limit - 3).join("")}...`;
 }
+
+/** Número con `precision` decimales y coma decimal (estadísticas del Chunking Lab: `79,0`, `0,012`). */
+export function formatFixed(value: number, precision: number): string {
+  return formatNumber(Number(value), precision);
+}

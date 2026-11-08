@@ -58,7 +58,7 @@ export function apiAttributes(form: FormValues) {
 /** Cuerpo `multipart/form-data` de `POST /sessions/{id}/estimate`: transcripción, opciones y adjuntos. */
 export function sessionFormData(form: FormValues): FormData {
   const data = new FormData();
-  data.set("transcript", form.description.trim());
+  data.set("description", form.description.trim());
   data.set("project_type", form.project_type);
   data.set("detail_level", form.detail_level);
   data.set("output_format", form.output_format);

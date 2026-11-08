@@ -32,7 +32,7 @@ describe("adjuntos y envío de sesión", () => {
     const data = sessionFormData({ ...valid, description: `  ${valid.description}  `, project_type: "web_saas", attachments: [pdf, docx] });
 
     expect(Object.fromEntries([...data.entries()].filter(([key]) => key !== "attachments"))).toEqual({
-      transcript: valid.description, project_type: "web_saas", detail_level: "medium", output_format: "phases_table", prompt_version: "v3",
+      description: valid.description, project_type: "web_saas", detail_level: "medium", output_format: "phases_table", prompt_version: "v3",
     });
     expect(data.getAll("attachments").map((file) => (file as File).name)).toEqual(["requisitos.pdf", "ALCANCE.DOCX"]);
   });

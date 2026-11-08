@@ -1,7 +1,7 @@
 import {
   CONNECTION_MESSAGE, EstimatorApiError, HISTORY_UNAVAILABLE_MESSAGE, INVALID_RESPONSE_MESSAGE,
   NOT_FOUND_MESSAGE, REJECTED_MESSAGE, SERVER_MESSAGE, VALIDATION_MESSAGE,
-  createEstimation, findEstimation, listEstimations, promptPreview,
+  findEstimation, listEstimations, promptPreview,
 } from "./estimatorApi";
 
 const RESULT = { summary: "Resumen", confidence_pct: 80, total_duration_weeks: 8, total_cost_eur: 20000, phases: [] };
@@ -33,34 +33,7 @@ async function messageOf(promise: Promise<unknown>): Promise<{ message: string; 
   throw new Error("Debía fallar");
 }
 
-describe("createEstimation", () => {
-  test("envía POST con JSON y la versión del prompt en la consulta", async () => {
-    fetchMock.mockResolvedValue(reply({ result: RESULT, estimation_id: 7 }));
-
-    const response = await createEstimation({ description: "x", project_type: "web_saas" }, "v3");
-
-    expect(response.estimation_id).toBe(7);
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("/api/v1/estimate?prompt_version=v3");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body)).toEqual({ description: "x", project_type: "web_saas" });
-    expect(init.headers["Content-Type"]).toBe("application/json");
-  });
-
-  test("400 muestra el message del guardrail acotado a 300 caracteres", async () => {
-    fetchMock.mockResolvedValue(reply({ reason: "r", message: "m".repeat(500) }, 400));
-    const { message, status } = await messageOf(createEstimation({}));
-    expect(message).toBe("m".repeat(300));
-    expect(status).toBe(400);
-  });
-
-  test("400 sin message o con cuerpo no JSON usa el mensaje genérico", async () => {
-    fetchMock.mockResolvedValueOnce(reply({ reason: "r" }, 400));
-    expect((await messageOf(createEstimation({}))).message).toBe(REJECTED_MESSAGE);
-    fetchMock.mockResolvedValueOnce(reply("<html>boom</html>", 400));
-    expect((await messageOf(createEstimation({}))).message).toBe(REJECTED_MESSAGE);
-  });
-
+describe("errores del cliente HTTP", () => {
   test.each([
     [422, VALIDATION_MESSAGE],
     [404, NOT_FOUND_MESSAGE],
@@ -70,23 +43,23 @@ describe("createEstimation", () => {
     [418, REJECTED_MESSAGE],
   ])("estado %i se traduce a un mensaje saneado", async (status, expected) => {
     fetchMock.mockResolvedValue(reply({ detail: "Traceback http://estimador-cag:8000 secreto" }, status));
-    const { message } = await messageOf(createEstimation({}));
+    const { message } = await messageOf(promptPreview({ prompt_version: "v3" }));
     expect(message).toBe(expected);
     expect(message).not.toMatch(/Traceback|estimador-cag|secreto|http/);
   });
 
   test("cuerpo no JSON o sin result es una respuesta inválida", async () => {
     fetchMock.mockResolvedValueOnce(reply("no es json"));
-    expect((await messageOf(createEstimation({}))).message).toBe(INVALID_RESPONSE_MESSAGE);
+    expect((await messageOf(promptPreview({ prompt_version: "v3" }))).message).toBe(INVALID_RESPONSE_MESSAGE);
     fetchMock.mockResolvedValueOnce(reply({ sin: "result" }));
-    expect((await messageOf(createEstimation({}))).message).toBe(INVALID_RESPONSE_MESSAGE);
+    expect((await messageOf(promptPreview({ prompt_version: "v3" }))).message).toBe(INVALID_RESPONSE_MESSAGE);
     fetchMock.mockResolvedValueOnce(reply({ result: "texto" }));
-    expect((await messageOf(createEstimation({}))).message).toBe(INVALID_RESPONSE_MESSAGE);
+    expect((await messageOf(promptPreview({ prompt_version: "v3" }))).message).toBe(INVALID_RESPONSE_MESSAGE);
   });
 
   test("fallo de red se traduce al mensaje de conexión", async () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch http://interna:8000"));
-    const { message, status } = await messageOf(createEstimation({}));
+    const { message, status } = await messageOf(promptPreview({ prompt_version: "v3" }));
     expect(message).toBe(CONNECTION_MESSAGE);
     expect(status).toBeNull();
   });
@@ -99,8 +72,8 @@ describe("createEstimation", () => {
           init.signal?.addEventListener("abort", () => reject(new DOMException("abort", "AbortError")));
         }),
     );
-    const pending = messageOf(createEstimation({}));
-    await vi.advanceTimersByTimeAsync(300_001);
+    const pending = messageOf(promptPreview({ prompt_version: "v3" }));
+    await vi.advanceTimersByTimeAsync(30_001);
     expect((await pending).message).toBe(CONNECTION_MESSAGE);
   });
 });
@@ -109,7 +82,7 @@ describe("listEstimations", () => {
   test("pide el límite y devuelve la lista", async () => {
     fetchMock.mockResolvedValue(reply([{ id: 1 }, { id: 2 }]));
     expect(await listEstimations(10)).toEqual([{ id: 1 }, { id: 2 }]);
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/estimations?limit=10");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/estimations?limit=10");
   });
 
   test("503 indica que el historial no está disponible", async () => {
@@ -129,7 +102,7 @@ describe("findEstimation", () => {
   test("carga el detalle por identificador", async () => {
     fetchMock.mockResolvedValue(reply({ result: RESULT, id: 7 }));
     await findEstimation("7");
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/estimations/7");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/estimations/7");
   });
 
   test("un identificador no numérico es «no encontrada» sin llamar a la API", async () => {
@@ -155,7 +128,7 @@ describe("promptPreview", () => {
     });
     expect(preview.system_prompt).toBe("Eres un estimador");
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "/api/v1/prompts/estimation?prompt_version=v3&project_type=web_saas&detail_level=medium&output_format=phases_table",
+      "/api/prompt-preview?prompt_version=v3&project_type=web_saas&detail_level=medium&output_format=phases_table",
     );
   });
 

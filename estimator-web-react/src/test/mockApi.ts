@@ -41,7 +41,7 @@ export function sessionBody(overrides: Partial<SessionEstimationResponse> = {}):
 }
 
 export const isSessionEstimate = (url: URL, init: RequestInit) =>
-  init.method === "POST" && /^\/api\/v1\/sessions\/[^/]+\/estimate$/.test(url.pathname);
+  init.method === "POST" && /^\/api\/conversations\/[^/]+\/estimations$/.test(url.pathname);
 
 export type Handler = (url: URL, init: RequestInit) => Response | Promise<Response> | undefined;
 
@@ -59,12 +59,12 @@ export function mockApi(...handlers: Handler[]) {
       const response = handler(url, init);
       if (response) return response;
     }
-    if (url.pathname === "/api/v1/sessions" && init.method === "POST") {
+    if (url.pathname === "/api/conversations" && init.method === "POST") {
       const sessionId = sessions.length === 0 ? SESSION_ID : `${SESSION_ID.slice(0, -2)}${String(sessions.length + 1).padStart(2, "0")}`;
       sessions.push(sessionId);
-      return json({ session_id: sessionId }, 201);
+      return json({ conversation_id: sessionId }, 201);
     }
-    if (url.pathname === "/api/v1/prompts/estimation") {
+    if (url.pathname === "/api/prompt-preview") {
       return json({
         system_prompt: `Prompt ${url.searchParams.get("detail_level")}`,
         prompt_version: url.searchParams.get("prompt_version"),

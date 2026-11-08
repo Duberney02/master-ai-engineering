@@ -52,7 +52,7 @@ describe("Conversación con memoria", () => {
 
     expect(api.sessions).toHaveLength(1);
     expect(api.estimateCalls().map((call) => call.url.pathname)).toEqual(
-      Array(2).fill(`/api/v1/sessions/${api.sessions[0]}/estimate`),
+      Array(2).fill(`/api/conversations/${api.sessions[0]}/estimations`),
     );
   });
 
@@ -75,7 +75,7 @@ describe("Conversación con memoria", () => {
   test("los metadatos se conservan al navegar a otra pantalla y volver", async () => {
     mockApi(
       inlineAnswer({ project_metadata: metadata }),
-      (url) => (url.pathname === "/api/v1/estimations" ? json([]) : undefined),
+      (url) => (url.pathname === "/api/estimations" ? json([]) : undefined),
     );
     renderApp();
     describe_(DESCRIPTION);
@@ -106,7 +106,7 @@ describe("Conversación con memoria", () => {
     describe_(DESCRIPTION);
     await submit();
     await waitFor(() => expect(api.estimateCalls()).toHaveLength(2));
-    expect(api.estimateCalls()[1].url.pathname).toBe(`/api/v1/sessions/${api.sessions[1]}/estimate`);
+    expect(api.estimateCalls()[1].url.pathname).toBe(`/api/conversations/${api.sessions[1]}/estimations`);
   });
 
   test("permite seleccionar varios adjuntos y los envía como attachments, con un mensaje corto", async () => {
@@ -125,7 +125,7 @@ describe("Conversación con memoria", () => {
     await screen.findByRole("heading", { name: "Estimación" });
     const body = api.estimateCalls()[0].init.body as FormData;
     expect(body.getAll("attachments").map((file) => (file as File).name)).toEqual(["requisitos.pdf", "alcance.docx"]);
-    expect(body.get("transcript")).toBe("Revisa los adjuntos");
+    expect(body.get("description")).toBe("Revisa los adjuntos");
   });
 
   test.each([
@@ -168,7 +168,7 @@ describe("Conversación con memoria", () => {
     await submit();
 
     await screen.findByRole("heading", { name: "Estimación" });
-    expect(api.estimateCalls()[1].url.pathname).toBe(`/api/v1/sessions/${api.sessions[1]}/estimate`);
+    expect(api.estimateCalls()[1].url.pathname).toBe(`/api/conversations/${api.sessions[1]}/estimations`);
     expect(screen.queryByText(/La conversación anterior expiró/)).not.toBeInTheDocument();
   });
 
@@ -176,7 +176,7 @@ describe("Conversación con memoria", () => {
     let attempts = 0;
     const api = mockApi(
       (url, init) => {
-        if (url.pathname === "/api/v1/sessions" && init.method === "POST" && ++attempts === 1) return json({}, 500);
+        if (url.pathname === "/api/conversations" && init.method === "POST" && ++attempts === 1) return json({}, 500);
         return undefined;
       },
       inlineAnswer(),

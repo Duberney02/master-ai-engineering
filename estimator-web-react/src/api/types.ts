@@ -96,3 +96,96 @@ export interface PromptPreviewParams {
   detail_level?: string;
   output_format?: string;
 }
+
+// --- Chunking Lab (`/api/chunking-comparisons`) ---
+
+export interface LabStrategy {
+  name: string;
+  label: string;
+  description: string;
+  cost_tier: "free" | "cheap" | "expensive";
+  cost_label: string;
+  paid: boolean;
+  /** Variable de entorno de la clave del proveedor que necesita en el servicio de IA (vacío si ninguna). */
+  key_name: string;
+  default_checked: boolean;
+}
+
+export interface LabOptions {
+  strategies: LabStrategy[];
+  default_strategies: string[];
+  sample_queries: string[];
+  default_top_k: number;
+  compare_timeout_seconds: number;
+}
+
+export interface ChunkingStats {
+  strategy: string;
+  n_chunks: number;
+  token_distribution: { min: number; p50: number; p95: number; max: number };
+  n_orphan_chunks: number;
+  n_obese_chunks: number;
+  ingestion_cost_usd: number;
+  extra_api_calls: number;
+  ingestion_seconds: number;
+}
+
+export interface TopChunk {
+  chunk_id: string;
+  cosine: number;
+  text_preview: string;
+  level?: string | null;
+  parent_chunk_id?: string | null;
+}
+
+export interface QueryResult {
+  strategy: string;
+  query: string;
+  top_k: TopChunk[];
+}
+
+export interface ChunkingResponse {
+  stats_per_strategy: Record<string, ChunkingStats>;
+  queries_per_strategy: Record<string, QueryResult[]>;
+}
+
+/** Una ejecución del Chunking Lab. El listado no incluye `response`. */
+export interface Comparison {
+  id: number;
+  strategies: string[];
+  strategy_labels: string[];
+  queries: string[];
+  top_k: number;
+  corpus_label: string;
+  corpus_count: number;
+  duration_ms: number | null;
+  created_at: string | null;
+  /** `false` si el historial no pudo guardarla: se muestra igualmente, con `notice`. */
+  saved: boolean;
+  total_ingestion_cost_usd: number;
+  notice?: string;
+  response?: ChunkingResponse;
+}
+
+// --- Ajustes de IA (`/api/ai-settings`) ---
+
+export interface ModelSetting {
+  key: string;
+  label: string;
+  description: string;
+  provider: string;
+  effective: string;
+  default: string;
+  overridden: boolean;
+  /** Modelo preseleccionado: el vigente solo si hay override. */
+  selected: string;
+  options: string[];
+}
+
+export interface AiSettings {
+  models: ModelSetting[];
+  available_models: string[];
+  embedding_model: string;
+  embedding_model_note: string;
+  any_overridden: boolean;
+}

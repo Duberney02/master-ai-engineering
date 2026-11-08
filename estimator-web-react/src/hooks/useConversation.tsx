@@ -1,4 +1,4 @@
-// Conversación con memoria: guarda el `session_id` y los metadatos del proyecto a nivel de aplicación.
+// Conversación con memoria: guarda el `conversation_id` (el `session_id` de la API de IA) y los metadatos del proyecto a nivel de aplicación.
 //
 // La sesión se crea al cargar la página y se conserva mientras siga abierta (sobrevive a la navegación
 // entre pantallas, no a una recarga: el servicio guarda las sesiones solo en memoria). «Nueva

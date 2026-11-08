@@ -42,7 +42,7 @@ describe("NewEstimationPage", () => {
   test("una descripción válida llama a la API y navega al detalle", async () => {
     const api = mockApi((url, init) =>
       isSessionEstimate(url, init) ? json(sessionBody()) : undefined,
-      (url) => (url.pathname === "/api/v1/estimations/7" ? json({ ...estimateBody(), id: 7, description: DESCRIPTION, options: { project_type: "web_saas", detail_level: "medium", output_format: "phases_table" } }) : undefined),
+      (url) => (url.pathname === "/api/estimations/7" ? json({ ...estimateBody(), id: 7, description: DESCRIPTION, options: { project_type: "web_saas", detail_level: "medium", output_format: "phases_table" } }) : undefined),
     );
     renderApp();
 
@@ -52,10 +52,10 @@ describe("NewEstimationPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Estimación #7" })).toBeInTheDocument();
     const post = api.estimateCalls()[0];
-    expect(post.url.pathname).toBe(`/api/v1/sessions/${SESSION_ID}/estimate`);
+    expect(post.url.pathname).toBe(`/api/conversations/${SESSION_ID}/estimations`);
     expect(post.init.body).toBeInstanceOf(FormData);
     expect(Object.fromEntries((post.init.body as FormData).entries())).toEqual({
-      transcript: DESCRIPTION, project_type: "web_saas", detail_level: "medium", output_format: "phases_table", prompt_version: "v3",
+      description: DESCRIPTION, project_type: "web_saas", detail_level: "medium", output_format: "phases_table", prompt_version: "v3",
     });
     // El navegador fija el Content-Type multipart con su frontera: no debe fijarse a mano.
     expect(post.init.headers).not.toHaveProperty("Content-Type");
@@ -128,7 +128,7 @@ describe("NewEstimationPage", () => {
   test("tras un error de la API conserva los datos y muestra el mensaje saneado", async () => {
     mockApi((url, init) =>
       isSessionEstimate(url, init)
-        ? json({ reason: "r", message: "El contenido no parece un proyecto de software." }, 400)
+        ? json({ detail: "El contenido no parece un proyecto de software." }, 422)
         : undefined,
     );
     renderApp();
@@ -166,11 +166,11 @@ describe("NewEstimationPage", () => {
     await user().selectOptions(screen.getByLabelText("Nivel de detalle"), "detailed");
 
     await waitFor(() => expect(screen.getByLabelText("System prompt")).toHaveValue("Prompt detailed"));
-    expect(api.callsTo("/api/v1/prompts/estimation").at(-1)!.url.searchParams.get("detail_level")).toBe("detailed");
+    expect(api.callsTo("/api/prompt-preview").at(-1)!.url.searchParams.get("detail_level")).toBe("detailed");
   });
 
   test("si el prompt no se puede renderizar avisa en la barra y el formulario sigue funcionando", async () => {
-    mockApi((url) => (url.pathname === "/api/v1/prompts/estimation" ? json({}, 500) : undefined));
+    mockApi((url) => (url.pathname === "/api/prompt-preview" ? json({}, 500) : undefined));
     renderApp();
 
     expect(await screen.findByText("El contexto del prompt no está disponible en este momento.")).toBeInTheDocument();
@@ -216,19 +216,19 @@ describe("EstimationPage", () => {
   };
 
   test("carga la estimación, sus métricas y el prompt de sus opciones", async () => {
-    const api = mockApi((url) => (url.pathname === "/api/v1/estimations/7" ? json(detail) : undefined));
+    const api = mockApi((url) => (url.pathname === "/api/estimations/7" ? json(detail) : undefined));
     renderApp("/estimations/7");
 
     expect(await screen.findByRole("heading", { name: "Estimación #7" })).toBeInTheDocument();
     expect(document.getElementById("estimation-meta")).toHaveTextContent("SaaS web · detalle detallado · narrativa · prompt v3 · Caché exacta · 20/05/2026 10:05 UTC");
     expect(document.getElementById("metric-model")).toHaveTextContent("claude-test");
     expect(await screen.findByLabelText("System prompt")).toHaveValue("Prompt detailed");
-    expect(api.callsTo("/api/v1/prompts/estimation").at(-1)!.url.searchParams.get("output_format")).toBe("narrative");
+    expect(api.callsTo("/api/prompt-preview").at(-1)!.url.searchParams.get("output_format")).toBe("narrative");
   });
 
   test("un resultado out_of_scope muestra «No estimable» sin cifras", async () => {
     mockApi((url) =>
-      url.pathname === "/api/v1/estimations/7"
+      url.pathname === "/api/estimations/7"
         ? json({ ...detail, result: { ...detail.result, out_of_scope: true, confidence_pct: 10, summary: "Out of scope: faltan datos" } })
         : undefined,
     );
@@ -239,7 +239,7 @@ describe("EstimationPage", () => {
   });
 
   test("una estimación inexistente muestra la pantalla de error sin barra lateral", async () => {
-    mockApi((url) => (url.pathname === "/api/v1/estimations/99" ? json({}, 404) : undefined));
+    mockApi((url) => (url.pathname === "/api/estimations/99" ? json({}, 404) : undefined));
     renderApp("/estimations/99");
 
     expect(await screen.findByRole("heading", { name: "No se pudo completar la operación" })).toBeInTheDocument();
@@ -252,8 +252,8 @@ describe("EstimationPage", () => {
     renderApp("/estimations/abc");
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No se encontró la estimación solicitada.");
-    expect(api.callsTo("/api/v1/estimations/abc")).toHaveLength(0);
-    expect(api.calls.filter((call) => call.url.pathname.startsWith("/api/v1/estimations"))).toHaveLength(0);
+    expect(api.callsTo("/api/estimations/abc")).toHaveLength(0);
+    expect(api.calls.filter((call) => call.url.pathname.startsWith("/api/estimations"))).toHaveLength(0);
   });
 });
 
@@ -264,7 +264,7 @@ describe("HistoryPage", () => {
   ];
 
   test("lista las estimaciones en el orden recibido con enlace al detalle", async () => {
-    const api = mockApi((url) => (url.pathname === "/api/v1/estimations" ? json(items) : undefined));
+    const api = mockApi((url) => (url.pathname === "/api/estimations" ? json(items) : undefined));
     renderApp("/estimations");
 
     const table = await screen.findByRole("table");
@@ -278,11 +278,11 @@ describe("HistoryPage", () => {
     expect(within(rows[0]).getByRole("link")).toHaveAttribute("href", "/estimations/2");
     expect(rows[1]).toHaveTextContent("No estimable");
     expect(rows[1]).not.toHaveTextContent("EUR");
-    expect(api.callsTo("/api/v1/estimations")[0].url.searchParams.get("limit")).toBe("10");
+    expect(api.callsTo("/api/estimations")[0].url.searchParams.get("limit")).toBe("10");
   });
 
   test("trunca el extracto a 90 caracteres", async () => {
-    mockApi((url) => (url.pathname === "/api/v1/estimations" ? json(items) : undefined));
+    mockApi((url) => (url.pathname === "/api/estimations" ? json(items) : undefined));
     renderApp("/estimations");
 
     const row = (await screen.findAllByRole("row"))[1];
@@ -292,7 +292,7 @@ describe("HistoryPage", () => {
   });
 
   test("con la lista vacía invita a crear la primera estimación", async () => {
-    mockApi((url) => (url.pathname === "/api/v1/estimations" ? json([]) : undefined));
+    mockApi((url) => (url.pathname === "/api/estimations" ? json([]) : undefined));
     renderApp("/estimations");
 
     const empty = await screen.findByText(/Todavía no hay estimaciones\./);
@@ -300,7 +300,7 @@ describe("HistoryPage", () => {
   });
 
   test("con 503 muestra un aviso explicativo y no un error técnico", async () => {
-    mockApi((url) => (url.pathname === "/api/v1/estimations" ? json({ detail: "db down" }, 503) : undefined));
+    mockApi((url) => (url.pathname === "/api/estimations" ? json({ detail: "db down" }, 503) : undefined));
     renderApp("/estimations");
 
     expect(await screen.findByText("El historial no está disponible en este momento.")).toBeInTheDocument();
@@ -315,7 +315,7 @@ describe("HistoryPage", () => {
   });
 
   test("la navegación lleva del historial al formulario", async () => {
-    mockApi((url) => (url.pathname === "/api/v1/estimations" ? json(items) : undefined));
+    mockApi((url) => (url.pathname === "/api/estimations" ? json(items) : undefined));
     renderApp("/estimations");
     await screen.findByRole("table");
 

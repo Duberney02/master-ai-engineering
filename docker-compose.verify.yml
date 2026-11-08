@@ -133,6 +133,27 @@ services:
     working_dir: /src
     entrypoint: ["go"]
 
+  # Web React: pruebas (Vitest + jsdom, API simulada) y comprobación de tipos en contenedor. El código se monta y
+  # `node_modules` vive en un volumen con nombre, de modo que nada se instala en el host.
+  #   docker compose -f docker-compose.verify.yml run --rm web-react-test            # vitest run
+  #   docker compose -f docker-compose.verify.yml run --rm web-react-test src/pages  # un subconjunto
+  #   docker compose -f docker-compose.verify.yml run --rm web-react-lint            # tsc --noEmit
+  web-react-test:
+    image: node:22-alpine
+    volumes:
+      - ./estimator-web-react:/app
+      - web_react_node_modules:/app/node_modules
+    working_dir: /app
+    entrypoint: ["sh", "-c", "npm ci --no-audit --no-fund --loglevel=error && exec npx vitest run \"$$@\"", "--"]
+
+  web-react-lint:
+    image: node:22-alpine
+    volumes:
+      - ./estimator-web-react:/app
+      - web_react_node_modules:/app/node_modules
+    working_dir: /app
+    entrypoint: ["sh", "-c", "npm ci --no-audit --no-fund --loglevel=error && exec npx tsc --noEmit"]
+
   openspec:
     build:
       context: ./openspec
@@ -143,3 +164,5 @@ services:
 
 volumes:
   web_go_cache:
+  web_react_node_modules:
+  streamlit_venv:

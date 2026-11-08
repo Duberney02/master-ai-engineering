@@ -33,17 +33,17 @@ async function failure(promise: Promise<unknown>): Promise<EstimatorApiError> {
 }
 
 describe("createSession", () => {
-  test("hace POST a /api/v1/sessions y devuelve el session_id", async () => {
-    fetchMock.mockResolvedValue(reply({ session_id: SESSION_ID }, 201));
+  test("hace POST a /api/conversations y devuelve el conversation_id", async () => {
+    fetchMock.mockResolvedValue(reply({ conversation_id: SESSION_ID }, 201));
 
     expect(await createSession()).toBe(SESSION_ID);
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("/api/v1/sessions");
+    expect(url).toBe("/api/conversations");
     expect(init.method).toBe("POST");
   });
 
-  test("un cuerpo sin session_id es una respuesta inválida", async () => {
+  test("un cuerpo sin conversation_id es una respuesta inválida", async () => {
     fetchMock.mockResolvedValue(reply({ otro: 1 }, 201));
 
     expect((await failure(createSession())).message).toBe(INVALID_RESPONSE_MESSAGE);
@@ -61,7 +61,7 @@ describe("createSession", () => {
 describe("createSessionEstimation", () => {
   const form = () => {
     const data = new FormData();
-    data.set("transcript", "texto");
+    data.set("description", "texto");
     return data;
   };
   const okBody = { result: RESULT, session_id: SESSION_ID, project_metadata: { ...EMPTY_METADATA, project_name: "Orion" }, turn_count: 1, max_turns: 6 };
@@ -73,7 +73,7 @@ describe("createSessionEstimation", () => {
     const response = await createSessionEstimation(SESSION_ID, body);
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(`/api/v1/sessions/${SESSION_ID}/estimate`);
+    expect(url).toBe(`/api/conversations/${SESSION_ID}/estimations`);
     expect(init.method).toBe("POST");
     expect(init.body).toBe(body);
     expect(init.headers).not.toHaveProperty("Content-Type");
@@ -106,8 +106,8 @@ describe("createSessionEstimation", () => {
     expect(error.message).not.toContain("privado");
   });
 
-  test("el message del guardrail se muestra en un 400", async () => {
-    fetchMock.mockResolvedValue(reply({ reason: "pii_email", message: "Elimina el correo." }, 400));
+  test("el detail del guardrail se muestra en un 422", async () => {
+    fetchMock.mockResolvedValue(reply({ detail: "Elimina el correo." }, 422));
 
     expect((await failure(createSessionEstimation(SESSION_ID, form()))).message).toBe("Elimina el correo.");
   });

@@ -1,8 +1,8 @@
 # Aplicación web React del estimador: SPA estática servida por nginx sin privilegios, que hace de
-# proxy inverso de la API (el navegador solo habla con este origen; no hay claves de proveedores).
+# proxy inverso del backend Go (el navegador solo habla con este origen; no hay claves de proveedores).
 #
 #   docker build -t estimator-web-react .
-#   docker run --rm -p 3001:8080 -e API_UPSTREAM=http://host.docker.internal:8000 estimator-web-react
+#   docker run --rm -p 3001:8080 -e API_UPSTREAM=http://host.docker.internal:3000 estimator-web-react
 
 # =============================================================================
 # Etapa 1 — build: instala dependencias y compila la SPA (tsc + vite)
@@ -20,8 +20,8 @@ RUN npm run build
 # =============================================================================
 FROM nginxinc/nginx-unprivileged:stable-alpine AS runtime
 
-# Dirección interna de la API; el entrypoint la sustituye en la plantilla al arrancar.
-ENV API_UPSTREAM=http://estimador-cag:8000
+# Dirección interna del backend Go; el entrypoint la sustituye en la plantilla al arrancar.
+ENV API_UPSTREAM=http://estimator-web:3000
 
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template

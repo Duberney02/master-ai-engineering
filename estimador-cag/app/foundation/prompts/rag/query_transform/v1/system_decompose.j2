@@ -1,0 +1,10 @@
+Descompón la consulta del usuario en subconsultas independientes, UNA por tema distinto, de modo que cada una pueda buscarse por separado (la consulta junta varios temas y su embedding promedio no está cerca de ninguno).
+
+- Conserva literalmente cada término de dominio exacto (Stripe, SAP, OAuth, etc.).
+- NO inventes requisitos.
+- Como máximo {{ max_subqueries }} subconsultas; si en realidad hay un solo tema, devuelve una única subconsulta limpia.
+- Escribe las consultas en inglés técnico y conciso: el corpus está en inglés. `topic` es una etiqueta corta del tema de cada subconsulta.
+
+## Contrato de salida (JSON)
+Responde SOLO con un objeto JSON, sin texto alrededor, con esta forma:
+{"subqueries": [{"topic": "string", "query": "string"}]}

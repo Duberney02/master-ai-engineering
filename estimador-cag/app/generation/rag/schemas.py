@@ -4,6 +4,8 @@
 restringen con `Literal`.
 """
 
+from datetime import date
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -123,6 +125,15 @@ Scale = Literal["small", "medium", "large", "unknown"]
 Confidence = Literal["high", "medium", "low", "insufficient"]
 Relevance = Literal["primary", "supporting", "tangential"]
 Impact = Literal["high", "medium", "low"]
+SearchMode = Literal["vector", "hybrid"]
+
+
+class Collection(StrEnum):
+    """Colecciones del corpus multi-índice (Sesión 10): destinos del *router* y valor de `RetrievedChunk.collection`."""
+
+    BUDGET = "budget"
+    TRANSCRIPT = "transcript"
+    TECHNICAL_DOC = "technical_doc"
 
 
 class EstimationQuery(BaseModel):
@@ -149,6 +160,16 @@ class RetrievedChunk(BaseModel):
     distance: float
     budget_id: str | None = Field(default=None, description="Identificador trazable del presupuesto padre.")
     document_id: int | None = None
+    # Sesión 10 (multi-índice), todos con valor por defecto: el contrato anterior no cambia.
+    collection: str = Field(default="budget", description="Colección de origen: budget, transcript o technical_doc.")
+    source_id: str | None = Field(
+        default=None, description="Id trazable del documento padre (budget_id, transcript_id o doc_id)."
+    )
+    relevance_score: float | None = Field(
+        default=None, description="Puntuación final tras reranking/decay (mayor es mejor); nula en la ruta vectorial."
+    )
+    document_date: date | None = Field(default=None, description="Fecha del documento, si la colección la tiene.")
+    estimated_hours: float | None = Field(default=None, description="Horas registradas (chunks `historical_task`).")
 
 
 class RetrievalRequest(BaseModel):
@@ -163,6 +184,9 @@ class RetrievalRequest(BaseModel):
     project_year_min: int | None = Field(default=None, ge=1990, le=2100)
     project_year_max: int | None = Field(default=None, ge=1990, le=2100)
     chunk_types: list[str] | None = Field(default=None, max_length=10)
+    # Sesión 10: sin valor se resuelven con el runtime y `Settings` (petición → runtime → settings).
+    search_mode: SearchMode | None = Field(default=None, description="`vector` o `hybrid`.")
+    rerank: bool | None = Field(default=None, description="Reordenar con el cross-encoder (recall-then-rerank).")
 
     @field_validator("query_text")
     @classmethod
@@ -292,3 +316,160 @@ class GenerateResult(BaseModel):
         default_factory=list, description="Ids citados que no estaban en `kept_chunks` (vacío = limpio)."
     )
     coherent: bool = Field(description="False si una estimación `insufficient` incumple su forma.")
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Sesión 10: búsqueda avanzada multi-índice (`POST /v1/retrieval/advanced-search`).
+# ---------------------------------------------------------------------------------------------------------------
+
+
+class AdvancedSearchRequest(BaseModel):
+    """`POST /v1/retrieval/advanced-search`: consulta, colecciones opcionales, filtros duros y *overrides* por etapa.
+
+    Cada *override* (`None` = sin valor) se resuelve con la precedencia petición → runtime → `Settings`.
+    """
+
+    query_text: str = Field(min_length=3, max_length=2000)
+    collections: list[Collection] | None = Field(
+        default=None, max_length=3, description="Colecciones explícitas (nivel `explicit`: no se clasifica nada)."
+    )
+    top_k: int | None = Field(default=None, ge=1, le=30, description="Por defecto, `rerank_top_n`.")
+    # Filtros duros: se incrustan en la consulta de cada colección que los entiende.
+    technologies: list[str] | None = Field(default=None, max_length=20)
+    sectors: list[str] | None = Field(default=None, max_length=20)
+    min_date: date | None = Field(default=None, description="Excluye lo anterior (presupuestos: por año).")
+    doc_version: str | None = Field(default=None, min_length=1, max_length=50, description="Versión de la doc.")
+    search_mode: SearchMode | None = None
+    rerank: bool | None = None
+    routing_enabled: bool | None = None
+    query_transform_enabled: bool | None = None
+    temporal_decay_enabled: bool | None = None
+
+    @field_validator("query_text")
+    @classmethod
+    def _query_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value
+
+
+class RoutingInfo(BaseModel):
+    """Cómo se decidieron las colecciones: nivel de la cascada, destinos y motivo."""
+
+    level: Literal["explicit", "rules", "classifier", "fallback"]
+    targets: list[Collection]
+    reason: str
+
+
+class SubQueryInfo(BaseModel):
+    topic: str
+    query: str
+
+
+class AdvancedSearchResult(BaseModel):
+    """Resultados y el diagnóstico que explica cómo se obtuvieron."""
+
+    chunks: list[RetrievedChunk]
+    low_confidence: bool = Field(description="True cuando no se recuperó ningún chunk (soft-fail).")
+    routing: RoutingInfo
+    technique: Literal["direct", "expand", "decompose"]
+    subqueries: list[SubQueryInfo]
+    cardinality: dict[str, int] = Field(
+        description="Candidatos por colección tras los filtros duros (vigila el 0: vacío silencioso)."
+    )
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Sesión 10: estructura sin horas y horas por tarea.
+#
+# La generación de la estructura (módulos → tareas) NO lleva horas: cada tarea se empareja después con el corpus
+# histórico (`chunk_type="historical_task"`) y sus horas salen de un consenso ponderado de los vecinos más cercanos, con
+# una fiabilidad. Una tarea sin vecino por debajo del umbral no recibe horas (`has_match=false`).
+# ---------------------------------------------------------------------------------------------------------------
+
+
+class StructureTask(BaseModel):
+    """Tarea de la estructura: nombre y descripción; `engineer_days` es SIEMPRE nulo (las horas se derivan después)."""
+
+    name: str = Field(min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=2000)
+    engineer_days: None = Field(default=None, description="Siempre nulo en la estructura.")
+
+
+class StructureModule(BaseModel):
+    name: str = Field(min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=2000)
+    tasks: list[StructureTask] = Field(default_factory=list)
+
+
+class StructureResult(BaseModel):
+    """Respuesta de `POST /v1/estimate/stages/structure`: módulos y tareas sin horas."""
+
+    modules: list[StructureModule]
+    assumptions: list[str] = Field(default_factory=list)
+
+
+class StructureRequest(BaseModel):
+    """`POST /v1/estimate/stages/structure`: el brief reformulado (salida de `reformulate`)."""
+
+    query: EstimationQuery
+
+
+class TaskHoursTaskInput(BaseModel):
+    name: str = Field(min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class TaskHoursModuleInput(BaseModel):
+    name: str = Field(min_length=1, max_length=300)
+    tasks: list[TaskHoursTaskInput] = Field(default_factory=list, max_length=50)
+
+
+# Tope de tareas por petición: cada una cuesta un embedding y una búsqueda.
+MAX_TASKS_PER_REQUEST = 150
+
+
+class TaskHoursRequest(BaseModel):
+    """`POST /v1/estimate/tasks/hours`: módulos con tareas (la salida de `structure` sirve tal cual)."""
+
+    modules: list[TaskHoursModuleInput] = Field(min_length=1, max_length=30)
+
+    @model_validator(mode="after")
+    def _bounded_task_count(self) -> "TaskHoursRequest":
+        total = sum(len(module.tasks) for module in self.modules)
+        if total == 0:
+            raise ValueError("at least one task is required")
+        if total > MAX_TASKS_PER_REQUEST:
+            raise ValueError(f"at most {MAX_TASKS_PER_REQUEST} tasks per request")
+        return self
+
+
+class TaskNeighbor(BaseModel):
+    """Una tarea histórica que casó con la tarea consultada, para dar transparencia."""
+
+    source_id: int = Field(description="Id del chunk `historical_task` casado.")
+    budget_id: str | None = Field(default=None, description="Id trazable del presupuesto padre.")
+    estimated_hours: float = Field(ge=0, description="Horas registradas en la tarea histórica.")
+    distance: float = Field(description="Distancia coseno a la tarea consultada (menor es más cercana).")
+
+
+class TaskHoursEstimate(BaseModel):
+    """Horas derivadas para una tarea. `has_match=false` (sin vecino bajo el umbral) deja horas y fiabilidad nulas."""
+
+    module: str
+    task: str
+    estimated_hours: float | None = Field(
+        default=None, ge=0, description="Consenso ponderado por la inversa de la distancia."
+    )
+    reliability: float | None = Field(
+        default=None, ge=0, le=1, description="Cercanía × acuerdo entre vecinos, en [0, 1]."
+    )
+    has_match: bool
+    dispersion: float | None = Field(default=None, ge=0, description="Coeficiente de variación de las horas vecinas.")
+    neighbors: list[TaskNeighbor] = Field(default_factory=list)
+
+
+class TaskHoursResult(BaseModel):
+    """Una estimación por tarea, en el orden en que se enviaron."""
+
+    tasks: list[TaskHoursEstimate]

@@ -1,4 +1,4 @@
-"""Configuración de modelos de LLM en tiempo de ejecución (pantalla de Ajustes de los clientes).
+"""Configuración en tiempo de ejecución (Ajustes de los clientes): modelos de LLM y recuperación (Sesión 10).
 
 Router fino: la validación de la actualización parcial es la única lógica; el almacén de overrides vive en
 `app/foundation/llm/runtime_config.py`. Un cambio aplica a partir de la siguiente solicitud, sin reconstruir clientes
@@ -7,18 +7,20 @@ ni reiniciar.
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import Settings
-from app.dependencies import get_runtime_config
+from app.dependencies import get_runtime_config, get_runtime_retrieval_config
 from app.foundation.llm.runtime_config import (
     MODEL_KNOBS,
     PROVIDER_KEY_FIELDS,
     RuntimeConfigUnavailable,
     RuntimeModelConfig,
+    RuntimeRetrievalConfig,
     provider_for_model,
     provider_key_configured,
 )
+from app.generation.rag.schemas import SearchMode
 
 logger = structlog.get_logger(__name__)
 
@@ -97,3 +99,56 @@ async def update_models(
             "runtime_config_changed", key=knob, old_effective=previous[knob], new_value=model, reset=model is None
         )
     return await _payload(config)
+
+
+# --- Recuperación (Sesión 10) ------------------------------------------------------------------------------------
+
+
+class RetrievalUpdateRequest(BaseModel):
+    """Actualización parcial de los parámetros de recuperación.
+
+    Solo se tocan las claves presentes; `null` restablece el valor por defecto de `Settings`. Una clave ausente no
+    cambia. Un modo desconocido, un valor fuera de rango o una clave que no existe es `422`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    search_mode: SearchMode | None = Field(default=None, description="`vector` o `hybrid`.")
+    rerank: bool | None = Field(default=None, description="Reordenar con el cross-encoder.")
+    routing_enabled: bool | None = Field(default=None, description="Routing multi-índice en la búsqueda avanzada.")
+    query_transform_enabled: bool | None = Field(default=None, description="Expansión/descomposición de consulta.")
+    temporal_decay_enabled: bool | None = Field(default=None, description="Decay temporal de los finalistas.")
+    task_hours_top_k: int | None = Field(default=None, ge=1, le=30, description="Vecinos por tarea (horas).")
+    task_hours_distance_threshold: float | None = Field(
+        default=None, ge=0, le=2, allow_inf_nan=False, description="Distancia máxima: más allá, sin horas."
+    )
+
+
+async def _retrieval_payload(config: RuntimeRetrievalConfig) -> dict:
+    return {"retrieval": await config.snapshot(), "reranker_model": config.settings.reranker_model}
+
+
+@router.get("/retrieval")
+async def get_retrieval(config: RuntimeRetrievalConfig = Depends(get_runtime_retrieval_config)) -> dict:
+    """Parámetros de recuperación: valor efectivo, valor por defecto y si hay override, más el modelo del reranker."""
+    return await _retrieval_payload(config)
+
+
+@router.put("/retrieval")
+async def update_retrieval(
+    request: RetrievalUpdateRequest, config: RuntimeRetrievalConfig = Depends(get_runtime_retrieval_config)
+) -> dict:
+    """Aplica una actualización parcial, todo o nada; el cambio vale desde la siguiente recuperación, sin reiniciar."""
+    changes = {name: getattr(request, name) for name in request.model_fields_set}
+    previous = {name: item["effective"] for name, item in (await config.snapshot()).items()}
+    try:
+        await config.set_many(changes)
+    except RuntimeConfigUnavailable as exc:
+        logger.error("runtime_retrieval_write_failed", error_type=str(exc))
+        raise HTTPException(status_code=503, detail="El almacén de configuración no está disponible") from exc
+
+    for name, value in changes.items():
+        logger.info(
+            "runtime_retrieval_changed", key=name, old_effective=previous[name], new_value=value, reset=value is None
+        )
+    return await _retrieval_payload(config)

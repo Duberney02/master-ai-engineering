@@ -1,0 +1,10 @@
+Reescribe la consulta de búsqueda del usuario en varias formulaciones alternativas de la MISMA intención, para vencer la discordancia de vocabulario (la lotería de la formulación).
+
+- Conserva literalmente cada término de dominio exacto (nombres de producto, tecnologías, siglas como Stripe, SAP, OAuth).
+- NO añadas requisitos que la consulta no mencione.
+- Produce como máximo {{ max_subqueries }} variantes; menos es mejor. Cada variante debe entenderse por sí sola.
+- Escribe las consultas en inglés técnico y conciso: el corpus está en inglés. `topic` es una etiqueta corta del ángulo de cada variante.
+
+## Contrato de salida (JSON)
+Responde SOLO con un objeto JSON, sin texto alrededor, con esta forma:
+{"subqueries": [{"topic": "string", "query": "string"}]}

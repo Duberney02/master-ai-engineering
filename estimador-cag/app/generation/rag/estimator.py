@@ -12,6 +12,7 @@ Los endpoints por etapa (`/v1/estimate/stages/*`) llaman a los MISMOS métodos p
 import structlog
 
 from app.config import Settings
+from app.foundation.llm.runtime_config import RetrievalToggles, RuntimeRetrievalConfig
 from app.foundation.llm.service import generate_from_messages
 from app.foundation.llm.structured import Generator, generate_structured
 from app.generation.rag.chunking.base import count_tokens
@@ -29,7 +30,9 @@ from app.generation.rag.schemas import (
     ReformulationResult,
     RetrievalResult,
     RetrievedChunk,
+    StructureResult,
 )
+from app.generation.rag.structure import generate_structure
 from app.generation.rag.validation import check_coherence, fabricated_source_ids
 
 logger = structlog.get_logger(__name__)
@@ -75,11 +78,19 @@ class GroundedEstimator:
         idempotency: IdempotencyStore,
         *,
         generate: Generator | None = None,
+        runtime_retrieval: RuntimeRetrievalConfig | None = None,
     ) -> None:
         self.settings = settings
         self._retriever = retriever
         self._idempotency = idempotency
         self._generate = generate or generate_from_messages
+        self._runtime_retrieval = runtime_retrieval
+
+    async def retrieval_toggles(self) -> RetrievalToggles:
+        """Parámetros de recuperación efectivos: override de runtime (Redis) y, sin él, `Settings`."""
+        if self._runtime_retrieval is None:
+            return RetrievalToggles.from_settings(self.settings)
+        return await self._runtime_retrieval.effective()
 
     # --- Etapas (reutilizadas por `/v1/estimate/stages/*`) -----------------------------------------------------
 
@@ -94,7 +105,14 @@ class GroundedEstimator:
         top_k: int | None = None,
         distance_threshold: float | None = None,
         filters: RetrievalFilters | None = None,
+        search_mode: str | None = None,
+        rerank: bool | None = None,
     ) -> RetrievalResult:
+        """Recupera con la precedencia petición → runtime → `Settings` para `search_mode` y `rerank`."""
+        if search_mode is None or rerank is None:
+            toggles = await self.retrieval_toggles()
+            search_mode = search_mode or toggles.search_mode
+            rerank = toggles.rerank if rerank is None else rerank
         return await self._retriever.search(
             query_text,
             top_k=top_k or self.settings.retrieval_top_k,
@@ -102,6 +120,8 @@ class GroundedEstimator:
                 self.settings.retrieval_distance_threshold if distance_threshold is None else distance_threshold
             ),
             filters=filters or RetrievalFilters(),
+            search_mode=search_mode,
+            rerank=rerank,
         )
 
     def assemble(self, chunks: list[RetrievedChunk], max_context_tokens: int | None = None) -> AssembleResult:
@@ -125,6 +145,12 @@ class GroundedEstimator:
         except Exception as exc:
             raise GenerationError("grounded estimate generation failed") from exc
         return estimate
+
+    async def structure(self, query: EstimationQuery) -> StructureResult:
+        """Módulos → tareas del brief SIN horas ni fuentes (las horas salen de `task_hours`).
+
+        Lanza `GenerationError` si la generación falla."""
+        return await generate_structure(query, generate=self._generate, model=self.settings.generation_model)
 
     @staticmethod
     def review(estimate: Estimate, kept_chunks: list[RetrievedChunk]) -> tuple[list[int], bool]:

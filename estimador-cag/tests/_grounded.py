@@ -101,9 +101,18 @@ class FakeRetriever:
         self.error = error
         self.calls: list[dict] = []
 
-    async def search(self, query_text, *, top_k, distance_threshold, filters) -> RetrievalResult:
+    async def search(
+        self, query_text, *, top_k, distance_threshold, filters, search_mode="vector", rerank=False, rerank_top_n=None
+    ) -> RetrievalResult:
         self.calls.append(
-            {"query_text": query_text, "top_k": top_k, "distance_threshold": distance_threshold, "filters": filters}
+            {
+                "query_text": query_text,
+                "top_k": top_k,
+                "distance_threshold": distance_threshold,
+                "filters": filters,
+                "search_mode": search_mode,
+                "rerank": rerank,
+            }
         )
         if self.error:
             raise self.error
@@ -116,12 +125,13 @@ def failing_retriever(kind: str = "provider") -> FakeRetriever:
     return FakeRetriever(error=RetrievalError(SECRET))
 
 
-def build_estimator(generator=None, retriever=None, store=None, **settings) -> GroundedEstimator:
+def build_estimator(generator=None, retriever=None, store=None, runtime_retrieval=None, **settings) -> GroundedEstimator:
     return GroundedEstimator(
         openai_settings(**settings),
         retriever or FakeRetriever(),
         store or IdempotencyStore(ttl=60),
         generate=generator or ScriptedGenerator(),
+        runtime_retrieval=runtime_retrieval,
     )
 
 

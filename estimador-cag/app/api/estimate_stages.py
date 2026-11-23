@@ -27,6 +27,8 @@ from app.generation.rag.schemas import (
     ReformulationResult,
     RetrievalRequest,
     RetrievalResult,
+    StructureRequest,
+    StructureResult,
 )
 
 logger = structlog.get_logger(__name__)
@@ -91,3 +93,20 @@ async def generate(
         raise HTTPException(status_code=502, detail="No se pudo generar la estimación.") from exc
     fabricated, coherent = estimator.review(estimate, payload.kept_chunks)
     return GenerateResult(estimate=estimate, fabricated_source_ids=fabricated, coherent=coherent)
+
+
+@router.post("/structure", response_model=StructureResult, responses=_PIPELINE_ERRORS)
+@limiter.limit(STAGES_LIMIT)
+async def structure(
+    request: Request, payload: StructureRequest, estimator: GroundedEstimator = Depends(get_grounded_estimator)
+) -> StructureResult:
+    """Sesión 10: módulos y tareas del brief reformulado, SIN horas (`engineer_days` nulo en todas las tareas).
+
+    Es una descomposición libre del brief, sin recuperación ni citas; las horas se piden después a
+    `POST /v1/estimate/tasks/hours`.
+    """
+    try:
+        with log_stage("structure", modules_hint=len(payload.query.technologies)):
+            return await estimator.structure(payload.query)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="No se pudo generar la estructura.") from exc

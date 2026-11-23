@@ -43,6 +43,8 @@ app/
 │   ├── rag/        #   chunking/ · embedding/ · analysis/ · schemas.py · store/ (S8, índice HNSW halfvec)
 │   │               #   S9: retriever · query_reformulator · context_assembler · prompt_builder · validation ·
 │   │               #   estimator (orquestador) · idempotency · observability · errors
+│   │               #   S10: retrieval/ (collections · fusion · reranker · router · query_transform · temporal ·
+│   │               #   advanced_pipeline) · structure · task_hours
 │   ├── agentic/    #   boss.py + critic.py
 │   └── conversation/ # sesiones en memoria, anclas, compresión y resumen
 ├── ingestion/      # pipeline batch offline (catálogo, loaders, parsers, limpieza, PII, orquestador)
@@ -121,6 +123,36 @@ POST /v1/estimate/from-transcript                    (X-Request-ID → structlog
 sin estado y sin los reintentos del paso 5. `/v1/retrieval/search` usa solo el paso 2. Cada etapa registra
 `rag_stage_started/completed/failed` con `stage`, `duration_ms` y el `request_id`.
 
+La Sesión 10 amplía el paso 2 y añade dos caminos, también dentro de `generation/rag/` (sus piezas no se importan con
+otros hermanos; todo se cablea en `dependencies.py`):
+
+```
+retriever.py::ChunkRetriever.search(search_mode, rerank)            (POST /v1/retrieval/search, stages/retrieve)
+  ├─ rama vectorial (halfvec + filtros + umbral)  ┐
+  ├─ rama léxica (content_tsv @@ tsquery OR)      ┴─ retrieval/fusion.py (RRF)      search_mode="hybrid"
+  └─ retrieval/reranker.py (cross-encoder, carga diferida, en un hilo)               rerank=true → top-N + relevance_score
+     search_mode y rerank: petición → runtime (foundation/llm/runtime_config.py::RuntimeRetrievalConfig) → Settings
+
+POST /v1/retrieval/advanced-search                   (api/retrieval.py → retrieval/advanced_pipeline.py::AdvancedRetriever)
+  1. query_transform.py   direct | expand (RRF) | decompose (round-robin); ante un fallo del LLM → direct   ┐ en paralelo
+  2. router.py            explicit → rules → classifier (LLM) → fallback (todas); cada decisión con nivel y motivo ┘
+  3. collections.py       registro único: modelo ORM, chunk_type, id trazable, fecha y filtros duros por colección
+  4. retriever.py::hybrid_search_one   por (colección, subconsulta), cada una en su sesión (abanico paralelo)
+  5. fusion.py            RRF entre variantes (expand/direct), round-robin entre temas y entre colecciones
+  6. reranker.py          cross-encoder sobre el pool; logits → sigmoide (puntuaciones no negativas)
+  7. temporal.py          decay 0.5 ** (edad / vida_media) AL FINAL, sobre los finalistas; sin fecha, sin penalización
+
+POST /v1/estimate/stages/structure                   (GroundedEstimator.structure → structure.py)   módulos → tareas SIN horas
+POST /v1/estimate/tasks/hours                        (api/estimate_tasks.py → task_hours.py::TaskHoursEstimator)
+  └─ por tarea: ChunkRetriever sobre chunk_type="historical_task" → weighted_consensus (peso 1/max(distancia, ε))
+     → horas, fiabilidad (cercanía × acuerdo) y vecinos; sin vecino bajo el umbral → has_match=false
+```
+
+Tres tablas de chunks, una por colección (`chunks` = `budget`, `transcript_chunks`, `technical_doc_chunks`), con las mismas
+columnas estructurales y una `content_tsv` generada (migraciones `0004` y `0005`). Las nuevas aún no tienen índice HNSW
+(Sesión 11). `GET/PUT /api/v1/config/retrieval` lee y escribe los parámetros de recuperación en un hash de Redis aparte
+del de los modelos.
+
 ## 6. ¿Dónde va mi código nuevo?
 
 | Si añades… | Va en… |
@@ -130,6 +162,9 @@ sin estado y sin los reintentos del paso 5. `/v1/retrieval/search` usa solo el p
 | Estrategia de chunking, embeddings, comparación | `generation/rag/` |
 | Vector store (Sesión 8) o retriever | `generation/rag/store/` (`DocumentStore`) y `generation/rag/retriever.py` (`ChunkRetriever`) |
 | Etapa del pipeline RAG de estimación (Sesión 9) | `generation/rag/` (método de `GroundedEstimator`) + plantilla en `foundation/prompts/rag/` |
+| Etapa de recuperación avanzada (fusión, rerank, routing, transformación, decay) (Sesión 10) | `generation/rag/retrieval/` (pura o con colaboradores inyectados) y su cableado en `dependencies.py` |
+| Colección nueva del multi-índice | tabla en `foundation/persistence/models.py` + migración + entrada en `generation/rag/retrieval/collections.py` (lo demás es agnóstico) |
+| Parámetro de recuperación configurable en runtime | `RETRIEVAL_KNOBS` en `foundation/llm/runtime_config.py`, el campo en `Settings` y `api/config.py` |
 | Seguridad, rate limiting o middleware HTTP | `api/` (`security.py`, `rate_limiting.py`, `request_id.py`) |
 | Estrategia de caché | `generation/cag/` |
 | Rol de agente | `generation/agentic/` |
@@ -146,8 +181,10 @@ sin estado y sin los reintentos del paso 5. `/v1/retrieval/search` usa solo el p
   `/api/v1/prompts/*`, `/api/v1/ingestion/*`. (`/embeddings/ingest` cambió de contrato en la Sesión 8 —ahora persiste— tras
   comprobar que ningún cliente lo usaba.) Los clientes web Go, React y Streamlit
   dependen de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/search`, `/api/v1/config/models`,
-  `/v1/retrieval/*`, `/v1/estimate/*`), nunca cambios de forma de las existentes. `POST /search` (Sesión 8) se conserva
-  sin cambios; `POST /embeddings/ingest` solo gana el campo opcional `chunk_type`.
+  `/v1/retrieval/*`, `/v1/estimate/*`, `/api/v1/config/retrieval`), nunca cambios de forma de las existentes.
+  `POST /search` (Sesión 8) se conserva sin cambios; `POST /embeddings/ingest` solo gana el campo opcional `chunk_type`.
+  La Sesión 10 es aditiva: `/v1/retrieval/search` solo gana `search_mode` y `rerank` opcionales (y `RetrievedChunk` campos
+  con valor por defecto), y la tabla `chunks` **conserva su nombre** (es la colección `budget`).
 - **`EstimationResult`** (`domain/schemas/`): el orden de campos importa para la salida estructurada y sus
   validadores disparan el re-prompt.
 - **Errores saneados**: ninguna respuesta incluye trazas, claves ni URLs internas; el detalle va al log.
@@ -157,7 +194,9 @@ sin estado y sin los reintentos del paso 5. `/v1/retrieval/search` usa solo el p
 ## 8. Huecos reservados
 
 - `generation/rag/store/` y `generation/rag/retriever.py`: persisten y buscan con índice HNSW halfvec; la Sesión 9
-  añade filtros por metadatos (JSONB) y umbral de distancia. Pendiente (Sesión 10): búsqueda híbrida y *reranking*.
+  añade filtros por metadatos (JSONB) y umbral de distancia, y la Sesión 10 la búsqueda híbrida (RRF), el *reranking* y
+  el multi-índice. Pendiente (Sesión 11): síntesis de rangos ante vecinos contradictorios e índice HNSW en las tablas
+  `transcript_chunks` y `technical_doc_chunks`.
 
 ### Índice vectorial: regla de alineación expresión/operator class
 

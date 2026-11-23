@@ -221,3 +221,34 @@ def test_rag_settings_from_env(monkeypatch):
 def test_rag_settings_are_validated(field, value):
     with pytest.raises(ValidationError):
         _openai(**{field: value})
+
+
+def test_advanced_retrieval_settings_defaults():
+    s = _openai()
+
+    assert (s.retrieval_search_mode, s.reranker_enabled, s.rrf_k) == ("vector", False, 60)
+    assert (s.retrieval_recall_top_k, s.rerank_top_n) == (50, 5)
+    assert (s.retrieval_routing_enabled, s.query_transform_enabled, s.temporal_decay_enabled) == (True, True, False)
+    assert (s.temporal_decay_half_life_days, s.query_max_subqueries, s.router_max_targets) == (900, 4, 3)
+    assert (s.task_hours_top_k, s.task_hours_distance_threshold) == (5, 0.45)
+    assert s.router_model is None and s.query_transform_model is None
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"retrieval_search_mode": "lexical"},
+        {"rrf_k": 0},
+        {"retrieval_recall_top_k": 0},
+        {"rerank_top_n": 31},
+        {"temporal_decay_half_life_days": 0},
+        {"query_max_subqueries": 5},
+        {"router_max_targets": 4},
+        {"task_hours_top_k": 0},
+        {"task_hours_distance_threshold": 2.5},
+        {"task_hours_distance_threshold": -0.1},
+    ],
+)
+def test_advanced_retrieval_settings_reject_out_of_range_values(options):
+    with pytest.raises(ValidationError):
+        _openai(**options)

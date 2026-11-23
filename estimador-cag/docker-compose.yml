@@ -22,6 +22,9 @@ services:
       - .env
     environment:
       REDIS_URL: redis://redis:6379/0
+      # Claves de ejemplo de los routers RAG de la Sesión 9 (/v1/retrieval/*, /v1/estimate/*); las de .env tienen prioridad.
+      RETRIEVAL_API_KEY: ${RETRIEVAL_API_KEY:-dev-retrieval-key}
+      ESTIMATE_API_KEY: ${ESTIMATE_API_KEY:-dev-estimate-key}
       # En Docker Desktop (Windows/macOS) los eventos del sistema de archivos no
       # siempre llegan al contenedor: el sondeo hace fiable el --reload.
       WATCHFILES_FORCE_POLLING: "true"

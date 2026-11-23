@@ -34,13 +34,6 @@ Cada capa SHALL importar solo de las capas que tiene por encima: `foundation` so
 - **WHEN** una prueba define `app.dependency_overrides[get_pipeline]`
 - **THEN** el endpoint usa la implementación sustituida.
 
-### Requirement: Hueco de la Sesión 8
-`generation/rag/store/` y `generation/rag/retriever.py` SHALL existir solo como placeholders documentados, sin implementación.
-
-#### Scenario: Placeholders
-- **WHEN** se importan ambos módulos
-- **THEN** no definen clases ni funciones y su docstring explica el hueco reservado.
-
 ### Requirement: Documentación de arquitectura
 El repositorio SHALL incluir `estimador-cag/ARCHITECTURE.md` con las capas, las reglas de dependencia, el flujo de la petición, la tabla «¿dónde va mi código nuevo?», los contratos que no se rompen y el mapa de migración de rutas, y `CLAUDE.md` en la raíz con comandos Docker y convenciones.
 

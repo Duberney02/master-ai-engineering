@@ -21,6 +21,7 @@ from app.generation.rag.schemas import IngestRequest, IngestResponse, SearchResp
 
 logger = structlog.get_logger(__name__)
 
+# `chunk_type` por defecto (`IngestRequest.chunk_type`); el corpus de tareas de la Sesión 9 usa `historical_task`.
 CHUNK_TYPE = "budget_component"
 
 
@@ -98,7 +99,7 @@ class DocumentStore:
             session.add_all(
                 Chunk(
                     document_id=document.id,
-                    chunk_type=CHUNK_TYPE,
+                    chunk_type=request.chunk_type,
                     content=item.text,
                     embedding=item.embedding,
                     metadata_={**item.metadata, "chunk_id": item.chunk_id, "token_count": item.token_count},

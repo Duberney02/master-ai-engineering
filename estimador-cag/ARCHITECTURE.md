@@ -13,7 +13,9 @@ El estimador apila tres arquitecturas **de forma aditiva** sobre una base común
   se inyectan en el prompt (Context-Augmented Generation, `foundation/prompts/examples.py`).
 - **RAG** (`app/generation/rag/`): convierte presupuestos históricos en chunks y embeddings. La Sesión 7 añade
   la comparación de estrategias de chunking; la Sesión 8 persiste los chunks en PostgreSQL + pgvector y expone la
-  búsqueda semántica (`POST /search`).
+  búsqueda semántica (`POST /search`). La Sesión 9 cierra el ciclo: recuperación filtrada con umbral
+  (`POST /v1/retrieval/search`) y estimación fundamentada con citas desde una transcripción
+  (`POST /v1/estimate/from-transcript` y sus etapas `/v1/estimate/stages/*`).
 - **Agéntica** (`app/generation/agentic/`): bucle Actor–Crítico–Boss que audita la estimación antes de
   aceptarla, apoyado en la conversación multi-turno (`app/generation/conversation/`).
 
@@ -38,7 +40,9 @@ app/
 │   └── validation.py · audience.py · history.py · evaluation.py   # reglas de negocio y servicios de dominio
 ├── generation/     # las arquitecturas que componen
 │   ├── cag/        #   exact.py (resultados validados) + semantic.py (redisvl)
-│   ├── rag/        #   chunking/ · embedding/ · analysis/ · schemas.py · store/ (S8, índice HNSW halfvec) · retriever.py (S8)
+│   ├── rag/        #   chunking/ · embedding/ · analysis/ · schemas.py · store/ (S8, índice HNSW halfvec)
+│   │               #   S9: retriever · query_reformulator · context_assembler · prompt_builder · validation ·
+│   │               #   estimator (orquestador) · idempotency · observability · errors
 │   ├── agentic/    #   boss.py + critic.py
 │   └── conversation/ # sesiones en memoria, anclas, compresión y resumen
 ├── ingestion/      # pipeline batch offline (catálogo, loaders, parsers, limpieza, PII, orquestador)
@@ -98,6 +102,25 @@ POST /api/v1/estimate
 Las sesiones (`/api/v1/sessions/*`) pasan por `domain/session_estimation.py` (memoria, audiencia, metadatos) y
 `/estimate-acb` por `domain/acb.py` (Actor–Crítico–Boss).
 
+La estimación fundamentada de la Sesión 9 no une capas hermanas, así que su orquestador vive dentro de
+`generation/rag/` (no en el conductor):
+
+```
+POST /v1/estimate/from-transcript                    (X-Request-ID → structlog; X-API-Key; 10/min por clave)
+  └─ app/api/estimate.py                              (HTTP fino; cualquier fallo del pipeline → 502 genérico)
+       └─ generation/rag/estimator.py::GroundedEstimator
+            0. idempotency.py                         Redis asíncrono (o memoria) por idempotency_key
+            1. query_reformulator.py                  transcripción → EstimationQuery + texto de búsqueda (en inglés)
+            2. retriever.py                           embedding + k-NN halfvec con filtros JSONB y umbral → soft-fail
+            3. context_assembler.py                   truncado a max_context_tokens (chunks completos) + <source id=…>
+            4. prompt_builder.py → foundation/llm/structured.generate_structured
+            5. validation.py                          ids inventados (1 reintento → `low`) y coherencia (1 reparación → 502)
+```
+
+`/v1/estimate/stages/{reformulate,retrieve,assemble,generate}` llaman a los mismos métodos de `GroundedEstimator`,
+sin estado y sin los reintentos del paso 5. `/v1/retrieval/search` usa solo el paso 2. Cada etapa registra
+`rag_stage_started/completed/failed` con `stage`, `duration_ms` y el `request_id`.
+
 ## 6. ¿Dónde va mi código nuevo?
 
 | Si añades… | Va en… |
@@ -105,7 +128,9 @@ Las sesiones (`/api/v1/sessions/*`) pasan por `domain/session_estimation.py` (me
 | Backend LLM, plantilla de prompt, guardrail, adjunto, persistencia | `foundation/` |
 | Modelo seleccionable en runtime (knob nuevo) | `foundation/llm/runtime_config.py` (`MODEL_KNOBS`) y su ruta en `api/config.py` |
 | Estrategia de chunking, embeddings, comparación | `generation/rag/` |
-| Vector store (Sesión 8) o retriever | `generation/rag/store/` (`DocumentStore`) y `generation/rag/retriever.py` |
+| Vector store (Sesión 8) o retriever | `generation/rag/store/` (`DocumentStore`) y `generation/rag/retriever.py` (`ChunkRetriever`) |
+| Etapa del pipeline RAG de estimación (Sesión 9) | `generation/rag/` (método de `GroundedEstimator`) + plantilla en `foundation/prompts/rag/` |
+| Seguridad, rate limiting o middleware HTTP | `api/` (`security.py`, `rate_limiting.py`, `request_id.py`) |
 | Estrategia de caché | `generation/cag/` |
 | Rol de agente | `generation/agentic/` |
 | Memoria conversacional | `generation/conversation/` |
@@ -120,8 +145,9 @@ Las sesiones (`/api/v1/sessions/*`) pasan por `domain/session_estimation.py` (me
 - **Rutas HTTP**: `/api/v1/estimate`, `/api/v1/transcription/*`, `/api/v1/sessions/*`, `/api/v1/estimations`,
   `/api/v1/prompts/*`, `/api/v1/ingestion/*`. (`/embeddings/ingest` cambió de contrato en la Sesión 8 —ahora persiste— tras
   comprobar que ningún cliente lo usaba.) Los clientes web Go, React y Streamlit
-  dependen de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/search`, `/api/v1/config/models`),
-  nunca cambios de forma de las existentes.
+  dependen de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/search`, `/api/v1/config/models`,
+  `/v1/retrieval/*`, `/v1/estimate/*`), nunca cambios de forma de las existentes. `POST /search` (Sesión 8) se conserva
+  sin cambios; `POST /embeddings/ingest` solo gana el campo opcional `chunk_type`.
 - **`EstimationResult`** (`domain/schemas/`): el orden de campos importa para la salida estructurada y sus
   validadores disparan el re-prompt.
 - **Errores saneados**: ninguna respuesta incluye trazas, claves ni URLs internas; el detalle va al log.
@@ -130,8 +156,8 @@ Las sesiones (`/api/v1/sessions/*`) pasan por `domain/session_estimation.py` (me
 
 ## 8. Huecos reservados
 
-- `generation/rag/store/`: persiste y busca (Sesión 8) con índice HNSW halfvec. Pendiente: filtros por metadata y
-  búsqueda híbrida.
+- `generation/rag/store/` y `generation/rag/retriever.py`: persisten y buscan con índice HNSW halfvec; la Sesión 9
+  añade filtros por metadatos (JSONB) y umbral de distancia. Pendiente (Sesión 10): búsqueda híbrida y *reranking*.
 
 ### Índice vectorial: regla de alineación expresión/operator class
 
@@ -142,10 +168,9 @@ consulta debe repetir **exactamente** esa expresión con el operador `<=>`: `CAS
 Si no coincide (otro cast, otro operador, otra dimensión) Postgres cae a *Seq Scan* sin avisar. La expresión vive en un
 único sitio (`halfvec_embedding()` en `foundation/persistence/models.py`, con `EMBEDDING_DIMENSIONS`) y la usa
 `generation/rag/store/documents.py::search_statement`; `tests/test_vector_store.py` comprueba con `EXPLAIN` que el plan
-usa el índice. La búsqueda fija `hnsw.ef_search` (`HNSW_EF_SEARCH`) con `SET LOCAL` en su transacción.
-- `generation/rag/retriever.py`: recuperación semántica con filtrado por metadatos (placeholder).
-
-Cuando RAG entre en la petición de estimación, el paso se añade al conductor.
+usa el índice. La búsqueda fija `hnsw.ef_search` (`HNSW_EF_SEARCH`) con `SET LOCAL` en su transacción. La búsqueda
+filtrada de la Sesión 9 (`generation/rag/retriever.py::filtered_search_statement`) reutiliza la misma expresión y
+añade los filtros en el `WHERE` de la misma consulta; `tests/test_rag_retrieval_store.py` lo comprueba con `EXPLAIN`.
 
 ## Apéndice: mapa de migración (ruta antigua → nueva)
 

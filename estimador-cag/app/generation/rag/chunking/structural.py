@@ -62,12 +62,15 @@ def budget_metadata(budget: Budget) -> dict:
 
 def component_metadata(budget: Budget, component: BudgetComponent) -> dict:
     """Metadatos filtrables de un chunk a nivel de componente. No forman parte del texto que se embebe."""
-    return {
+    metadata = {
         **budget_metadata(budget),
         "component_id": component.component_id,
         "complexity": component.complexity,
         "estimated_hours": component.estimated_hours,
     }
+    if component.module:
+        metadata["module"] = component.module
+    return metadata
 
 
 class JSONStructuralChunker(Chunker):

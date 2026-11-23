@@ -1,0 +1,21 @@
+<project_brief>
+Function: {{ query.function }}
+Technologies: {{ query.technologies | join(", ") or "n/a" }}
+Sector: {{ query.sector or "n/a" }}
+Scale: {{ query.scale }}
+Country: {{ query.country or "n/a" }}
+Regulations: {{ query.regulations | join(", ") or "n/a" }}
+Constraints: {{ query.constraints | join(", ") or "n/a" }}
+</project_brief>
+
+<sources>
+{{ context_block }}
+</sources>
+
+Produce ahora la estimación fundamentada, citando los ids de fuente de cada afirmación cuantitativa.
+{% if feedback %}
+
+<correction>
+{{ feedback }}
+</correction>
+{% endif %}

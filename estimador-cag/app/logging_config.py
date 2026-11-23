@@ -81,6 +81,15 @@ SAFE_FIELDS = frozenset(
         "page",
         "original_chars",
         "kept_chars",
+        # RAG de la Sesión 9: etapa, duración y cardinalidades; nunca transcripciones, prompts ni chunks.
+        "stage",
+        "duration_ms",
+        "sector_filtered",
+        "fabricated_count",
+        "results_count",
+        "candidates_evaluated",
+        "top_k",
+        "distance_threshold",
     }
 )
 

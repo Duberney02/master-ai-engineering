@@ -98,6 +98,20 @@ class Settings(BaseSettings):
     # Locale de Faker para los seudónimos y sal del HMAC (cámbiala fuera de desarrollo).
     pseudonym_faker_locale: str = "es_ES"
     pseudonym_hash_salt: str = "change-me-in-prod"
+    # RAG de estimación fundamentada (Sesión 9). Modelos de reformulación y generación; sin valor, usan el modelo
+    # primario efectivo (incluido su override en runtime).
+    reformulation_model: str | None = Field(default=None, min_length=1, max_length=100)
+    generation_model: str | None = Field(default=None, min_length=1, max_length=100)
+    # Recuperación: chunks por consulta y umbral de distancia coseno (0 = idéntico, 2 = opuesto; menor es mejor).
+    retrieval_top_k: int = Field(default=10, ge=1, le=30)
+    retrieval_distance_threshold: float = Field(default=0.6, ge=0, le=2)
+    # Presupuesto de tokens (tiktoken cl100k_base) del bloque de fuentes que recibe el generador.
+    max_context_tokens: int = Field(default=16384, ge=256, le=128_000)
+    # Segundos que se conserva una estimación por `idempotency_key` (Redis o memoria).
+    idempotency_ttl: int = Field(default=86400, gt=0)
+    # Claves de los routers `/v1/retrieval/*` y `/v1/estimate/*`. Sin valor, el router responde 401 a todo.
+    retrieval_api_key: str | None = None
+    estimate_api_key: str | None = None
 
     @field_validator("app_env", mode="before")
     @classmethod

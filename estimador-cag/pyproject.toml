@@ -35,6 +35,8 @@ dependencies = [
     "presidio-analyzer>=2.2",
     "spacy>=3.8,<3.9",
     "faker>=24.0",
+    # Sesión 9: rate limiting por clave de API en los endpoints RAG (`/v1/*`).
+    "slowapi>=0.1.9",
     # Modelo español de spaCy (rueda oficial; versión compatible con spaCy 3.8).
     "es-core-news-md @ https://github.com/explosion/spacy-models/releases/download/es_core_news_md-3.8.0/es_core_news_md-3.8.0-py3-none-any.whl",
 ]

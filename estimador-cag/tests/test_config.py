@@ -192,3 +192,32 @@ def test_invalid_environment_variables_are_rejected(monkeypatch):
 
     with pytest.raises(ValidationError):
         Settings(llm_provider="openai", openai_api_key="sk", _env_file=None)
+
+
+def test_rag_settings_defaults():
+    s = _openai()
+    assert (s.retrieval_top_k, s.retrieval_distance_threshold) == (10, 0.6)
+    assert s.max_context_tokens == 16384 and s.idempotency_ttl == 86400
+    assert s.reformulation_model is None and s.generation_model is None
+    assert s.retrieval_api_key is None and s.estimate_api_key is None
+
+
+def test_rag_settings_from_env(monkeypatch):
+    monkeypatch.setenv("RETRIEVAL_API_KEY", "rk")
+    monkeypatch.setenv("ESTIMATE_API_KEY", "ek")
+    monkeypatch.setenv("RETRIEVAL_TOP_K", "5")
+    monkeypatch.setenv("RETRIEVAL_DISTANCE_THRESHOLD", "0.45")
+    monkeypatch.setenv("GENERATION_MODEL", "gpt-4o")
+    s = Settings(_env_file=None)
+    assert (s.retrieval_api_key, s.estimate_api_key) == ("rk", "ek")
+    assert s.retrieval_top_k == 5 and s.retrieval_distance_threshold == 0.45
+    assert s.generation_model == "gpt-4o"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("retrieval_top_k", 0), ("retrieval_top_k", 31), ("retrieval_distance_threshold", 2.5), ("max_context_tokens", 10), ("idempotency_ttl", 0)],
+)
+def test_rag_settings_are_validated(field, value):
+    with pytest.raises(ValidationError):
+        _openai(**{field: value})

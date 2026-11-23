@@ -5,10 +5,23 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi.errors import RateLimitExceeded
 
 from app.api import config as runtime_config_api
-from app.api import estimations, history, ingestion, project_estimations, prompts, sessions
+from app.api import (
+    estimate,
+    estimate_stages,
+    estimations,
+    history,
+    ingestion,
+    project_estimations,
+    prompts,
+    retrieval,
+    sessions,
+)
 from app.api.embeddings import router as embeddings_router
+from app.api.rate_limiting import limiter, rate_limit_exceeded_handler
+from app.api.request_id import request_id_middleware
 from app.api.search import router as search_router
 from app.config import get_settings
 from app.dependencies import close_history
@@ -72,6 +85,14 @@ app.include_router(estimations.router, prefix="/api/v1/transcription", tags=["tr
 app.include_router(embeddings_router, prefix="/embeddings")
 app.include_router(search_router)
 app.include_router(runtime_config_api.router)
+# Sesión 9: RAG de estimación fundamentada, protegido por clave de API y limitado por clave.
+app.include_router(retrieval.router)
+app.include_router(estimate.router)
+app.include_router(estimate_stages.router)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+# `X-Request-ID` en todas las respuestas y en los logs de la petición.
+app.middleware("http")(request_id_middleware)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 

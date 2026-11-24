@@ -6,7 +6,10 @@ primitiva estructurada del proyecto (`generate_structured`: corrección en la mi
 costes), no Instructor (ver `docs/evaluacion-instructor-litellm.md`).
 
 Los endpoints por etapa (`/v1/estimate/stages/*`) llaman a los MISMOS métodos públicos (`reformulate`, `retrieve`,
-`assemble`, `generate`, `review`); solo `estimate_from_transcript` añade los reintentos correctivos.
+`assemble`, `generate`, `review`, `verify`); solo `estimate_from_transcript` añade los reintentos correctivos.
+
+Sesión 11: `assemble` aplica la aumentación (compresión y reordenación) tras el truncado; el pipeline completo verifica
+las citas por línea y, con el gate habilitado, rebaja la confianza a `low` si alguna línea queda `degraded`.
 """
 
 import structlog
@@ -21,19 +24,23 @@ from app.generation.rag.errors import GenerationError, MalformedEstimateError
 from app.generation.rag.idempotency import IdempotencyStore
 from app.generation.rag.observability import log_stage
 from app.generation.rag.prompt_builder import build_generation_messages
+from app.generation.rag.quality.augmentation import augment_chunks
+from app.generation.rag.quality.hallucination import run_gate
 from app.generation.rag.query_reformulator import compose_search_text, reformulate_query
 from app.generation.rag.retriever import ChunkRetriever, RetrievalFilters
 from app.generation.rag.schemas import (
     AssembleResult,
+    CitationReport,
     Estimate,
     EstimationQuery,
     ReformulationResult,
     RetrievalResult,
     RetrievedChunk,
     StructureResult,
+    VerifyReport,
 )
 from app.generation.rag.structure import generate_structure
-from app.generation.rag.validation import check_coherence, fabricated_source_ids
+from app.generation.rag.validation import build_citation_report, check_coherence, fabricated_source_ids
 
 logger = structlog.get_logger(__name__)
 
@@ -124,13 +131,23 @@ class GroundedEstimator:
             rerank=rerank,
         )
 
-    def assemble(self, chunks: list[RetrievedChunk], max_context_tokens: int | None = None) -> AssembleResult:
+    def assemble(
+        self,
+        chunks: list[RetrievedChunk],
+        max_context_tokens: int | None = None,
+        *,
+        toggles: RetrievalToggles | None = None,
+    ) -> AssembleResult:
+        """Truncado al presupuesto de tokens y, con `toggles.augmentation_enabled`, compresión y reordenación."""
         kept = truncate_to_token_budget(chunks, max_context_tokens or self.settings.max_context_tokens)
+        dropped = len(chunks) - len(kept)
+        if toggles is not None and toggles.augmentation_enabled:
+            kept = augment_chunks(kept, compress=toggles.augmentation_compress, reorder=toggles.augmentation_reorder)
         context_block = build_context_block(kept)
         return AssembleResult(
             context_block=context_block,
             kept_chunks=kept,
-            dropped_count=len(chunks) - len(kept),
+            dropped_count=dropped,
             token_count=count_tokens(context_block),
         )
 
@@ -154,8 +171,43 @@ class GroundedEstimator:
 
     @staticmethod
     def review(estimate: Estimate, kept_chunks: list[RetrievedChunk]) -> tuple[list[int], bool]:
-        """Señales de fundamentación: ids inventados y si cumple la regla de coherencia."""
+        """Señales de fundamentación: ids inventados (globales o por línea) y si cumple la regla de coherencia."""
         return fabricated_source_ids(estimate, {chunk.id for chunk in kept_chunks}), check_coherence(estimate)
+
+    @staticmethod
+    def citation_report(estimate: Estimate, kept_chunks: list[RetrievedChunk]) -> CitationReport:
+        """Informe de citas por línea (`grounded`, `dangling`, `insufficient`) contra el contexto."""
+        return build_citation_report(estimate, {chunk.id for chunk in kept_chunks})
+
+    async def verify(
+        self, estimate: Estimate, kept_chunks: list[RetrievedChunk], *, use_judge: bool = True
+    ) -> VerifyReport:
+        """Gate de alucinaciones: ancla numérica por línea y, con `use_judge`, un juez para toda la estimación.
+
+        Un fallo del juez se propaga (la etapa lo traduce a 502; el pipeline lo degrada a solo-ancla)."""
+        toggles = await self.retrieval_toggles()
+        return await run_gate(
+            estimate,
+            kept_chunks,
+            generate=self._generate,
+            tolerance=toggles.hallucination_numeric_tolerance,
+            use_judge=use_judge,
+            judge_model=self.settings.hallucination_judge_model or self.settings.generation_model,
+        )
+
+    async def _apply_gate(self, estimate: Estimate, kept: list[RetrievedChunk]) -> Estimate:
+        """Pasa el gate y rebaja `high`/`medium` a `low` si alguna línea queda `degraded`.
+
+        Si el juez falla, el gate se degrada a solo ancla numérica: una verificación caída no tumba la estimación."""
+        try:
+            report = await self.verify(estimate, kept, use_judge=True)
+        except Exception as exc:
+            logger.warning("rag_gate_judge_failed", error_type=type(exc).__name__)
+            report = await self.verify(estimate, kept, use_judge=False)
+        if report.totals.degraded and estimate.confidence in ("high", "medium"):
+            logger.warning("rag_gate_degraded", degraded_count=report.totals.degraded, judge_used=report.judge_used)
+            return estimate.model_copy(update={"confidence": "low"})
+        return estimate
 
     # --- Pipeline completo -------------------------------------------------------------------------------------
 
@@ -189,8 +241,9 @@ class GroundedEstimator:
             logger.info("rag_retrieval_soft_fail", candidates_evaluated=retrieval.candidates_evaluated)
             return insufficient_estimate()
 
+        toggles = await self.retrieval_toggles()
         with log_stage("augmentation", chunks_count=len(retrieval.chunks)):
-            assembled = self.assemble(retrieval.chunks)
+            assembled = self.assemble(retrieval.chunks, toggles=toggles)
         context_block, kept = assembled.context_block, assembled.kept_chunks
 
         with log_stage("generation", chunks_count=len(kept)):
@@ -210,4 +263,8 @@ class GroundedEstimator:
                 estimate = await self.generate(context_block, query, COHERENCE_FEEDBACK)
             if not check_coherence(estimate):
                 raise MalformedEstimateError("estimate violates the insufficient-context coherence rule")
+
+        if toggles.hallucination_gate_enabled and estimate.confidence != "insufficient":
+            with log_stage("hallucination_gate", lines=sum(len(m.tasks) for m in estimate.modules)):
+                estimate = await self._apply_gate(estimate, kept)
         return estimate

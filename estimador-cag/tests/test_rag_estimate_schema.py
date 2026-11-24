@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from app.generation.rag.estimator import insufficient_estimate
 from app.generation.rag.schemas import Estimate, EstimateRequest, EstimationQuery
 from app.generation.rag.validation import check_coherence, fabricated_source_ids
-from tests._grounded import estimate_payload, incoherent_insufficient
+from tests._grounded import estimate_payload, incoherent_insufficient, line_task
 
 
 def test_a_full_estimate_validates():
@@ -22,7 +22,7 @@ def test_a_full_estimate_validates():
     [
         {"confidence": "certain"},
         {"total_engineer_days": -1},
-        {"modules": [{"name": "X", "tasks": [{"name": "t", "engineer_days": -2}]}]},
+        {"modules": [{"name": "X", "tasks": [line_task("t", -2)]}]},
         {"sources": [{"source_id": "abc", "relevance": "primary", "used_for": "x"}]},
         {"sources": [{"source_id": 1, "relevance": "vital", "used_for": "x"}]},
         {"assumptions": [{"description": "x", "impact": "huge", "rationale": "y"}]},

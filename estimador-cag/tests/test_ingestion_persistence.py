@@ -136,7 +136,7 @@ def test_upgrade_creates_both_tables_and_is_repeatable(sqlite_url):
     engine = create_engine(sqlite_url)
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all() == [
-            "0005_multi_index_chunks"
+            "0006_hnsw_multi_index"
         ]
     engine.dispose()
 

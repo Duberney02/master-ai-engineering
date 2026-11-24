@@ -27,7 +27,7 @@ AUXILIARY_TASKS = ("summary", "anchors", "critic")
 DEFAULT_AUXILIARY_VERSION = "v1"
 # Plantillas del pipeline RAG de estimación (Sesión 9): `rag/<tarea>/<vN>/*.j2`.
 RAG_PROMPTS_DIR = Path(__file__).parent / "rag"
-RAG_TASKS = ("reformulation", "generation", "routing", "query_transform", "structure")
+RAG_TASKS = ("reformulation", "generation", "routing", "query_transform", "structure", "judge", "range_synthesis")
 DEFAULT_RAG_VERSION = "v1"
 DEFAULT_PROMPT_VERSION = "v3"
 # Contrato de salida JSON compartido (`estimation/output_contract.j2`). Las versiones que no lo

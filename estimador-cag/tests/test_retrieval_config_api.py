@@ -24,6 +24,13 @@ KNOBS = {
     "temporal_decay_enabled",
     "task_hours_top_k",
     "task_hours_distance_threshold",
+    "hallucination_gate_enabled",
+    "hallucination_numeric_tolerance",
+    "augmentation_enabled",
+    "augmentation_compress",
+    "augmentation_reorder",
+    "synthesis_enabled",
+    "synthesis_contradiction_threshold",
 }
 
 
@@ -294,3 +301,50 @@ async def test_the_estimator_retrieval_reads_the_runtime_values(client):
     await client.holder["estimator"].retrieve("payments marketplace")
 
     assert modes(client) == ("hybrid", False)
+
+
+# --- Sesión 11: calidad de la generación ----------------------------------------------------------------------
+
+
+def test_quality_toggles_default_to_settings_and_are_off(client):
+    body = client.get(CONFIG).json()["retrieval"]
+
+    assert body["hallucination_gate_enabled"] == {"effective": False, "default": False, "overridden": False}
+    assert body["augmentation_enabled"]["effective"] is False
+    assert body["augmentation_compress"]["default"] is True and body["augmentation_reorder"]["default"] is True
+    assert body["synthesis_enabled"]["effective"] is False
+    assert body["hallucination_numeric_tolerance"]["default"] == 0.5
+    assert body["synthesis_contradiction_threshold"]["default"] == 0.35
+
+
+def test_quality_toggles_are_changed_and_reset_in_runtime(client):
+    response = client.put(
+        CONFIG,
+        json={"hallucination_gate_enabled": True, "synthesis_contradiction_threshold": 0.5, "augmentation_reorder": False},
+    )
+
+    assert response.status_code == 200
+    assert knob(response, "hallucination_gate_enabled") == {"effective": True, "default": False, "overridden": True}
+    assert knob(response, "synthesis_contradiction_threshold")["effective"] == 0.5
+    assert knob(response, "augmentation_reorder")["effective"] is False
+
+    reset = client.put(CONFIG, json={"hallucination_gate_enabled": None})
+    assert knob(reset, "hallucination_gate_enabled")["overridden"] is False
+    assert knob(reset, "synthesis_contradiction_threshold")["overridden"] is True
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"hallucination_numeric_tolerance": -1}, {"synthesis_contradiction_threshold": 99}, {"gate": True}],
+)
+def test_quality_toggles_reject_invalid_values(client, body):
+    assert client.put(CONFIG, json=body).status_code == 422
+
+
+async def test_effective_toggles_reach_the_orchestrator(client):
+    client.put(CONFIG, json={"augmentation_enabled": True, "hallucination_gate_enabled": True})
+
+    toggles = await client.holder["estimator"].retrieval_toggles()
+
+    assert toggles.augmentation_enabled is True and toggles.hallucination_gate_enabled is True
+    assert toggles.synthesis_enabled is False

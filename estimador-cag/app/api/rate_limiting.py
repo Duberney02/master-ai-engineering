@@ -25,6 +25,8 @@ RETRY_AFTER_SECONDS = 60
 RETRIEVAL_LIMIT = "120/minute"
 ESTIMATE_LIMIT = "10/minute"
 STAGES_LIMIT = "30/minute"
+# La etapa `verify` puede llamar al juez LLM: límite propio, más estricto que el resto de etapas.
+VERIFY_LIMIT = "15/minute"
 
 
 def api_key_identifier(request: Request) -> str:

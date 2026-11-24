@@ -4,7 +4,7 @@
 restringen con `Literal`.
 """
 
-from datetime import date
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -218,12 +218,40 @@ class Assumption(BaseModel):
     rationale: str
 
 
+class LineCitation(BaseModel):
+    """Cita de UNA línea (tarea) a un chunk recuperado, con la evidencia literal que la respalda (Sesión 11)."""
+
+    chunk_id: int = Field(description="Id del chunk citado (el atributo `id` de un elemento `<source>`).")
+    document_id: int | None = Field(default=None, description="Documento padre (atributo `document_id` del `source`).")
+    evidence: str = Field(min_length=1, description="Fragmento LITERAL del chunk que respalda la cifra de la línea.")
+
+
 class TaskItem(BaseModel):
-    """Tarea concreta de un módulo, en jornadas-ingeniero."""
+    """Tarea concreta de un módulo, en jornadas-ingeniero, con su atribución por línea.
+
+    `grounded=true` exige al menos una fuente y horas; `grounded=false` («el contexto no respalda esta tarea») no lleva
+    fuentes ni `engineer_days`. Una violación hace que `generate_structured` pida la corrección.
+    """
 
     name: str = Field(min_length=1)
     description: str | None = None
-    engineer_days: float = Field(ge=0, allow_inf_nan=False)
+    engineer_days: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    grounded: bool = Field(description="True si alguna fuente del contexto respalda la tarea.")
+    sources: list[LineCitation] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _line_integrity(self) -> "TaskItem":
+        if self.grounded:
+            if not self.sources:
+                raise ValueError(f"task '{self.name}' is grounded=true but cites no source")
+            if self.engineer_days is None:
+                raise ValueError(f"task '{self.name}' is grounded=true but has no engineer_days")
+        else:
+            if self.sources:
+                raise ValueError(f"task '{self.name}' is grounded=false and must not cite sources")
+            if self.engineer_days is not None:
+                raise ValueError(f"task '{self.name}' is grounded=false and must have engineer_days=null")
+        return self
 
 
 class WorkModule(BaseModel):
@@ -261,7 +289,7 @@ class Estimate(BaseModel):
         """
         if self.confidence == "insufficient":
             return self
-        task_days = sum(task.engineer_days for module in self.modules for task in module.tasks)
+        task_days = sum(task.engineer_days or 0 for module in self.modules for task in module.tasks)
         if not task_days:
             return self
         if self.total_engineer_days is None or abs(self.total_engineer_days - task_days) > _TOTAL_TOLERANCE_DAYS:
@@ -316,6 +344,9 @@ class GenerateResult(BaseModel):
         default_factory=list, description="Ids citados que no estaban en `kept_chunks` (vacío = limpio)."
     )
     coherent: bool = Field(description="False si una estimación `insufficient` incumple su forma.")
+    citation_report: "CitationReport | None" = Field(
+        default=None, description="Sesión 11: estado de cada línea (`grounded`, `dangling` o `insufficient`)."
+    )
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -467,9 +498,139 @@ class TaskHoursEstimate(BaseModel):
     has_match: bool
     dispersion: float | None = Field(default=None, ge=0, description="Coeficiente de variación de las horas vecinas.")
     neighbors: list[TaskNeighbor] = Field(default_factory=list)
+    hours_range: "HoursRange | None" = Field(
+        default=None, description="Sesión 11: rango cuando la dispersión supera el umbral de contradicción."
+    )
 
 
 class TaskHoursResult(BaseModel):
     """Una estimación por tarea, en el orden en que se enviaron."""
 
     tasks: list[TaskHoursEstimate]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Sesión 11: calidad de la generación (citas por línea, gate de alucinaciones, rangos de horas).
+# ---------------------------------------------------------------------------------------------------------------
+
+LineStatus = Literal["grounded", "dangling", "insufficient"]
+GateStatus = Literal["grounded", "degraded", "insufficient"]
+
+
+class LineCitationVerdict(BaseModel):
+    """Estado de citas de una línea: `dangling` si cita algún chunk que el modelo no vio."""
+
+    module: str
+    task: str
+    status: LineStatus
+    dangling_ids: list[int] = Field(default_factory=list)
+
+
+class CitationTotals(BaseModel):
+    grounded: int = 0
+    dangling: int = 0
+    insufficient: int = 0
+
+
+class CitationReport(BaseModel):
+    """Informe de verificación de citas por línea (más las citas globales de `Estimate.sources`)."""
+
+    lines: list[LineCitationVerdict]
+    totals: CitationTotals
+    verified_citations: list[int] = Field(description="Ids citados (por línea o globales) presentes en el contexto.")
+    dangling_citations: list[int] = Field(description="Ids citados que NO estaban en el contexto.")
+
+
+class LineGateVerdict(BaseModel):
+    """Calificación de una línea por el gate de alucinaciones."""
+
+    module: str
+    task: str
+    status: GateStatus
+    claimed_days: float | None = Field(default=None, description="Jornadas que afirma la línea.")
+    anchor_days: float | None = Field(
+        default=None, description="Jornadas que respaldan los chunks citados (horas / 8); nulo si no hay cifra."
+    )
+    reason: str | None = Field(default=None, description="Por qué quedó `degraded` (desviación o dictamen del juez).")
+    judge_supported: bool | None = Field(default=None, description="Dictamen del juez; nulo si no se ejecutó.")
+
+
+class GateTotals(BaseModel):
+    grounded: int = 0
+    degraded: int = 0
+    insufficient: int = 0
+
+
+class VerifyReport(BaseModel):
+    """Respuesta de `POST /v1/estimate/stages/verify` y resultado del gate en el pipeline."""
+
+    lines: list[LineGateVerdict]
+    totals: GateTotals
+    judge_used: bool = Field(description="False si solo se aplicó el ancla numérica.")
+
+
+class VerifyRequest(BaseModel):
+    """`POST /v1/estimate/stages/verify`: la estimación y los chunks conservados (el contexto que vio el modelo)."""
+
+    estimate: Estimate
+    kept_chunks: list[RetrievedChunk] = Field(default_factory=list, max_length=100)
+    use_judge: bool = Field(default=True, description="False: solo el ancla numérica, sin llamar al LLM.")
+
+
+class HoursRange(BaseModel):
+    """Rango de horas de una tarea cuyos precedentes se contradicen; las horas puntuales no cambian."""
+
+    low: float = Field(ge=0)
+    high: float = Field(ge=0)
+    reason: str = Field(description="Qué conflicto hay entre los precedentes.")
+
+# ---------------------------------------------------------------------------------------------------------------
+# Sesión 11: expansión incremental del corpus (`/embeddings/index/*`).
+# ---------------------------------------------------------------------------------------------------------------
+
+# Tope de presupuestos por lote: cada uno cuesta embeddings reales; un lote mayor se parte en varios.
+MAX_BUDGETS_PER_INDEX_RUN = 50
+
+
+class IndexRunRequest(BaseModel):
+    """`POST /embeddings/index/runs`: presupuestos nuevos para ampliar la colección `budget`."""
+
+    budgets: list[Budget] = Field(min_length=1, max_length=MAX_BUDGETS_PER_INDEX_RUN)
+    document_type: str = Field(default="historical_budget", min_length=1, max_length=50)
+    chunk_type: str = Field(default="budget_component", min_length=1, max_length=50, pattern=r"^[a-z_]+$")
+
+
+class IndexRunResponse(BaseModel):
+    """Respuesta `202`: el trabajo queda registrado y la ingesta sigue en segundo plano."""
+
+    job_id: str
+    documents_total: int = Field(ge=0)
+    status: str
+
+
+class IndexJobView(BaseModel):
+    """`GET /embeddings/index/jobs/{job_id}`."""
+
+    job_id: str
+    status: str
+    documents_processed: int = Field(ge=0, description="Documentos indexados (los omitidos por duplicado no cuentan).")
+    error_message: str | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+
+
+class CollectionIndexStats(BaseModel):
+    collection: str
+    documents: int = Field(ge=0)
+    chunks: int = Field(ge=0)
+    hnsw_index: bool = Field(description="True si la tabla de la colección tiene un índice HNSW.")
+
+
+class IndexStatsResponse(BaseModel):
+    collections: list[CollectionIndexStats]
+    total_chunks: int = Field(ge=0)
+
+
+# Referencias adelantadas (`CitationReport`, `HoursRange`) definidas al final del módulo.
+GenerateResult.model_rebuild()
+TaskHoursEstimate.model_rebuild()

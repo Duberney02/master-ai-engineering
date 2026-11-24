@@ -43,8 +43,26 @@ def make_chunk(chunk_id: int, distance: float = 0.2, content: str | None = None,
         chunk_type=extra.pop("chunk_type", "budget_component"),
         distance=distance,
         budget_id=extra.pop("budget_id", f"BUD-{chunk_id}"),
+        document_id=extra.pop("document_id", chunk_id + 100),
         **extra,
     )
+
+
+def line_task(name: str = "Onboarding KYC", days: float | None = 12, chunk_ids=(1,), **overrides) -> dict:
+    """Tarea con atribución por línea (Sesión 11): fundamentada si cita chunks; si no, `grounded=false` sin horas."""
+    grounded = bool(chunk_ids)
+    task = {
+        "name": name,
+        "description": None,
+        "engineer_days": days if grounded else None,
+        "grounded": grounded,
+        "sources": [
+            {"chunk_id": cid, "document_id": cid + 100, "evidence": "KYC onboarding. Estimated hours: 40"}
+            for cid in chunk_ids
+        ],
+    }
+    task.update(overrides)
+    return task
 
 
 def estimate_payload(source_ids=(1,), confidence: str = "high", **overrides) -> dict:
@@ -55,7 +73,7 @@ def estimate_payload(source_ids=(1,), confidence: str = "high", **overrides) -> 
             {
                 "name": "Pagos",
                 "description": "Marketplace de pagos",
-                "tasks": [{"name": "Onboarding KYC", "description": None, "engineer_days": 12}],
+                "tasks": [line_task(chunk_ids=tuple(source_ids[:1]) or (1,))],
             }
         ],
         "sources": [{"source_id": sid, "relevance": "primary", "used_for": "horas de KYC"} for sid in source_ids],

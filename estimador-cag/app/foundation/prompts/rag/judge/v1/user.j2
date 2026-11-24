@@ -1,0 +1,11 @@
+<lines>
+{% for line in lines %}
+<line index="{{ line.index }}" task="{{ line.task }}" claimed_days="{{ line.claimed_days }}">
+{% for evidence in line.evidence %}
+- {{ evidence }}
+{% endfor %}
+</line>
+{% endfor %}
+</lines>
+
+Dictamina cada línea.

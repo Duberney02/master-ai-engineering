@@ -9,6 +9,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.api import config as runtime_config_api
 from app.api import (
+    corpus_index,
     estimate,
     estimate_stages,
     estimate_tasks,
@@ -92,6 +93,8 @@ app.include_router(estimate.router)
 app.include_router(estimate_stages.router)
 # Sesión 10: horas por tarea desde el corpus histórico.
 app.include_router(estimate_tasks.router)
+# Sesión 11: expansión incremental del corpus y estadísticas del índice.
+app.include_router(corpus_index.router)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 # `X-Request-ID` en todas las respuestas y en los logs de la petición.

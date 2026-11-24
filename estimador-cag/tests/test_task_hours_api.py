@@ -193,6 +193,7 @@ def test_a_task_without_neighbours_under_the_threshold_has_no_match_and_null_hou
         "has_match": False,
         "dispersion": None,
         "neighbors": [],
+        "hours_range": None,
     }
 
 

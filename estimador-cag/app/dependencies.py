@@ -18,7 +18,8 @@ from app.domain.acb import ActorCriticBoss
 from app.domain.history import EstimationHistory
 from app.domain.pipeline import EstimationPipeline
 from app.domain.session_estimation import SessionEstimationService
-from app.foundation.llm.runtime_config import RuntimeModelConfig, effective_settings
+from app.foundation.llm.runtime_config import RuntimeModelConfig, RuntimeRetrievalConfig, effective_settings
+from app.foundation.llm.service import generate_from_messages
 from app.foundation.persistence.database import SessionLocal, get_session
 from app.generation.agentic.critic import CriticService
 from app.generation.conversation.sessions import SessionStore
@@ -28,8 +29,11 @@ from app.generation.rag.chunking.structural import JSONStructuralChunker
 from app.generation.rag.embedding.embedder import OpenAIEmbedder
 from app.generation.rag.estimator import GroundedEstimator
 from app.generation.rag.idempotency import IdempotencyStore
+from app.generation.rag.retrieval.advanced_pipeline import AdvancedRetriever
+from app.generation.rag.retrieval.reranker import CrossEncoderReranker, Reranker
 from app.generation.rag.retriever import ChunkRetriever
 from app.generation.rag.store.documents import DocumentStore
+from app.generation.rag.task_hours import TaskHoursEstimator
 from app.ingestion.catalog import DataCatalog, load_catalog
 from app.ingestion.loaders.filesystem import FileSystemLoader
 from app.ingestion.parsers.registry import ParserRegistry, default_registry
@@ -169,11 +173,48 @@ def get_rag_session_factory() -> Callable[[], AsyncSession]:
     return SessionLocal
 
 
+@lru_cache
+def _cross_encoder(model_name: str) -> CrossEncoderReranker:
+    """Un único cross-encoder por modelo y proceso: el modelo se carga una vez, en el primer reranking."""
+    return CrossEncoderReranker(model_name)
+
+
+def get_reranker() -> Reranker:
+    """Reranker de la recuperación (Sesión 10). Crearlo es barato: los pesos se cargan en el primer uso, y con el
+    reranking apagado nunca. Las pruebas lo sustituyen con `app.dependency_overrides` y no descargan pesos."""
+    return _cross_encoder(get_settings().reranker_model)
+
+
 def get_chunk_retriever(
     session_factory: Callable[[], AsyncSession] = Depends(get_rag_session_factory),
     embedder: OpenAIEmbedder | None = Depends(get_rag_embedder),
+    reranker: Reranker = Depends(get_reranker),
 ) -> ChunkRetriever:
-    return ChunkRetriever(session_factory, embedder, ef_search=get_settings().hnsw_ef_search)
+    settings = get_settings()
+    return ChunkRetriever(
+        session_factory,
+        embedder,
+        ef_search=settings.hnsw_ef_search,
+        reranker=reranker,
+        recall_top_k=settings.retrieval_recall_top_k,
+        rerank_top_n=settings.rerank_top_n,
+        rrf_k=settings.rrf_k,
+    )
+
+
+def get_advanced_retriever(
+    session_factory: Callable[[], AsyncSession] = Depends(get_rag_session_factory),
+    embedder: OpenAIEmbedder | None = Depends(get_rag_embedder),
+    reranker: Reranker = Depends(get_reranker),
+) -> AdvancedRetriever:
+    """Recuperador avanzado multi-índice (Sesión 10): router, transformación de consulta y reranking inyectados."""
+    return AdvancedRetriever(
+        session_factory,
+        embedder,
+        generate=generate_from_messages,
+        reranker=reranker,
+        ef_search=get_settings().hnsw_ef_search,
+    )
 
 
 _idempotency_store: IdempotencyStore | None = None
@@ -204,12 +245,26 @@ def reset_idempotency_store() -> None:
     _idempotency_store = None
 
 
+def get_runtime_retrieval_config() -> RuntimeRetrievalConfig:
+    """Almacén de overrides de recuperación en runtime (Redis, hash aparte); sin estado, como el de modelos."""
+    return RuntimeRetrievalConfig(get_settings())
+
+
 def get_grounded_estimator(
     retriever: ChunkRetriever = Depends(get_chunk_retriever),
     idempotency: IdempotencyStore = Depends(get_idempotency_store),
+    runtime_retrieval: RuntimeRetrievalConfig = Depends(get_runtime_retrieval_config),
 ) -> GroundedEstimator:
-    """Orquestador RAG de la Sesión 9 (pipeline completo y etapas)."""
-    return GroundedEstimator(get_settings(), retriever, idempotency)
+    """Orquestador RAG de la Sesión 9 (pipeline completo y etapas); recupera con los parámetros de runtime."""
+    return GroundedEstimator(get_settings(), retriever, idempotency, runtime_retrieval=runtime_retrieval)
+
+
+def get_task_hours_estimator(
+    retriever: ChunkRetriever = Depends(get_chunk_retriever),
+    runtime_retrieval: RuntimeRetrievalConfig = Depends(get_runtime_retrieval_config),
+) -> TaskHoursEstimator:
+    """Horas por tarea (Sesión 10): recuperador sobre `historical_task` y parámetros de runtime."""
+    return TaskHoursEstimator(get_settings(), retriever, runtime_retrieval=runtime_retrieval)
 
 
 def get_runtime_config() -> RuntimeModelConfig:

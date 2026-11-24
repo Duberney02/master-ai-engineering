@@ -112,6 +112,33 @@ class Settings(BaseSettings):
     # Claves de los routers `/v1/retrieval/*` y `/v1/estimate/*`. Sin valor, el router responde 401 a todo.
     retrieval_api_key: str | None = None
     estimate_api_key: str | None = None
+    # Recuperación avanzada (Sesión 10). Modo por defecto: `vector` reproduce la Sesión 9; `hybrid` fusiona la rama
+    # vectorial y la léxica con RRF. Se puede cambiar por petición y en runtime (`/api/v1/config/retrieval`).
+    retrieval_search_mode: Literal["vector", "hybrid"] = "vector"
+    # Reranking con cross-encoder: apagado por defecto (la línea base es barata). Modelo multilingüe pequeño (CPU).
+    reranker_enabled: bool = False
+    reranker_model: str = Field(default="cross-encoder/mmarco-mMiniLMv2-L12-H384-v1", min_length=1, max_length=200)
+    # Recall-then-rerank: candidatos que se recuperan de forma barata y mejores que devuelve el cross-encoder.
+    retrieval_recall_top_k: int = Field(default=50, ge=1, le=200)
+    rerank_top_n: int = Field(default=5, ge=1, le=30)
+    # Constante de suavizado de RRF (Cormack et al.): alta = un documento debe puntuar bien en AMBAS ramas.
+    rrf_k: int = Field(default=60, ge=1, le=1000)
+    # Etapas de la búsqueda avanzada, conmutables por separado para medirlas aisladas.
+    retrieval_routing_enabled: bool = True
+    query_transform_enabled: bool = True
+    # Reponderación blanda por antigüedad; apagada por defecto: actívala solo con evidencia.
+    temporal_decay_enabled: bool = False
+    # Modelos del clasificador del router y del transformador de consulta; sin valor, el modelo primario efectivo.
+    router_model: str | None = Field(default=None, min_length=1, max_length=100)
+    query_transform_model: str | None = Field(default=None, min_length=1, max_length=100)
+    # Vida media (días) del decay: peso = 0.5 ** (edad / vida_media). ≈2,5 años: los presupuestos envejecen despacio.
+    temporal_decay_half_life_days: int = Field(default=900, ge=1, le=36_500)
+    query_max_subqueries: int = Field(default=4, ge=1, le=4)
+    router_max_targets: int = Field(default=3, ge=1, le=3)
+    # Horas por tarea: vecinos históricos que se consultan y distancia coseno máxima; sin vecino por debajo del
+    # umbral la tarea no recibe horas (`has_match=false`).
+    task_hours_top_k: int = Field(default=5, ge=1, le=30)
+    task_hours_distance_threshold: float = Field(default=0.45, ge=0, le=2)
 
     @field_validator("app_env", mode="before")
     @classmethod

@@ -52,3 +52,27 @@ Una migración Alembic `0003` SHALL crear con `CREATE INDEX CONCURRENTLY` (dentr
 #### Scenario: Migración reversible
 - **WHEN** se ejecuta `alembic downgrade 0002` y luego `alembic upgrade head`
 - **THEN** ambos terminan sin error y `alembic check` no detecta diferencias.
+
+### Requirement: Columna léxica para búsqueda híbrida
+Una migración Alembic SHALL añadir a la tabla de chunks de presupuestos una columna `content_tsv` `tsvector`
+`GENERATED ALWAYS AS (to_tsvector(<regconfig>, content)) STORED` con un índice GIN. La configuración de texto SHALL ser
+la misma en la migración y en la consulta léxica. La migración SHALL omitirse en dialectos distintos de PostgreSQL y
+ser reversible.
+
+#### Scenario: Columna mantenida por la base
+- **WHEN** se inserta un chunk
+- **THEN** su `content_tsv` queda calculado sin intervención de la aplicación
+
+### Requirement: Tablas de transcripciones y documentación técnica
+Una migración Alembic SHALL crear `transcript_chunks` y `technical_doc_chunks` con las mismas columnas estructurales
+que la tabla de chunks de presupuestos (FK a `documents` con `ON DELETE CASCADE`, `chunk_type`, `content`,
+`embedding vector(1536)`, `metadata` JSONB, `created_at`, `content_tsv` generada), con sus índices GIN sobre
+`metadata` y `content_tsv`. La tabla `chunks` existente SHALL conservar su nombre y su contrato con `POST /search`.
+
+#### Scenario: Migración limpia
+- **WHEN** se ejecuta `alembic upgrade head` y después `alembic check`
+- **THEN** ambas terminan con éxito y `alembic check` no informa de cambios pendientes
+
+#### Scenario: Compatibilidad de /search
+- **WHEN** se aplica la migración multi-índice
+- **THEN** `POST /search` devuelve los mismos resultados que antes

@@ -562,6 +562,136 @@ curl -s -X POST http://localhost:8000/v1/estimate/stages/reformulate \
 `context_block`, `kept_chunks`, `dropped_count` y `token_count`; `generate` recibe `{"context_block", "query",
 "kept_chunks"}` y devuelve la estimación, `fabricated_source_ids` y `coherent` (sin reintentos automáticos).
 
+### Recuperación avanzada y horas por tarea (sesión 10)
+
+La Sesión 9 recupera solo por vectores, de una sola colección y con la consulta tal cual. La Sesión 10 ataca los fallos
+que quedan (consultas multi-tema, identificadores léxicos diluidos por el embedding, la colección dominante inundando el
+top-k, precedentes obsoletos) y añade las horas por tarea. Todo vive en `app/generation/rag/` (`retriever.py`,
+`retrieval/`, `task_hours.py`, `structure.py`) y es **aditivo**: con los valores por defecto, `POST /v1/retrieval/search`
+responde exactamente igual que en la Sesión 9.
+
+| Endpoint | Clave (`X-API-Key`) | Límite por clave | Qué hace |
+|---|---|---|---|
+| `POST /v1/retrieval/search` | `RETRIEVAL_API_KEY` | 120/min | ahora acepta `search_mode` (`vector`\|`hybrid`) y `rerank` opcionales |
+| `POST /v1/retrieval/advanced-search` | `RETRIEVAL_API_KEY` | 120/min | multi-índice: *routing*, transformación de consulta, filtros duros, fusión, *rerank* y *decay*, con diagnóstico |
+| `GET`/`PUT /api/v1/config/retrieval` | — | — | parámetros de recuperación en runtime (Redis), como `/api/v1/config/models` |
+| `POST /v1/estimate/stages/structure` | `ESTIMATE_API_KEY` | 30/min | módulos → tareas del brief **sin horas** (`engineer_days` nulo) |
+| `POST /v1/estimate/tasks/hours` | `ESTIMATE_API_KEY` | 30/min | horas por tarea por consenso ponderado de tareas históricas |
+
+#### Modos de búsqueda: `vector`, `hybrid` y `rerank`
+
+- **`vector`** (por defecto): k-NN de la Sesión 9.
+- **`hybrid`**: añade una rama léxica (columna `content_tsv` generada + índice GIN, migración `0004`) y la fusiona con la
+  vectorial mediante **Reciprocal Rank Fusion** (`RRF_K`, 60). Un chunk que solo aporta la rama léxica (un identificador
+  literal como `ZX9000`) entra en la fusión; el umbral de distancia sigue aplicándose a la rama vectorial. La rama léxica
+  une los lexemas con OR y usa la configuración de texto `english` (el corpus de ejemplo está en inglés; cambiarla toca la
+  migración `0004` y `FTS_REGCONFIG` en `foundation/persistence/models.py`).
+- **`rerank=true`** (*recall-then-rerank*): se recuperan `RETRIEVAL_RECALL_TOP_K` candidatos (50) y un cross-encoder
+  multilingüe (`RERANKER_MODEL`, `sentence-transformers`) devuelve los `RERANK_TOP_N` mejores (5) con su `relevance_score`.
+  El modelo se carga en el **primer** uso (descarga los pesos) y nunca con el reranking apagado; corre en un hilo para no
+  bloquear el event loop. `torch` se instala en su build CPU (la imagen crece, pero no trae CUDA).
+- **Precedencia** de `search_mode` y `rerank`: campo de la petición → override de runtime → `Settings`. La estimación
+  fundamentada (`from-transcript` y `stages/retrieve`) usa los valores de runtime/configuración.
+
+#### Búsqueda avanzada multi-índice
+
+El corpus se organiza en tres **colecciones** con sus propios metadatos: `budget` (tabla `chunks`, que **conserva su
+nombre** y su contrato con `POST /search`), `transcript` (`transcript_chunks`: `transcript_id`, participantes,
+`meeting_date`) y `technical_doc` (`technical_doc_chunks`: `doc_id`, `version`). Las tablas nuevas (migración `0005`) no
+tienen índice HNSW todavía (Sesión 11). Todo chunk devuelto lleva `collection`, `source_id` y, si existe, `document_date`.
+
+`POST /v1/retrieval/advanced-search` ejecuta, en este orden («lo barato y excluyente, al principio; lo caro y fino, al
+final; lo blando, al cierre»): transformación de consulta → *routing* → filtros duros → búsqueda híbrida → fusión →
+*rerank* → *decay* temporal → top-k. Cada etapa se activa por separado (campos `search_mode`, `rerank`, `routing_enabled`,
+`query_transform_enabled`, `temporal_decay_enabled`, con la misma precedencia).
+
+- **Routing en cascada** (cada decisión se registra con nivel y motivo): `explicit` (la petición nombra `collections`;
+  no se clasifica nada) → `rules` (vocabulario determinista) → `classifier` (LLM con salida estructurada, 1 a
+  `ROUTER_MAX_TARGETS` colecciones y un motivo) → `fallback` (todas las colecciones, si el clasificador falla o el
+  *routing* está deshabilitado).
+- **Transformación de consulta**: una heurística sobre longitud y estructura elige `direct` (consultas cortas), `expand`
+  (reformulaciones de la misma intención, fusionadas por **RRF**) o `decompose` (una subconsulta por tema, fusionadas por
+  ***round-robin*** para cubrir cada tema), con un máximo de `QUERY_MAX_SUBQUERIES` (4). Ante un fallo del LLM degrada a
+  `direct`.
+- **Filtros duros** (`technologies`, `sectors`, `min_date`, `doc_version`) dentro de la consulta SQL de cada colección que
+  los entiende. Un filtro que vacía una colección se ve en `cardinality` (0), no como un vacío silencioso.
+- **Decay temporal**: tras el *rerank*, la puntuación de cada finalista se multiplica por
+  `0.5 ** (edad_días / TEMPORAL_DECAY_HALF_LIFE_DAYS)` (900); los chunks sin fecha conservan su puntuación. Apagado por
+  defecto: actívalo solo con evidencia.
+- **Diagnóstico** en la respuesta: `routing` (`level`, `targets`, `reason`), `technique`, `subqueries` y `cardinality`
+  (candidatos por colección tras los filtros duros). Errores: `401`, `422`, `429` y `502` genérico (`500` sin embeddings).
+
+#### Configuración de recuperación en runtime
+
+`GET /api/v1/config/retrieval` devuelve, por parámetro (`search_mode`, `rerank`, `routing_enabled`,
+`query_transform_enabled`, `temporal_decay_enabled`, `task_hours_top_k`, `task_hours_distance_threshold`), su valor
+`effective`, su `default` y si está `overridden`, más el `reranker_model`. `PUT` es parcial y todo o nada: una clave
+ausente no cambia, `null` restablece el valor por defecto, un valor desconocido o fuera de rango es `422` y un Redis
+caído es `503`. Los overrides viven en un hash de Redis **aparte** del de los modelos y valen desde la siguiente
+recuperación, sin reiniciar.
+
+#### Horas por tarea
+
+La estructura y las horas se separan: el LLM propone **módulos y tareas sin horas** y las horas salen del corpus
+histórico (`chunk_type="historical_task"`, ver `scripts/build_task_corpus.py`) por búsqueda vectorial.
+
+- `POST /v1/estimate/stages/structure` recibe el brief reformulado (`query`, la salida de `reformulate`) y devuelve módulos
+  y tareas con `engineer_days: null` en todas. Es una descomposición libre: sin recuperación ni citas.
+- `POST /v1/estimate/tasks/hours` recibe módulos con tareas (la respuesta de `structure` sirve tal cual; máx. 150
+  tareas) y, por tarea, busca los `task_hours_top_k` vecinos (5) por debajo de `task_hours_distance_threshold` (0.45).
+  Las horas son el **consenso ponderado por la inversa de la distancia**; la **fiabilidad** es `cercanía × acuerdo`
+  (1 − dispersión relativa de las horas vecinas), en `[0, 1]`; también devuelve los vecinos usados. Una tarea sin vecino
+  bajo el umbral vuelve con `has_match=false` y sin horas: una bandera roja para que la persona aporte el número.
+
+#### Corpus y evaluación
+
+```bash
+# Colecciones nuevas: transcripciones y documentación técnica (idempotente por source_path: repetirlo no duplica).
+docker compose exec estimador-cag python scripts/ingest_corpus.py
+docker compose exec estimador-cag python scripts/build_task_corpus.py --ingest
+docker compose exec estimador-cag python scripts/build_multi_index_corpus.py
+
+# precision@k y latencia por configuración nombrada (A–H) sobre evals/golden_retrieval.json
+docker compose -f docker-compose.verify.yml run --rm --entrypoint python api-test scripts/eval_retrieval_s10.py --configs A B D H
+```
+
+`evals/golden_retrieval.json` tiene consultas de un solo índice (Q1–Q5) y consultas que cruzan colecciones (Q6–Q8), cada
+una con sus `relevant_source_ids` y distractores deliberados. Un chunk es relevante si su `source_id` está en ese
+conjunto; `eval_retrieval_s10.py` imprime una fila por configuración (vector, híbrido, con/sin *rerank*, *routing*,
+transformación, *decay* y pipeline completo) con precision@k media y latencia media, y el desglose por consulta. La
+evaluación necesita embeddings y claves reales y el stack con los tres corpus ingestados (`api-test` con `DATABASE_URL`
+y `OPENAI_API_KEY` reales apuntando al stack).
+
+Con el stack raíz levantado y las claves en `estimador-cag/.env`:
+
+```bash
+# Híbrido + rerank por petición (sin campos, manda el runtime y luego Settings)
+curl -s -X POST http://localhost:8000/v1/retrieval/search \
+  -H "X-API-Key: $RETRIEVAL_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query_text": "legacy gateway adapter ZX9000 settlement", "top_k": 5, "search_mode": "hybrid", "rerank": true}'
+
+# Búsqueda avanzada: filtros duros y etapas a medida
+curl -s -X POST http://localhost:8000/v1/retrieval/advanced-search \
+  -H "X-API-Key: $RETRIEVAL_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query_text": "What did the client say about the Stripe Connect checkout and how much did vendor payouts cost?", "min_date": "2023-01-01", "temporal_decay_enabled": true}'
+
+# Activar híbrido en caliente (parcial; null restablece) y leer el estado
+curl -s -X PUT http://localhost:8000/api/v1/config/retrieval \
+  -H "Content-Type: application/json" -d '{"search_mode": "hybrid", "rerank": null}'
+curl -s http://localhost:8000/api/v1/config/retrieval
+
+# Estructura sin horas y, después, horas por tarea
+curl -s -X POST http://localhost:8000/v1/estimate/stages/structure \
+  -H "X-API-Key: $ESTIMATE_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query": {"function": "B2B payments marketplace with KYC onboarding", "technologies": ["stripe", "sap"], "sector": "finance", "scale": "large", "country": "DE", "regulations": ["PSD2"], "constraints": []}}'
+curl -s -X POST http://localhost:8000/v1/estimate/tasks/hours \
+  -H "X-API-Key: $ESTIMATE_API_KEY" -H "Content-Type: application/json" \
+  -d '{"modules": [{"name": "Compliance", "tasks": [{"name": "KYC onboarding", "description": "Identity verification flow"}]}]}'
+```
+
+`tests/test_docs_examples_s10.py` ejecuta estos mismos `curl` contra la aplicación (con recuperador, LLM y Redis falsos)
+para que la documentación no se desincronice de los contratos.
+
 ### Comparación de estrategias de chunking (sesión 7)
 
 Además del chunking estructural (un chunk por componente), el servicio compara **ocho estrategias** detrás de la

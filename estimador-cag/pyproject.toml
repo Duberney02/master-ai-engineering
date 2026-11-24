@@ -37,6 +37,9 @@ dependencies = [
     "faker>=24.0",
     # Sesión 9: rate limiting por clave de API en los endpoints RAG (`/v1/*`).
     "slowapi>=0.1.9",
+    # Sesión 10: reranking con cross-encoder (recall-then-rerank). Arrastra `torch` (build CPU, ver [tool.uv.sources]).
+    "sentence-transformers>=3.0",
+    "torch>=2.2",
     # Modelo español de spaCy (rueda oficial; versión compatible con spaCy 3.8).
     "es-core-news-md @ https://github.com/explosion/spacy-models/releases/download/es_core_news_md-3.8.0/es_core_news_md-3.8.0-py3-none-any.whl",
 ]
@@ -52,6 +55,15 @@ dev = [
     "fakeredis>=2.26",
     "ruff>=0.8",
 ]
+
+# `torch` desde el índice CPU de PyTorch: el wheel por defecto de Linux trae CUDA (varios GB) y no hay GPU en el servicio.
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

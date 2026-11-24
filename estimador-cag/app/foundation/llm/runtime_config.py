@@ -8,12 +8,17 @@ Semántica de fallos:
 - La lectura degrada con elegancia: si Redis no responde, se usan los valores por defecto de `Settings`.
 - La escritura propaga el fallo (`RuntimeConfigUnavailable`): un cambio que no se aplicó debe verse (HTTP 503).
 
+La Sesión 10 añade `RuntimeRetrievalConfig` (al final del módulo): los parámetros de recuperación, en un hash aparte.
+
 El modelo de embeddings queda fuera a propósito: cambiarlo invalidaría todos los vectores guardados.
 
 Cada solicitud resuelve los overrides **una vez** al empezar (`effective_settings`) y trabaja con esa copia hasta el
 final: un borrador y su crítica, o una estimación y su caché, nunca mezclan dos modelos. Un cambio aplica a partir
 de la siguiente solicitud; las que están en vuelo terminan con el modelo con el que empezaron.
 """
+
+from dataclasses import dataclass, replace
+from typing import Literal
 
 import structlog
 from redis.asyncio import Redis
@@ -158,3 +163,135 @@ async def task_model(settings: Settings, knob: str) -> str | None:
     if override and provider_key_configured(settings, provider_for_model(override, settings.llm_provider)):
         return override
     return getattr(settings, MODEL_KNOBS[knob]) or None
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Sesión 10: parámetros de recuperación en runtime.
+#
+# Mismo patrón que los modelos (overrides como deltas en un hash de Redis, `Settings` como valores por defecto), pero
+# en un hash SEPARADO: restablecer los modelos no borra los *toggles* de recuperación ni al revés. Lectura tolerante
+# (si Redis no responde, se usan los valores de `Settings`) y escritura que propaga el fallo (HTTP 503).
+# ---------------------------------------------------------------------------------------------------------------
+
+RETRIEVAL_HASH_KEY = "estimator:runtime_retrieval"
+
+SEARCH_MODES = ("vector", "hybrid")
+
+
+@dataclass(frozen=True)
+class RetrievalKnob:
+    """Un parámetro de recuperación: campo de `Settings` que sustituye y cómo se (de)serializa en Redis."""
+
+    setting: str
+    kind: Literal["choice", "bool", "int", "float"]
+
+
+# Nombre público (el de la API) -> parámetro.
+RETRIEVAL_KNOBS: dict[str, RetrievalKnob] = {
+    "search_mode": RetrievalKnob("retrieval_search_mode", "choice"),
+    "rerank": RetrievalKnob("reranker_enabled", "bool"),
+    "routing_enabled": RetrievalKnob("retrieval_routing_enabled", "bool"),
+    "query_transform_enabled": RetrievalKnob("query_transform_enabled", "bool"),
+    "temporal_decay_enabled": RetrievalKnob("temporal_decay_enabled", "bool"),
+    "task_hours_top_k": RetrievalKnob("task_hours_top_k", "int"),
+    "task_hours_distance_threshold": RetrievalKnob("task_hours_distance_threshold", "float"),
+}
+
+
+def _serialize(value: object) -> str:
+    return str(value).lower() if isinstance(value, bool) else str(value)
+
+
+def _parse(knob: RetrievalKnob, raw: str) -> object | None:
+    """Valor tipado de un override guardado, o `None` si está corrupto (se ignora y manda `Settings`)."""
+    try:
+        if knob.kind == "bool":
+            return {"true": True, "false": False}[raw.lower()]
+        if knob.kind == "int":
+            return int(raw)
+        if knob.kind == "float":
+            return float(raw)
+    except (KeyError, ValueError):
+        return None
+    return raw if raw in SEARCH_MODES else None
+
+
+@dataclass(frozen=True)
+class RetrievalToggles:
+    """Valores EFECTIVOS (override o `Settings`) que una solicitud resuelve una sola vez al empezar."""
+
+    search_mode: str
+    rerank: bool
+    routing_enabled: bool
+    query_transform_enabled: bool
+    temporal_decay_enabled: bool
+    task_hours_top_k: int
+    task_hours_distance_threshold: float
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> "RetrievalToggles":
+        return cls(**{name: getattr(settings, knob.setting) for name, knob in RETRIEVAL_KNOBS.items()})
+
+
+class RuntimeRetrievalConfig:
+    """Almacén de overrides de los parámetros de recuperación. No guarda estado: cada operación abre su conexión."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+
+    def _client(self) -> Redis:
+        return Redis.from_url(
+            self.settings.redis_url,
+            decode_responses=True,
+            socket_timeout=self.settings.cache_timeout,
+            socket_connect_timeout=self.settings.cache_timeout,
+        )
+
+    async def overrides(self) -> dict[str, object]:
+        """Overrides vigentes y tipados; vacío si no hay Redis o no responde (se sirve con `Settings`)."""
+        if not self.settings.redis_url:
+            return {}
+        try:
+            async with self._client() as client:
+                stored = await client.hgetall(RETRIEVAL_HASH_KEY)
+        except (RedisError, OSError):
+            logger.warning("runtime_retrieval_read_failed")
+            return {}
+        parsed = {name: _parse(RETRIEVAL_KNOBS[name], raw) for name, raw in stored.items() if name in RETRIEVAL_KNOBS}
+        return {name: value for name, value in parsed.items() if value is not None}
+
+    async def set_many(self, changes: dict[str, object | None]) -> None:
+        """Aplica todos los cambios de golpe (transacción de Redis); `None` borra el override del parámetro."""
+        if not self.settings.redis_url:
+            raise RuntimeConfigUnavailable("redis_url is not configured")
+        try:
+            async with self._client() as client:
+                async with client.pipeline(transaction=True) as pipe:
+                    for name, value in changes.items():
+                        if value is None:
+                            pipe.hdel(RETRIEVAL_HASH_KEY, name)
+                        else:
+                            pipe.hset(RETRIEVAL_HASH_KEY, name, _serialize(value))
+                    await pipe.execute()
+        except (RedisError, OSError) as exc:
+            raise RuntimeConfigUnavailable(type(exc).__name__) from exc
+
+    def default(self, name: str) -> object:
+        return getattr(self.settings, RETRIEVAL_KNOBS[name].setting)
+
+    async def effective(self) -> RetrievalToggles:
+        overrides = await self.overrides()
+        defaults = RetrievalToggles.from_settings(self.settings)
+        return replace(defaults, **overrides)
+
+    async def snapshot(self) -> dict[str, dict[str, object]]:
+        """Por parámetro: `effective`, `default` y si hay `overridden`."""
+        overrides = await self.overrides()
+        return {
+            name: {
+                "effective": overrides.get(name, self.default(name)),
+                "default": self.default(name),
+                "overridden": name in overrides,
+            }
+            for name in RETRIEVAL_KNOBS
+        }

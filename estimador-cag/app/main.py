@@ -11,6 +11,7 @@ from app.api import config as runtime_config_api
 from app.api import (
     estimate,
     estimate_stages,
+    estimate_tasks,
     estimations,
     history,
     ingestion,
@@ -89,6 +90,8 @@ app.include_router(runtime_config_api.router)
 app.include_router(retrieval.router)
 app.include_router(estimate.router)
 app.include_router(estimate_stages.router)
+# Sesión 10: horas por tarea desde el corpus histórico.
+app.include_router(estimate_tasks.router)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 # `X-Request-ID` en todas las respuestas y en los logs de la petición.

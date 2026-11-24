@@ -44,6 +44,8 @@ def test_search_returns_the_contract_and_forwards_filters(monkeypatch):
             "top_k": 5,
             "distance_threshold": 0.5,
             "filters": RetrievalFilters(["finance"], 2022, 2024, ["budget_component"]),
+            "search_mode": "vector",
+            "rerank": False,
         }
     ]
 

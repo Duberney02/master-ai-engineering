@@ -252,3 +252,31 @@ def test_advanced_retrieval_settings_defaults():
 def test_advanced_retrieval_settings_reject_out_of_range_values(options):
     with pytest.raises(ValidationError):
         _openai(**options)
+
+
+def test_quality_settings_defaults():
+    s = _openai()
+
+    assert (s.hallucination_gate_enabled, s.hallucination_numeric_tolerance) == (False, 0.5)
+    assert (s.augmentation_enabled, s.augmentation_compress, s.augmentation_reorder) == (False, True, True)
+    assert (s.synthesis_enabled, s.synthesis_contradiction_threshold) == (False, 0.35)
+    assert s.hallucination_judge_model is None and s.synthesis_model is None
+
+
+def test_quality_settings_from_env(monkeypatch):
+    monkeypatch.setenv("HALLUCINATION_GATE_ENABLED", "true")
+    monkeypatch.setenv("HALLUCINATION_NUMERIC_TOLERANCE", "0.25")
+    monkeypatch.setenv("SYNTHESIS_CONTRADICTION_THRESHOLD", "0.6")
+    monkeypatch.setenv("HALLUCINATION_JUDGE_MODEL", "gpt-4o")
+    s = Settings(_env_file=None)
+
+    assert s.hallucination_gate_enabled is True and s.hallucination_numeric_tolerance == 0.25
+    assert s.synthesis_contradiction_threshold == 0.6 and s.hallucination_judge_model == "gpt-4o"
+
+
+@pytest.mark.parametrize(
+    "options", [{"hallucination_numeric_tolerance": -0.1}, {"synthesis_contradiction_threshold": -1}, {"synthesis_model": ""}]
+)
+def test_quality_settings_reject_out_of_range_values(options):
+    with pytest.raises(ValidationError):
+        _openai(**options)

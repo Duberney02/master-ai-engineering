@@ -10,7 +10,9 @@ def test_each_chunk_is_wrapped_in_a_citable_source_element():
 
     wrapped = wrap_chunk(chunk)
 
-    assert wrapped.startswith('<source id="42" budget_id="BUD-42" sector="finance" project_year="2024" ')
+    assert wrapped.startswith(
+        '<source id="42" document_id="142" budget_id="BUD-42" sector="finance" project_year="2024" '
+    )
     assert 'chunk_type="budget_component" distance="0.1235">' in wrapped
     assert wrapped.endswith("\nComponent: KYC\nEstimated hours: 40\n</source>")
 

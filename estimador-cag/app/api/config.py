@@ -122,6 +122,17 @@ class RetrievalUpdateRequest(BaseModel):
     task_hours_distance_threshold: float | None = Field(
         default=None, ge=0, le=2, allow_inf_nan=False, description="Distancia máxima: más allá, sin horas."
     )
+    hallucination_gate_enabled: bool | None = Field(default=None, description="Gate de alucinaciones (ancla + juez).")
+    hallucination_numeric_tolerance: float | None = Field(
+        default=None, ge=0, le=10, allow_inf_nan=False, description="Tolerancia relativa sobre el ancla numérica."
+    )
+    augmentation_enabled: bool | None = Field(default=None, description="Aumentación del contexto recuperado.")
+    augmentation_compress: bool | None = Field(default=None, description="Compresión extractiva del contexto.")
+    augmentation_reorder: bool | None = Field(default=None, description="Reordenación de bordes del contexto.")
+    synthesis_enabled: bool | None = Field(default=None, description="Rango de horas ante vecinos contradictorios.")
+    synthesis_contradiction_threshold: float | None = Field(
+        default=None, ge=0, le=5, allow_inf_nan=False, description="Dispersión a partir de la cual hay rango."
+    )
 
 
 async def _retrieval_payload(config: RuntimeRetrievalConfig) -> dict:

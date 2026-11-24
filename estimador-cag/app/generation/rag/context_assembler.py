@@ -19,11 +19,13 @@ def _attribute(value: object) -> str:
 
 
 def wrap_chunk(chunk: RetrievedChunk) -> str:
-    """Un chunk como elemento `<source>` autodescriptivo; `id` es lo que cita la estimación."""
+    """Un chunk como elemento `<source>` autodescriptivo; `id` y `document_id` son lo que cita cada línea."""
     # Un `</source>` dentro del contenido cerraría el elemento antes de tiempo.
     content = chunk.content.replace("</source>", "&lt;/source&gt;")
+    document_id = "unknown" if chunk.document_id is None else chunk.document_id
     return (
-        f'<source id="{chunk.id}" budget_id="{_attribute(chunk.budget_id or "unknown")}" '
+        f'<source id="{chunk.id}" document_id="{_attribute(document_id)}" '
+        f'budget_id="{_attribute(chunk.budget_id or "unknown")}" '
         f'sector="{_attribute(chunk.sector)}" project_year="{chunk.project_year}" '
         f'chunk_type="{_attribute(chunk.chunk_type)}" distance="{chunk.distance:.4f}">\n'
         f"{content}\n"

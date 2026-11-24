@@ -47,6 +47,10 @@ class JobsRepository:
     async def mark_running(self, job_id: uuid.UUID) -> None:
         await self._update(job_id, status="running")
 
+    async def update_progress(self, job_id: uuid.UUID, *, documents_count: int) -> None:
+        """Progreso de un trabajo en curso (documentos procesados hasta ahora); no cambia su estado."""
+        await self._update(job_id, documents_count=documents_count)
+
     async def mark_completed(self, job_id: uuid.UUID, *, documents_count: int) -> None:
         await self._update(
             job_id,

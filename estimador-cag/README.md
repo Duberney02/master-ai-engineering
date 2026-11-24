@@ -506,6 +506,62 @@ memoria al construir). `HNSW_EF_SEARCH` (1–1000, por defecto 40) se aplica con
 7. **Informe**: `report_index_sizes_s08.py` y `sql_s08/04_monitoring_queries.sql`.
 8. **Mantenimiento**: `sql_s08/05_maintenance_cycle.sql`; al terminar, `sql_s08/99_revert_live_session.sql`.
 
+### RAG de estimación fundamentada (sesión 9)
+
+Cierra el ciclo que la Sesión 8 dejó en una lista de chunks: **transcripción → reformulación → recuperación filtrada →
+ensamblado → generación con citas**. Todo vive en `app/generation/rag/` (ver `ARCHITECTURE.md`, §5).
+
+| Endpoint | Clave (`X-API-Key`) | Límite por clave | Qué hace |
+|---|---|---|---|
+| `POST /v1/retrieval/search` | `RETRIEVAL_API_KEY` | 120/min | k-NN con umbral de distancia y filtros (`sectors`, `project_year_min/max`, `chunk_types`) |
+| `POST /v1/estimate/from-transcript` | `ESTIMATE_API_KEY` | 10/min | transcripción → estimación en jornadas-ingeniero, con fuentes, supuestos y confianza |
+| `POST /v1/estimate/stages/{reformulate,retrieve,assemble,generate}` | `ESTIMATE_API_KEY` | 30/min cada una | las mismas etapas, sin estado, para inspeccionar los artefactos intermedios |
+
+- **Claves**: dos claves independientes, comparadas en tiempo constante; una no abre el otro router. Sin clave
+  configurada el router responde `401` a todo (con `WWW-Authenticate: X-API-Key`). Defínelas en `.env`.
+- **Rate limiting** (slowapi, en memoria del proceso, por clave o por IP si no hay clave): al superar el límite,
+  `429` con `Retry-After: 60` y `{"detail", "limit", "retry_after_seconds"}`. No se comparte entre workers.
+- **`X-Request-ID`**: toda respuesta lo lleva (el recibido o un UUID nuevo) y los logs de cada etapa
+  (`rag_stage_started/completed/failed`, con `stage` y `duration_ms`) llevan el mismo `request_id`.
+- **Soft-fail**: si ningún chunk queda por debajo de `RETRIEVAL_DISTANCE_THRESHOLD`, la búsqueda devuelve `200` con
+  `low_confidence=true` y la estimación devuelve `confidence="insufficient"` sin llamar al generador.
+- **Fundamentación**: cada chunk va en un `<source id=…>`; si la estimación cita un id que no estaba en el contexto se
+  reintenta una vez y, si persiste, la confianza baja a `low`. Una estimación `insufficient` con cifras se repara una vez
+  y, si persiste, la respuesta es `502`.
+- **Idempotencia**: con `idempotency_key`, la misma petición dentro de `IDEMPOTENCY_TTL` devuelve la estimación guardada
+  sin llamar al LLM (Redis con `REDIS_URL`; memoria en otro caso).
+- **Ajustes**: `REFORMULATION_MODEL` y `GENERATION_MODEL` (sin valor, el modelo primario), `RETRIEVAL_TOP_K` (10),
+  `RETRIEVAL_DISTANCE_THRESHOLD` (0.6), `MAX_CONTEXT_TOKENS` (16384), `IDEMPOTENCY_TTL` (86400). Ver `.env.example`.
+- `POST /search` (Sesión 8) sigue igual, sin clave, para el Chunking Lab y las demos.
+
+Con el stack raíz levantado (`docker compose up -d --build`) y las claves en `estimador-cag/.env`:
+
+```bash
+# Corpus: presupuestos de ejemplo (S8) y corpus de tareas históricas (S9, chunk_type=historical_task). Ambos son
+# idempotentes: repetirlos no duplica nada (409 = ya ingestado).
+docker compose exec estimador-cag python scripts/ingest_corpus.py
+docker compose exec estimador-cag python scripts/build_task_corpus.py --ingest
+
+# Recuperación filtrada
+curl -s -X POST http://localhost:8000/v1/retrieval/search \
+  -H "X-API-Key: $RETRIEVAL_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query_text": "payments platform with KYC onboarding for finance", "top_k": 5, "sectors": ["finance"]}'
+
+# Estimación fundamentada (idempotente con idempotency_key)
+curl -s -X POST http://localhost:8000/v1/estimate/from-transcript \
+  -H "X-API-Key: $ESTIMATE_API_KEY" -H "Content-Type: application/json" -H "X-Request-ID: demo-001" \
+  -d '{"transcript": "Cliente: necesitamos una plataforma de pagos B2B para bancos alemanes, con onboarding KYC, integración con SAP y cumplimiento PSD2. El equipo interno es pequeño y queremos salir en seis meses.", "idempotency_key": "demo-001"}'
+
+# Etapa a etapa: cada salida es la entrada de la siguiente
+curl -s -X POST http://localhost:8000/v1/estimate/stages/reformulate \
+  -H "X-API-Key: $ESTIMATE_API_KEY" -H "Content-Type: application/json" \
+  -d '{"transcript": "Cliente: necesitamos una plataforma de pagos B2B para bancos alemanes, con onboarding KYC, integración con SAP y cumplimiento PSD2."}'
+```
+
+`retrieve` recibe el `search_text` de `reformulate` como `query_text`; `assemble` recibe `{"chunks": [...]}` y devuelve
+`context_block`, `kept_chunks`, `dropped_count` y `token_count`; `generate` recibe `{"context_block", "query",
+"kept_chunks"}` y devuelve la estimación, `fabricated_source_ids` y `coherent` (sin reintentos automáticos).
+
 ### Comparación de estrategias de chunking (sesión 7)
 
 Además del chunking estructural (un chunk por componente), el servicio compara **ocho estrategias** detrás de la

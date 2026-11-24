@@ -25,6 +25,10 @@ SESSION_PROMPTS_DIR = Path(__file__).parent / "sessions"
 AUXILIARY_PROMPTS_DIR = Path(__file__).parent / "auxiliary"
 AUXILIARY_TASKS = ("summary", "anchors", "critic")
 DEFAULT_AUXILIARY_VERSION = "v1"
+# Plantillas del pipeline RAG de estimación (Sesión 9): `rag/<tarea>/<vN>/*.j2`.
+RAG_PROMPTS_DIR = Path(__file__).parent / "rag"
+RAG_TASKS = ("reformulation", "generation")
+DEFAULT_RAG_VERSION = "v1"
 DEFAULT_PROMPT_VERSION = "v3"
 # Contrato de salida JSON compartido (`estimation/output_contract.j2`). Las versiones que no lo
 # incluyen en su `system.j2` lo reciben al final del prompt de sistema.
@@ -110,6 +114,27 @@ def render_auxiliary_prompt(task: str, context: dict, version: str = DEFAULT_AUX
         render_auxiliary_template(task, "system", context, version),
         render_auxiliary_template(task, "user", context, version),
     )
+
+
+@lru_cache
+def _rag_environment(task: str, version: str) -> Environment:
+    return Environment(
+        loader=FileSystemLoader(RAG_PROMPTS_DIR / task / version),
+        undefined=StrictUndefined,
+        trim_blocks=True,
+        lstrip_blocks=True,
+        autoescape=False,
+        keep_trailing_newline=False,
+    )
+
+
+def render_rag_template(task: str, name: str, context: dict, version: str = DEFAULT_RAG_VERSION) -> str:
+    """Renderiza `rag/<task>/<version>/<name>.j2` (Sesión 9: `reformulation`, `generation`).
+
+    Tarea o versión inexistentes lanzan `UnknownPromptVersionError`; una variable ausente falla (StrictUndefined)."""
+    if task not in RAG_TASKS or not _VERSION_PATTERN.match(version) or not (RAG_PROMPTS_DIR / task / version).is_dir():
+        raise UnknownPromptVersionError(f"Unknown RAG prompt: {task!r} {version!r}")
+    return _render(_rag_environment(task, version), f"{name}.j2", context)
 
 
 def _validated(version: str) -> str:

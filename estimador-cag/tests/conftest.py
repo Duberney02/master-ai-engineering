@@ -21,3 +21,18 @@ def pytest_runtest_setup(item):
 
 def pytest_runtest_teardown(item, nextitem):
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_rag_state():
+    """Cubos del limitador, almacén de idempotencia y overrides limpios en cada prueba (Sesión 9)."""
+    from app.api.rate_limiting import limiter
+    from app.dependencies import reset_idempotency_store
+    from app.main import app
+
+    limiter.reset()
+    reset_idempotency_store()
+    yield
+    app.dependency_overrides.clear()
+    limiter.reset()
+    reset_idempotency_store()

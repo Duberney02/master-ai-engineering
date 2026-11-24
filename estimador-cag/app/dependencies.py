@@ -9,6 +9,7 @@ from collections.abc import Callable
 from functools import lru_cache
 
 from fastapi import Depends
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import config
@@ -18,13 +19,16 @@ from app.domain.history import EstimationHistory
 from app.domain.pipeline import EstimationPipeline
 from app.domain.session_estimation import SessionEstimationService
 from app.foundation.llm.runtime_config import RuntimeModelConfig, effective_settings
-from app.foundation.persistence.database import get_session
+from app.foundation.persistence.database import SessionLocal, get_session
 from app.generation.agentic.critic import CriticService
 from app.generation.conversation.sessions import SessionStore
 from app.generation.rag.chunking.base import Chunker
 from app.generation.rag.chunking.registry import build_chunkers
 from app.generation.rag.chunking.structural import JSONStructuralChunker
 from app.generation.rag.embedding.embedder import OpenAIEmbedder
+from app.generation.rag.estimator import GroundedEstimator
+from app.generation.rag.idempotency import IdempotencyStore
+from app.generation.rag.retriever import ChunkRetriever
 from app.generation.rag.store.documents import DocumentStore
 from app.ingestion.catalog import DataCatalog, load_catalog
 from app.ingestion.loaders.filesystem import FileSystemLoader
@@ -153,6 +157,59 @@ async def get_chunker_builder() -> Callable[[list[str]], list[Chunker]]:
     settings = await effective_settings(get_settings())
     embedder = get_embedder()
     return lambda names: build_chunkers(names, settings, embedder)
+
+
+def get_rag_embedder() -> OpenAIEmbedder | None:
+    """Embedder de las consultas RAG (Sesión 9); `None` sin `OPENAI_API_KEY` (la API responde 500)."""
+    return get_embedder() if get_settings().openai_api_key else None
+
+
+def get_rag_session_factory() -> Callable[[], AsyncSession]:
+    """Fábrica de sesiones de la recuperación RAG; sin `DATABASE_URL` la búsqueda falla al abrir la sesión (502)."""
+    return SessionLocal
+
+
+def get_chunk_retriever(
+    session_factory: Callable[[], AsyncSession] = Depends(get_rag_session_factory),
+    embedder: OpenAIEmbedder | None = Depends(get_rag_embedder),
+) -> ChunkRetriever:
+    return ChunkRetriever(session_factory, embedder, ef_search=get_settings().hnsw_ef_search)
+
+
+_idempotency_store: IdempotencyStore | None = None
+
+
+def get_idempotency_store() -> IdempotencyStore:
+    """Almacén único del proceso: Redis (cliente asíncrono) con `REDIS_URL`; si no, memoria con caducidad."""
+    global _idempotency_store
+    if _idempotency_store is None:
+        settings = config.get_settings()
+        redis_factory = None
+        if settings.redis_url:
+
+            def redis_factory() -> Redis:
+                return Redis.from_url(
+                    settings.redis_url,
+                    decode_responses=True,
+                    socket_timeout=settings.cache_timeout,
+                    socket_connect_timeout=settings.cache_timeout,
+                )
+
+        _idempotency_store = IdempotencyStore(ttl=settings.idempotency_ttl, redis_factory=redis_factory)
+    return _idempotency_store
+
+
+def reset_idempotency_store() -> None:
+    global _idempotency_store
+    _idempotency_store = None
+
+
+def get_grounded_estimator(
+    retriever: ChunkRetriever = Depends(get_chunk_retriever),
+    idempotency: IdempotencyStore = Depends(get_idempotency_store),
+) -> GroundedEstimator:
+    """Orquestador RAG de la Sesión 9 (pipeline completo y etapas)."""
+    return GroundedEstimator(get_settings(), retriever, idempotency)
 
 
 def get_runtime_config() -> RuntimeModelConfig:

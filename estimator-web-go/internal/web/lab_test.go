@@ -324,3 +324,18 @@ func TestIndexSurvivesAnUnavailableDatabase(t *testing.T) {
 	}
 	h.wantContains(p, `id="lab-history-empty"`)
 }
+
+func TestLegacyLabPostWithoutTopKUsesOne(t *testing.T) {
+	h := newHarness(t, withStore(&memStore{}))
+	stubCompare(h, compareBody([]string{"structural"}, nil, 0))
+
+	p := h.post("/rag/chunking_comparisons", url.Values{"strategies[]": {"structural"}})
+	h.wantStatus(p, 302)
+	calls := h.api.requests("POST", comparePath)
+	if len(calls) != 1 {
+		t.Fatalf("llamadas a la comparación: %d", len(calls))
+	}
+	if got := jsonBody(t, calls[0])["top_k"]; got != float64(1) {
+		t.Errorf("top_k del formulario HTML al omitirse: %v", got)
+	}
+}

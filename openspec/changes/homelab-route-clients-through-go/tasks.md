@@ -2,14 +2,14 @@
 
 ## 1. Inventario definitivo
 
-- [ ] 1.1 Convertir ambas matrices HTTP del diseño en casos de contrato trazables a código, incluidos parámetros, defaults, códigos, campos ausentes y nulos. Aceptación: nueve operaciones REST/SSE/salud y siete adicionales identificadas por método y consumidor.
-- [ ] 1.2 Confirmar consumidores de rutas, plantillas, estáticos, middleware, scripts, demo, dependencias y pruebas. Aceptación: lista de retirada y conservación con referencia para cada recurso compartido.
+- [x] 1.1 Convertir ambas matrices HTTP del diseño en casos de contrato trazables a código, incluidos parámetros, defaults, códigos, campos ausentes y nulos. Aceptación: nueve operaciones REST/SSE/salud y siete adicionales identificadas por método y consumidor.
+- [x] 1.2 Confirmar consumidores de rutas, plantillas, estáticos, middleware, scripts, demo, dependencias y pruebas. Aceptación: lista de retirada y conservación con referencia para cada recurso compartido.
 
 ## 2. Caracterización del comportamiento
 
-- [ ] 2.1 Tras 1, preparar proyectos Compose de prueba propios con redes, bases y volúmenes efímeros independientes antes de ejecutar cualquier prueba. Verificar la titularidad de esos recursos y que la limpieza se limita a ellos, sin limpiezas globales ni intervenciones sobre PostgreSQL, Ollama, Open WebUI o sus recursos. Fijar fixtures Docker de estimaciones, sesiones, historial, adjuntos, vista previa y métricas. Aceptación: casos OK, no estimable, sin ID, expiración, error y estados de navegación reproducibles.
-- [ ] 2.2 Caracterizar Ajustes y Lab en HTML aislado con IA simulada. Aceptación: fixtures de siete campos, catálogo y primario, ocho estrategias, consultas, resultados jerárquicos y fallos de persistencia.
-- [ ] 2.3 Sembrar PostgreSQL efímero con comparaciones previas. Aceptación: fixture con IDs, payloads y datos de orden verificables en el corte.
+- [x] 2.1 Tras 1, preparar proyectos Compose de prueba propios con redes, bases y volúmenes efímeros independientes antes de ejecutar cualquier prueba. Verificar la titularidad de esos recursos y que la limpieza se limita a ellos, sin limpiezas globales ni intervenciones sobre PostgreSQL, Ollama, Open WebUI o sus recursos. Fijar fixtures Docker de estimaciones, sesiones, historial, adjuntos, vista previa y métricas. Aceptación: casos OK, no estimable, sin ID, expiración, error y estados de navegación reproducibles.
+- [x] 2.2 Caracterizar Ajustes y Lab en HTML aislado con IA simulada. Aceptación: fixtures de siete campos, catálogo y primario, ocho estrategias, consultas, resultados jerárquicos y fallos de persistencia.
+- [x] 2.3 Sembrar PostgreSQL efímero con comparaciones previas. Aceptación: fixture con IDs, payloads y datos de orden verificables en el corte.
 
 ## 3. API REST de Go
 

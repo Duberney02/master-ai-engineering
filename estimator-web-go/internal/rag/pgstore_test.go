@@ -121,3 +121,72 @@ func TestMigrateIsIdempotentAndKeepsExistingRows(t *testing.T) {
 		t.Error("migrar de nuevo no debe borrar filas")
 	}
 }
+
+func TestStoreReadsLegacyComparisonsWithoutChangingIDsOrPayload(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	// Las fechas fijas distinguen el orden cronológico del orden por ID y cubren el desempate.
+	const olderID int64 = 9007199254740995
+	const firstID int64 = 9007199254740993
+	const secondID int64 = 9007199254740994
+	payload := compareBody([]string{"hierarchical"}, []string{"oauth"}, 0)
+	_, err := store.pool.Exec(ctx, `
+		INSERT INTO chunking_comparisons
+			(id, strategies, queries, top_k, corpus_label, corpus_count, response_payload,
+			 duration_ms, created_at, updated_at)
+		VALUES
+			($1, '["hierarchical"]', '["oauth"]', 3, 'budgets_sample', 18, $4::jsonb,
+			 1500, '2026-01-01 10:00:00', '2026-01-01 10:00:00'),
+			($2, '["structural"]', '[]', 1, 'budgets_sample', 18, '{}',
+			 NULL, '2026-01-02 10:00:00', '2026-01-02 10:00:00'),
+			($3, '["recursive"]', '[]', 2, 'budgets_sample', 18, '{}',
+			 NULL, '2026-01-02 10:00:00', '2026-01-02 10:00:00')`, olderID, firstID, secondID, string(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := NewPgStore(ctx, os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(reopened.Close)
+	if err := reopened.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	recent, err := reopened.Recent(ctx, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []int64
+	for _, comparison := range recent {
+		ids = append(ids, comparison.ID)
+	}
+	if want := []int64{secondID, firstID, olderID}; !reflect.DeepEqual(ids, want) {
+		t.Fatalf("IDs en orden de historial: %v, se esperaba %v", ids, want)
+	}
+	detail, err := reopened.Find(ctx, olderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.ID != olderID || detail.TopK != 3 || detail.CorpusLabel != "budgets_sample" || detail.CorpusCount != 18 ||
+		detail.DurationMS == nil || *detail.DurationMS != 1500 ||
+		!detail.CreatedAt.Equal(time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)) ||
+		!reflect.DeepEqual(detail.Strategies, []string{"hierarchical"}) ||
+		!reflect.DeepEqual(detail.Queries, []string{"oauth"}) {
+		t.Fatalf("detalle histórico: %+v", detail)
+	}
+	var idType string
+	var storedPayloadMatches, returnedPayloadMatches bool
+	// JSONB compara la estructura completa sin depender del formato ni convertir números a float64.
+	err = store.pool.QueryRow(ctx, `
+		SELECT pg_typeof(id)::text, response_payload = $2::jsonb, $3::jsonb = $2::jsonb
+		FROM chunking_comparisons WHERE id = $1`, olderID, string(payload), string(detail.ResponsePayload)).
+		Scan(&idType, &storedPayloadMatches, &returnedPayloadMatches)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idType != "bigint" || !storedPayloadMatches || !returnedPayloadMatches {
+		t.Fatalf("tipo del ID: %s, payload almacenado íntegro: %t, payload devuelto íntegro: %t; detalle: %s",
+			idType, storedPayloadMatches, returnedPayloadMatches, detail.ResponsePayload)
+	}
+}

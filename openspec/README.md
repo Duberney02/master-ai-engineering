@@ -1,41 +1,73 @@
 # OpenSpec en este repositorio
 
-OpenSpec es el flujo SDD, no una dependencia del servidor Python. Configuración
-verificada con CLI **1.13.2**, Node **24.14.1** y esquema `spec-driven`.
-Los seis skills Codex están versionados en `.agents/skills/`.
+OpenSpec es la herramienta de desarrollo dirigido por especificaciones (SDD) del monorepo. El CLI se fija en **1.13.2** y el proyecto usa el esquema `spec-driven`. La planificación puede ejecutarse nativamente en Ubuntu. Usa Docker Compose para el ciclo completo de las aplicaciones, incluida la gestión de dependencias, compilación, pruebas, lint y ejecución.
 
-En este repositorio no hace falta instalar Node ni el CLI en el host: el Compose de verificación
-(`docker-compose.verify.yml`, imagen en `openspec/Dockerfile`) lo ejecuta en un contenedor con la versión fijada:
+## OpenSpec nativo en Ubuntu
 
-```sh
-docker compose -f docker-compose.verify.yml run --rm openspec list
-docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
-docker compose -f docker-compose.verify.yml run --rm openspec archive <cambio> --yes
-```
+Con NVM instalado y cargado en la sesión del usuario del homelab, instala Node.js 24 y OpenSpec con npm:
 
-Para otra máquina sin Docker (Node 20.19 o posterior):
+```bash
+nvm install 24
+nvm alias default 24
+nvm use default
 
-```sh
 npm install -g @fission-ai/openspec@1.13.2
+
 openspec --version
-openspec list
-openspec validate --all --strict
 ```
 
-En Codex, invocar `$openspec-propose`, `$openspec-apply-change`,
-`$openspec-sync-specs` y `$openspec-archive-change`. En escritorio pueden
-seleccionarse desde Skills; recargar la sesión si no aparecen tras clonar.
-No se requiere regenerarlos en cada checkout. Para añadir otro agente:
-`openspec init --tools <id>` (consultar `openspec init --help`).
+Ejecuta los comandos desde la raíz del repositorio en el homelab. En una shell no interactiva, carga NVM y selecciona la versión predeterminada antes de invocar el CLI. `openspec context --json` permite comprobar la raíz que encontró OpenSpec.
 
-Cada cambio contiene propuesta, diseño, especificaciones por capacidad, tareas
-verificables y evidencia de verificación. Para consultar uno en curso:
+## Claude Code y Codex
+
+Abre el repositorio como directorio de trabajo del asistente. Codex lee [AGENTS.md](../AGENTS.md) directamente. Claude Code lo carga mediante `@AGENTS.md` en [CLAUDE.md](../CLAUDE.md).
+
+Las habilidades compartidas se versionan en `.agents/skills/` para Codex y `.claude/skills/` para Claude Code. Se conservan los archivos auxiliares generados que formen parte de la configuración compartida, como `.agents/skills/.openspec-target`. Los ajustes personales y permisos locales quedan fuera de Git mediante `.claude/settings.local.json`. Un checkout obtiene las habilidades versionadas sin regenerarlas. Recarga la sesión del asistente si aún no aparecen.
+
+Para inicializarlas o regenerarlas cuando corresponda, comprueba primero `openspec --version` y ejecuta desde la raíz:
+
+```bash
+openspec init --tools claude,codex --language Spanish --no-animation
+```
+
+OpenSpec 1.13.2 reconoce `--language Spanish` en una configuración existente si el contexto conserva el bloque de idioma que genera el CLI. El perfil predeterminado `core` incluye los seis workflows de este repositorio. Si tu instalación usa un perfil personalizado, añade `--profile core` al comando para seleccionar ese conjunto. Revisa después los dos directorios generados y los cambios de configuración antes de incorporarlos a Git. Actualiza las habilidades solo mediante OpenSpec, manteniendo la misma versión para ambos asistentes.
+
+## Workflows
+
+En Claude Code usa el comando con `/`. En Codex escribe el nombre con `$` o elige la habilidad desde Skills cuando esté disponible.
+
+| Workflow | Claude Code | Codex | Uso |
+|---|---|---|---|
+| `openspec-explore` | `/openspec-explore` | `$openspec-explore` | Investigar el problema y aclarar requisitos antes de implementar. |
+| `openspec-propose` | `/openspec-propose` | `$openspec-propose` | Crear propuesta, diseño, deltas por capacidad y tareas verificables. |
+| `openspec-apply-change` | `/openspec-apply-change` | `$openspec-apply-change` | Implementar las tareas del cambio y registrar la verificación. |
+| `openspec-update-change` | `/openspec-update-change` | `$openspec-update-change` | Revisar los artefactos de planificación cuando cambien los requisitos o el diseño. |
+| `openspec-sync-specs` | `/openspec-sync-specs` | `$openspec-sync-specs` | Integrar deltas aprobados en las especificaciones principales sin archivar el cambio. |
+| `openspec-archive-change` | `/openspec-archive-change` | `$openspec-archive-change` | Finalizar un cambio completo, integrar deltas pendientes y moverlo al archivo. |
+
+Planifica y revisa el alcance antes de implementar. Durante la implementación, ejecuta en Docker las pruebas y verificaciones de la aplicación y conserva su evidencia en el cambio. Valida los artefactos antes de archivar. El archivado se realiza después de completar y revisar las tareas.
 
 ```sh
 openspec list
 openspec status --change <nombre>
 openspec validate <nombre> --strict
+openspec validate --all --strict
 ```
+
+## OpenSpec mediante Docker
+
+El servicio `openspec` de `docker-compose.verify.yml` monta el repositorio y usa la imagen definida en `openspec/Dockerfile`, con la misma versión del CLI. Se puede usar para validaciones reproducibles, CI/CD y entornos sin Node.js u OpenSpec nativos.
+
+```sh
+docker compose -f docker-compose.verify.yml run --rm openspec --version
+docker compose -f docker-compose.verify.yml run --rm openspec list
+docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
+docker compose -f docker-compose.verify.yml run --rm openspec archive <cambio> --yes
+```
+
+El último comando integra los deltas y mueve el cambio a `changes/archive/`. Úsalo para un cambio completo y revisado.
+
+## Historial
 
 Los cambios completados están en `changes/archive/`:
 `2026-09-29-estimador-resilience-and-streaming`,

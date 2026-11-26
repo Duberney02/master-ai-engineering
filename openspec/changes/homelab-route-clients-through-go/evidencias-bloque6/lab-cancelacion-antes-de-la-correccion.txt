@@ -1,13 +1,13 @@
 [heavy] s1-lab esperando 15:18:17
 [heavy] s1-lab adquirido 15:18:17
- Container hl-s1-api-sse-fixture-1 Running 
- Container hl-s1-block1-web-db-1 Running 
- Container hl-s1-api-sse-fixture-1 Waiting 
- Container hl-s1-block1-web-db-1 Waiting 
- Container hl-s1-api-sse-fixture-1 Healthy 
- Container hl-s1-block1-web-db-1 Healthy 
- Container hl-s1-web-lab-test-run-d390fa7db7ae Creating 
- Container hl-s1-web-lab-test-run-d390fa7db7ae Created 
+ Container hl-s1-api-sse-fixture-1 Running
+ Container hl-s1-block1-web-db-1 Running
+ Container hl-s1-api-sse-fixture-1 Waiting
+ Container hl-s1-block1-web-db-1 Waiting
+ Container hl-s1-api-sse-fixture-1 Healthy
+ Container hl-s1-block1-web-db-1 Healthy
+ Container hl-s1-web-lab-test-run-d390fa7db7ae Creating
+ Container hl-s1-web-lab-test-run-d390fa7db7ae Created
 === RUN   TestLabCancellationThroughPython
     api_lab_integration_test.go:65: no se alcanzó la barrera: {Rows:[] CacheWrites:0 Posts:1 ProviderActive:true ProviderClosed:false Writing:false WriteClosed:false Committed:0 ResponseClosed:false}
 --- FAIL: TestLabCancellationThroughPython (3.08s)

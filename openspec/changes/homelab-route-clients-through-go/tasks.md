@@ -84,7 +84,7 @@
 
 ## 16. Validación final
 
-- [ ] 16.1 Tras 14 y 15, revisar los once deltas y evidencias de paridad, aislamiento y bloqueo. Ejecutar OpenSpec status y validaciones estrictas individual y global, `git diff --check`, `git status --short`, `git ls-files --others --exclude-standard` y revisión independiente de los archivos sin seguimiento. Registrar cualquier fallo heredado e inspeccionar el alcance del diff.
+- [x] 16.1 Tras 14 y 15, revisar los once deltas y evidencias de paridad, aislamiento y bloqueo. Ejecutar OpenSpec status y validaciones estrictas individual y global, `git diff --check`, `git status --short`, `git ls-files --others --exclude-standard` y revisión independiente de los archivos sin seguimiento. Registrar cualquier fallo heredado e inspeccionar el alcance del diff.
 
 ## Trazabilidad de requisitos
 

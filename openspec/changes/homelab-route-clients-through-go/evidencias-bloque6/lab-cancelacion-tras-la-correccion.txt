@@ -1,14 +1,14 @@
 [heavy] s1-lab esperando 15:19:41
 [heavy] s1-lab adquirido 15:19:41
 time="2026-11-26T15:19:41Z" level=warning msg="Found orphan containers (hl-s1-api-db-1) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
- Container hl-s1-block1-web-db-1 Running 
- Container hl-s1-api-sse-fixture-1 Running 
- Container hl-s1-block1-web-db-1 Waiting 
- Container hl-s1-api-sse-fixture-1 Waiting 
- Container hl-s1-api-sse-fixture-1 Healthy 
- Container hl-s1-block1-web-db-1 Healthy 
- Container hl-s1-web-lab-test-run-42a0c97fefc2 Creating 
- Container hl-s1-web-lab-test-run-42a0c97fefc2 Created 
+ Container hl-s1-block1-web-db-1 Running
+ Container hl-s1-api-sse-fixture-1 Running
+ Container hl-s1-block1-web-db-1 Waiting
+ Container hl-s1-api-sse-fixture-1 Waiting
+ Container hl-s1-api-sse-fixture-1 Healthy
+ Container hl-s1-block1-web-db-1 Healthy
+ Container hl-s1-web-lab-test-run-42a0c97fefc2 Creating
+ Container hl-s1-web-lab-test-run-42a0c97fefc2 Created
 === RUN   TestLabCancellationThroughPython
 --- PASS: TestLabCancellationThroughPython (0.09s)
 PASS

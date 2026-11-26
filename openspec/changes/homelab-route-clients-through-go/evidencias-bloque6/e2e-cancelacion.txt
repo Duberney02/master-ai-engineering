@@ -1,5 +1,5 @@
- Container hl-s1-e2e-run-3eb3278e9718 Creating 
- Container hl-s1-e2e-run-3eb3278e9718 Created 
+ Container hl-s1-e2e-run-3eb3278e9718 Creating
+ Container hl-s1-e2e-run-3eb3278e9718 Created
 OK    REST/antes: el cliente recibe la cancelación
 OK    REST/antes: Python observa el cierre, un único POST y cero filas
 OK    REST/escritura: Python libera la escritura, un único POST y cero filas confirmadas

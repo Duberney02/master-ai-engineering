@@ -75,3 +75,28 @@ la arquitectura de los servicios afectados, los documentos de Streamlit (aviso d
 delta `web-backend-go` se resolvió la cláusula obsoleta sobre la cookie firmada: Go no emite cookies y expira la legada si llega
 (escenario «Cookie legada»). La revisión de propósitos obsoletos de las especificaciones principales queda preparada en
 `revision-propositos-specs.md` para el paso de integración de deltas; no se modificó ninguna especificación principal.
+
+## 16.1 Validación final
+
+| Comprobación | Resultado |
+|---|---|
+| `openspec status` | Cuatro artefactos `done`, planificación completa |
+| `openspec validate homelab-route-clients-through-go --strict` | Válido |
+| `openspec validate --all --strict` | 58 de 59. Falla solo `session-11-calidad-generacion-rag` (sin deltas): **fallo heredado**, no modificado |
+| `git diff --check 6322a1d..HEAD`, `git status --short`, `git ls-files --others --exclude-standard` | Limpio y sin archivos sin seguimiento (los logs de evidencia se normalizaron sin espacios finales) |
+| Once deltas | Los once presentes y válidos; solo se tocó `web-backend-go` en este bloque (cláusula de la cookie legada) |
+| Secretos y temporales versionados | `git grep` de claves sin resultados; sin `.env`, `.block*`, cachés ni logs versionados |
+| Alcance del diff desde la base `6322a1d` | 126 archivos: retirada del HTML de Go y de Streamlit, segmentación de redes, CI y Compose, arneses de verificación, corrección de la cancelación del Lab y documentación |
+| CI remoto | No ejecutado: no se declara aprobado |
+
+**Revisión independiente.** La efectuó un revisor externo de solo lectura sobre `291da32..HEAD`. No halló defectos demostrables.
+Sus observaciones menores, aceptadas como limitaciones de las pruebas:
+
+1. Los arneses `verificar-*.sh` fijan por defecto rutas propias del homelab (`HEAVY`, `/sys/fs/ext4/sda2/errors_count`): son específicos de esta máquina.
+2. La aserción de «sin reintentos de POST» del E2E (`1 <= llamadas al proveedor <= 4`) no distingue un reintento extra de Nginx o de Go de los
+   reintentos del SDK; el cierre exacto con un único POST lo comprueba la fase de cancelación y las pruebas de Go del bloque 3 (3.4).
+3. La comprobación E2E de las rutas HTML antiguas es laxa; la cubren `TestRetiredHTMLRoutesAnswerJSON404WithoutEffects` y
+   `TestNoHTMLPresentationDependenciesRemain`.
+4. El fixture parchea `ChunkingComparator.compute_stats` al importarse; solo se carga en el contenedor aislado de pruebas.
+5. Las especificaciones principales siguen mencionando tecnologías retiradas hasta la integración de deltas; está preparado en
+   `revision-propositos-specs.md`.

@@ -1,5 +1,5 @@
- Container hl-s1-e2e-run-0b2f3615d4a6 Creating 
- Container hl-s1-e2e-run-0b2f3615d4a6 Created 
+ Container hl-s1-e2e-run-0b2f3615d4a6 Creating
+ Container hl-s1-e2e-run-0b2f3615d4a6 Created
 OK    nginx /healthz
 OK    vista previa del prompt (200, prompt y ejemplos few-shot)
 OK    vista previa sin proveedor

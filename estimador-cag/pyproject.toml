@@ -14,7 +14,6 @@ dependencies = [
     # Chunking por frases (Sesión 7): el tokenizador Punkt se descarga al construir la imagen.
     "nltk>=3.9",
     "anthropic>=0.40.0",
-    "streamlit>=1.64.0",
     "httpx>=0.27",
     "redis>=5.0,<7",
     "structlog>=25.1,<27",

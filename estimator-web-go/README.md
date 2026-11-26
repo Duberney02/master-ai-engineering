@@ -1,28 +1,35 @@
 # estimator-web-go
 
-Servicio web del estimador en **Go**. Es el único punto de entrada de los navegadores al estimador: renderiza en servidor
-(HTML) las pantallas de estimaciones, el Chunking Lab y los Ajustes, y habla por HTTP con la API de IA
-([`estimador-cag`](../estimador-cag/README.md), Python/FastAPI), que no cambia. Sustituye al cliente Rails que existió
-antes (cambio OpenSpec `migrar-backend-rails-a-go`); conserva sus rutas, HTML, mensajes y estados HTTP.
+Backend **Go** del estimador. Es la única puerta de los clientes de navegador (React) hacia la API de IA
+([`estimador-cag`](../estimador-cag/README.md), Python/FastAPI): expone una API REST y SSE bajo `/api/`, aplica la
+autorización administrativa y la validación de origen de las mutaciones, y guarda en su PostgreSQL el historial del
+Chunking Lab. **No sirve HTML de aplicación**: el cliente Rails, y después el cliente HTML propio de Go, se retiraron
+(cambios OpenSpec `migrar-backend-rails-a-go` y `homelab-route-clients-through-go`, tareas 10.1 y 10.2).
 
 ```
-Navegador ──HTML──▶ estimator-web (Go, :3000) ──JSON/multipart──▶ estimador-cag (FastAPI, :8000)
-                          └──▶ estimator-web-db (PostgreSQL): solo `chunking_comparisons`
+React (nginx) ──/api/*──▶ estimator-web (Go, :3000) ──JSON/multipart/SSE──▶ estimador-cag (FastAPI, :8000)
+                                └──▶ estimator-web-db (PostgreSQL): solo `chunking_comparisons`
 ```
 
 Arquitectura, reglas y decisiones: [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
-## Pantallas y rutas
+## Rutas
 
-| Ruta | Pantalla |
+| Ruta | Uso |
 |---|---|
-| `GET /` | Inicio: una tarjeta por contexto |
-| `GET /estimations/new` · `POST /estimations` | Formulario (descripción, `.txt`, adjuntos PDF/Word) y envío |
-| `GET /estimations` · `GET /estimations/{id}` | Historial y resultado de una estimación |
-| `POST /conversation` | «Nueva conversación» |
-| `GET /rag/chunking_comparisons[/new]` · `POST …` · `GET …/{id}` | Chunking Lab: formulario, ejecución, historial y detalle |
-| `GET /ai_settings` · `PATCH\|PUT /ai_settings` | Modelos del LLM en tiempo de ejecución |
-| `GET /up` | Sonda de salud (200 sin consultar nada) |
+| `POST /api/v1/sessions` · `POST /api/v1/sessions/{session_id}/estimate` | Conversación: abrir sesión y enviar un turno (multipart con adjuntos o formulario) |
+| `POST /api/v1/estimate` · `POST /api/v1/estimate/stream` · `POST /api/v1/transcription/estimate/stream` | Estimación JSON y flujos SSE |
+| `GET /api/v1/prompts/estimation` · `GET /api/v1/estimations[/{estimation_id}]` | Vista previa del prompt, historial y detalle |
+| `GET\|PUT /api/v1/ai/settings` · `GET /api/v1/ai/primary-model` | Ajustes de modelos (administrativo) e indicador del primario |
+| `GET /api/v1/rag/chunking-comparisons[/options\|/{id}]` · `POST …` | Chunking Lab (administrativo): opciones, historial, detalle y ejecución |
+| `GET /health` | Sonda de la API de IA a través de Go (503 saneado si no responde) |
+| `GET /up` | Sonda local de Go: 200 `text/plain` sin consultar IA ni PostgreSQL (healthcheck de la imagen) |
+
+Cualquier otra ruta, incluidas las del antiguo cliente HTML (`/`, `/estimations…`, `/conversation`, `/ai_settings`,
+`/rag/chunking_comparisons…`, `/robots.txt`, `/404.html`…), responde `404` JSON sin llamar a IA. Las mutaciones del
+navegador exigen un `Origin` igual a `ESTIMATOR_PUBLIC_ORIGIN` (o al `Host` recibido si no está definido); las llamadas
+sin `Origin` de clientes HTTP no navegador se aceptan en las rutas sin autenticación ambiental. Las rutas administrativas
+deniegan por defecto (403) hasta integrar identidad.
 
 ## Todo se ejecuta en Docker
 
@@ -33,7 +40,7 @@ docker compose -f docker-compose.verify.yml run --rm web-test               # go
 docker compose -f docker-compose.verify.yml run --rm web-test ./internal/web/... -run Lab   # un subconjunto
 docker compose -f docker-compose.verify.yml run --rm web-lint               # gofmt + go vet
 docker compose -f docker-compose.verify.yml run --rm web-go mod tidy        # dependencias del módulo (go …)
-docker compose up --build                                                    # stack completo (web en :3000)
+docker compose up --build                                                    # stack completo (Go en :3000, React en :3001)
 ```
 
 Las pruebas nunca llaman a la API real ni usan claves: la API de IA se simula con `httptest`. Las de persistencia usan
@@ -52,24 +59,25 @@ Para construir solo la imagen de producción: `docker build -t estimator-web est
 | `ESTIMATOR_COMPARE_TIMEOUT` | `600` | segundos de espera **solo** de la comparación del Chunking Lab |
 | `ESTIMATOR_BADGE_TIMEOUT` | `2` | segundos del indicador del modelo primario de la barra |
 | `DATABASE_URL` | — | PostgreSQL del historial del Chunking Lab; sin ella, el Lab calcula pero no guarda |
-| `SECRET_KEY_BASE` | aleatorio por proceso | firma de la cookie de sesión; defínelo para conservar las conversaciones entre reinicios |
+| `ESTIMATOR_PUBLIC_ORIGIN` | — | origen canónico de las mutaciones del navegador (obligatorio tras un proxy que no conserva el `Host`) |
 | `PORT` | `3000` | puerto de escucha |
 
-El servicio no recibe claves de proveedores: solo habla con la API de IA.
+El servicio no recibe claves de proveedores: solo habla con la API de IA. `SECRET_KEY_BASE` ya no existe: la cookie de sesión HTML se retiró y la variable, si el entorno aún la define, se ignora. Los plazos públicos y de streaming tienen sus propias variables `ESTIMATOR_*_TIMEOUT` (véase `internal/config/config.go`).
 
 ## Base de datos
 
 Una sola tabla, `chunking_comparisons` (estrategias, consultas, `top_k`, corpus, respuesta completa en JSONB, duración).
 Al arrancar se ejecuta `CREATE TABLE IF NOT EXISTS` con el mismo esquema que tenía Rails: un volumen existente se
-reutiliza tal cual y uno vacío se inicializa. Si la base falla, el Lab muestra igualmente el resultado recién calculado
-con un aviso y el resto de pantallas siguen funcionando.
+reutiliza tal cual y uno vacío se inicializa. Los IDs son `bigint` y la API los devuelve como texto decimal. Si la base
+falla, la API del Lab devuelve igualmente el resultado recién calculado con un aviso (ID y fecha nulos) y el resto de
+rutas siguen funcionando.
 
-## Diferencias respecto al cliente Rails
+## Retirada del cliente HTML
 
-- La **cookie de sesión** ya no es la de Rails (cifrada con `SECRET_KEY_BASE`): ahora es JSON firmado con HMAC-SHA256.
-  Tras el despliegue, las conversaciones abiertas se reinician una vez.
-- Si la API cae justo al abrir la conversación de reemplazo tras una sesión caducada, Rails devolvía un 500; el servicio
-  Go muestra el error saneado en el formulario (422).
-- El *read timeout* se aplica a la espera de la respuesta completa de la API, no a cada lectura de socket.
-- El resto (HTML, textos, estados, límites, formato de números y fechas) es equivalente; ver
-  `openspec/changes/migrar-backend-rails-a-go/verification.md`.
+Se retiraron las plantillas y estáticos, las rutas HTML, `html/template`, el paquete de sesión (cookie firmada, avisos
+flash y CSRF de formulario), `_method`, las funciones de presentación y `SECRET_KEY_BASE`. Se conservan los casos de uso,
+las validaciones (`internal/estimation`), los adaptadores `internal/estimatorai`, el corpus, el repositorio PostgreSQL,
+la recuperación de pánicos, el registro saneado, la validación de origen, los límites, `/up` y la propagación de
+`FlushError`, `Unwrap` y los plazos de streaming. Si un navegador aún envía la cookie `_estimator_web_session`, el
+servicio la expira (`Max-Age=0`) y no la lee. La correspondencia entre las pruebas HTML retiradas y la cobertura vigente
+está en [`EVIDENCIA-RETIRADA-HTML.md`](./EVIDENCIA-RETIRADA-HTML.md).

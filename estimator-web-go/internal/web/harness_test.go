@@ -9,13 +9,8 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
-	"net/textproto"
-	"net/url"
-	"regexp"
 	"sort"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -122,6 +117,12 @@ func (a *fakeAPI) requests(method, path string) []apiCall {
 func (a *fakeAPI) count(method, path string) int { return len(a.requests(method, path)) }
 
 // --- Cuerpos de la API (los de test_helper.rb) ---
+
+const comparePath = "/embeddings/compare"
+
+func stubCompare(h *harness, body any) {
+	h.api.stubJSON("POST", comparePath, 200, body)
+}
 
 var result = map[string]any{
 	"summary": "Portal mediano con facturación y soporte.", "confidence_pct": 70, "total_duration_weeks": 10,
@@ -368,7 +369,6 @@ type harness struct {
 	app    *httptest.Server
 	server *Server
 	client *http.Client
-	csrf   string
 	cfg    config.Config
 	store  rag.Store
 }
@@ -388,7 +388,7 @@ func newHarness(t *testing.T, opts ...option) *harness {
 	h := &harness{t: t, api: api, store: &memStore{}}
 	h.cfg = config.Config{
 		Port: "0", APIURL: api.server.URL, OpenTimeout: time.Second, ReadTimeout: 5 * time.Second,
-		CompareTimeout: 10 * time.Second, BadgeTimeout: time.Second, SecretKeyBase: "secreto-de-pruebas",
+		CompareTimeout: 10 * time.Second, BadgeTimeout: time.Second,
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -402,136 +402,8 @@ func newHarness(t *testing.T, opts ...option) *harness {
 	h.app = httptest.NewServer(server.Handler())
 	t.Cleanup(h.app.Close)
 
-	jar, _ := cookiejar.New(nil)
-	h.client = &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	h.client = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return h
-}
-
-// page es una respuesta del servicio.
-type page struct {
-	status   int
-	body     string
-	location string
-	header   http.Header
-}
-
-var csrfMeta = regexp.MustCompile(`<meta name="csrf-token" content="([^"]+)"`)
-
-func (h *harness) do(request *http.Request) *page {
-	h.t.Helper()
-	response, err := h.client.Do(request)
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	defer response.Body.Close()
-	body, _ := io.ReadAll(response.Body)
-	result := &page{status: response.StatusCode, body: string(body), location: response.Header.Get("Location"), header: response.Header}
-	if match := csrfMeta.FindStringSubmatch(result.body); match != nil {
-		h.csrf = match[1]
-	}
-	return result
-}
-
-func (h *harness) get(path string) *page {
-	h.t.Helper()
-	request, _ := http.NewRequest(http.MethodGet, h.app.URL+path, nil)
-	return h.do(request)
-}
-
-// token devuelve el token CSRF de la sesión actual (abre una página si todavía no hay).
-func (h *harness) token() string {
-	h.t.Helper()
-	if h.csrf == "" {
-		h.get("/")
-	}
-	return h.csrf
-}
-
-// post envía un formulario urlencoded con el token CSRF de la sesión.
-func (h *harness) post(path string, values url.Values) *page {
-	h.t.Helper()
-	if values == nil {
-		values = url.Values{}
-	}
-	if values.Get("authenticity_token") == "" {
-		values.Set("authenticity_token", h.token())
-	}
-	request, _ := http.NewRequest(http.MethodPost, h.app.URL+path, strings.NewReader(values.Encode()))
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	return h.do(request)
-}
-
-// patch envía el formulario como lo hace el navegador: POST con `_method=patch`.
-func (h *harness) patch(path string, values url.Values) *page {
-	if values == nil {
-		values = url.Values{}
-	}
-	values.Set("_method", "patch")
-	return h.post(path, values)
-}
-
-type upload struct{ field, filename, contentType, content string }
-
-// postMultipart envía un formulario multipart con campos y archivos.
-func (h *harness) postMultipart(path string, fields url.Values, files []upload) *page {
-	h.t.Helper()
-	if fields == nil {
-		fields = url.Values{}
-	}
-	if fields.Get("authenticity_token") == "" {
-		fields.Set("authenticity_token", h.token())
-	}
-	var buffer bytes.Buffer
-	writer := multipart.NewWriter(&buffer)
-	for name, values := range fields {
-		for _, value := range values {
-			_ = writer.WriteField(name, value)
-		}
-	}
-	for _, file := range files {
-		header := textproto.MIMEHeader{}
-		header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, file.field, file.filename))
-		contentType := file.contentType
-		if contentType == "" {
-			contentType = "application/octet-stream"
-		}
-		header.Set("Content-Type", contentType)
-		part, _ := writer.CreatePart(header)
-		_, _ = part.Write([]byte(file.content))
-	}
-	_ = writer.Close()
-	request, _ := http.NewRequest(http.MethodPost, h.app.URL+path, &buffer)
-	request.Header.Set("Content-Type", writer.FormDataContentType())
-	return h.do(request)
-}
-
-// --- Aserciones sobre el HTML ---
-
-func (p *page) has(snippet string) bool { return strings.Contains(p.body, snippet) }
-
-func (h *harness) wantStatus(p *page, status int) {
-	h.t.Helper()
-	if p.status != status {
-		h.t.Fatalf("estado %d, se esperaba %d. Cuerpo:\n%s", p.status, status, abbreviate(p.body))
-	}
-}
-
-func (h *harness) wantContains(p *page, snippets ...string) {
-	h.t.Helper()
-	for _, snippet := range snippets {
-		if !p.has(snippet) {
-			h.t.Errorf("falta %q en la respuesta:\n%s", snippet, abbreviate(p.body))
-		}
-	}
-}
-
-func (h *harness) wantAbsent(p *page, snippets ...string) {
-	h.t.Helper()
-	for _, snippet := range snippets {
-		if p.has(snippet) {
-			h.t.Errorf("no debería aparecer %q en la respuesta", snippet)
-		}
-	}
 }
 
 func abbreviate(text string) string {
@@ -541,62 +413,6 @@ func abbreviate(text string) string {
 	return text
 }
 
-var tags = regexp.MustCompile(`<[^>]+>`)
-
-// textOf devuelve el texto (sin etiquetas, con espacios colapsados) del elemento con ese id.
-func (p *page) textOf(id string) (string, bool) {
-	start := strings.Index(p.body, `id="`+id+`"`)
-	if start < 0 {
-		return "", false
-	}
-	open := strings.Index(p.body[start:], ">")
-	if open < 0 {
-		return "", false
-	}
-	rest := p.body[start+open+1:]
-	tagStart := strings.LastIndex(p.body[:start], "<")
-	name := strings.Fields(p.body[tagStart+1 : start])[0]
-	depth, index := 1, 0
-	openTag, closeTag := "<"+name, "</"+name+">"
-	for depth > 0 {
-		nextClose := strings.Index(rest[index:], closeTag)
-		if nextClose < 0 {
-			return "", false
-		}
-		nextOpen := strings.Index(rest[index:], openTag)
-		if nextOpen >= 0 && nextOpen < nextClose && isTagBoundary(rest, index+nextOpen+len(openTag)) {
-			depth++
-			index += nextOpen + len(openTag)
-			continue
-		}
-		depth--
-		index += nextClose
-		if depth > 0 {
-			index += len(closeTag)
-		}
-	}
-	return squash(tags.ReplaceAllString(rest[:index], " ")), true
-}
-
-func isTagBoundary(text string, position int) bool {
-	if position >= len(text) {
-		return false
-	}
-	return strings.ContainsRune(" >/\n", rune(text[position]))
-}
-
-func squash(text string) string { return strings.Join(strings.Fields(htmlUnescape(text)), " ") }
-
-func htmlUnescape(text string) string {
-	return strings.NewReplacer("&amp;", "&", "&lt;", "<", "&gt;", ">", "&#34;", `"`, "&#39;", "'", "&quot;", `"`).Replace(text)
-}
-
-// count cuenta las coincidencias de una expresión regular.
-func (p *page) count(pattern string) int {
-	return len(regexp.MustCompile(pattern).FindAllString(p.body, -1))
-}
-
-// multipartFields lee los campos de texto y los archivos de un cuerpo multipart recibido por la API simulada.
 func multipartFields(t *testing.T, call apiCall) (map[string]string, []*multipart.FileHeader) {
 	t.Helper()
 	mediaType, params, err := mime.ParseMediaType(call.contentType)
@@ -622,4 +438,16 @@ func jsonBody(t *testing.T, call apiCall) map[string]any {
 		t.Fatalf("cuerpo JSON inválido: %v", err)
 	}
 	return decoded
+}
+
+func saved(t *testing.T, store *memStore, strategies []string, queries []string, createdAt time.Time, contextual float64) rag.Comparison {
+	t.Helper()
+	payload, _ := jsonMarshal(compareBody(strategies, queries, contextual))
+	row := rag.Comparison{Strategies: strategies, Queries: queries, TopK: 3, CorpusCount: 18, ResponsePayload: payload, CreatedAt: createdAt}
+	duration := 3200
+	row.DurationMS = &duration
+	if err := store.Create(context.Background(), &row); err != nil {
+		t.Fatal(err)
+	}
+	return row
 }

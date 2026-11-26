@@ -34,52 +34,55 @@ func pgStore(t *testing.T) rag.Store {
 	return store
 }
 
-// Recorrido completo del laboratorio contra PostgreSQL: formulario → comparación → redirección → detalle → historial,
-// sin Rails y con la API de IA simulada.
+// Recorrido completo del laboratorio contra PostgreSQL por la API REST: opciones → comparación (201 y Location) →
+// detalle → historial → ID ausente, con la API de IA simulada. Sustituye al recorrido HTML formulario → redirección →
+// detalle → historial.
 func TestLabEndToEndWithPostgreSQL(t *testing.T) {
 	h := newHarness(t, withStore(pgStore(t)))
 	stubCompare(h, compareBody([]string{"structural", "hierarchical", "contextual_retrieval"}, []string{"oauth"}, 0.14))
 
-	p := h.get("/rag/chunking_comparisons/new")
-	h.wantStatus(p, 200)
-
-	p = h.post("/rag/chunking_comparisons", runValues(map[string][]string{
-		"strategies[]": {"structural", "hierarchical", "contextual_retrieval"}, "queries[]": {"oauth"},
-	}))
-	h.wantStatus(p, 302)
-	if p.location != "/rag/chunking_comparisons/1" {
-		t.Fatalf("redirección: %q", p.location)
+	h.wantREST(h.rest("GET", labAPI+"/options", ""), 200)
+	created := h.rest("POST", labAPI, `{"strategies":["structural","hierarchical","contextual_retrieval"],"queries":["oauth"],"top_k":3}`)
+	h.wantREST(created, 201)
+	if created.header.Get("Location") != labAPI+"/1" || created.json(t)["id"] != "1" {
+		t.Fatalf("alta: Location=%q cuerpo=%s", created.header.Get("Location"), abbreviate(string(created.body)))
 	}
 
-	detail := h.get(p.location)
-	h.wantStatus(detail, 200)
-	if got := detail.count(`<tr id="stats-`); got != 3 {
-		t.Errorf("filas de estadísticas: %d", got)
+	detail := h.rest("GET", created.header.Get("Location"), "")
+	h.wantREST(detail, 200)
+	body := detail.json(t)
+	result := body["result"].(map[string]any)
+	if got := len(result["stats_per_strategy"].([]any)); got != 3 || body["id"] != "1" || body["created_at"] == nil || body["corpus_count"] == nil {
+		t.Errorf("detalle: estadísticas=%d %v", got, body)
 	}
-	if text, _ := detail.textOf("cost-contextual_retrieval"); !strings.Contains(text, "0,140000 USD") {
-		t.Errorf("coste: %q", text)
+	if len(h.api.requests("POST", comparePath)) != 1 {
+		t.Errorf("el detalle no debe recalcular: %d llamadas", len(h.api.requests("POST", comparePath)))
 	}
-	h.wantContains(detail, "Ejecutada el", "aria-label=\"Similitud 71%\"")
 
-	history := h.get("/rag/chunking_comparisons")
-	h.wantStatus(history, 200)
-	h.wantContains(history, `<a href="/rag/chunking_comparisons/1">Ver</a>`, "Estructural, Jerárquico, Contextual retrieval", "0,140000 USD")
+	history := h.rest("GET", labAPI, "")
+	h.wantREST(history, 200)
+	items := history.json(t)["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["id"] != "1" || !strings.Contains(strings.Join(toStrings(items[0].(map[string]any)["strategies"]), ","), "structural,hierarchical,contextual_retrieval") {
+		t.Errorf("historial: %s", abbreviate(string(history.body)))
+	}
 
-	h.wantStatus(h.get("/rag/chunking_comparisons/2"), 404)
+	h.wantREST(h.rest("GET", labAPI+"/2", ""), 404)
 }
 
 func TestLabHistoryPersistsAcrossServerInstances(t *testing.T) {
 	store := pgStore(t)
 	first := newHarness(t, withStore(store))
 	stubCompare(first, compareBody([]string{"structural"}, nil, 0))
-	first.wantStatus(first.post("/rag/chunking_comparisons", runValues(map[string][]string{"strategies[]": {"structural"}})), 302)
+	first.wantREST(first.rest("POST", labAPI, `{"strategies":["structural"]}`), 201)
 
 	second := newHarness(t, withStore(store))
-	history := second.get("/rag/chunking_comparisons")
+	history := second.rest("GET", labAPI, "")
 
-	second.wantStatus(history, 200)
-	second.wantContains(history, `<a href="/rag/chunking_comparisons/1">Ver</a>`)
-	second.wantAbsent(history, `id="lab-history-empty"`)
+	second.wantREST(history, 200)
+	body := history.json(t)
+	if items := body["items"].([]any); len(items) != 1 || items[0].(map[string]any)["id"] != "1" || body["warning"] != nil {
+		t.Errorf("historial tras reinicio: %s", abbreviate(string(history.body)))
+	}
 }
 
 // DA-27: los IDs de comparación superiores a 2^53 − 1 conservan sus dígitos en el alta, `Location`, el listado y el

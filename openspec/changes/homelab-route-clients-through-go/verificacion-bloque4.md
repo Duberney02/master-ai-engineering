@@ -83,7 +83,22 @@ a Internet de React y Go.
 - Go no tiene shell: su posición se comprueba con una sonda en las mismas tres redes, no dentro de su contenedor.
 - El pipeline remoto de CI no se ha ejecutado. Se comprobaron en local los comandos de cada job (suites del Compose de
   verificación, configuración de los Compose, smoke con sondas internas y puerto 3001).
-- La prueba real del túnel SSH desde Windows está pendiente de confirmación del operador (13.2).
+
+### Túnel SSH desde Windows (prueba real del operador)
+
+Con `ssh -N -L 3001:127.0.0.1:3001 <usuario>@<servidor>` abierto desde Windows (puerto local 3001, el origen canónico):
+
+| Comprobación | Resultado |
+|---|---|
+| `GET http://localhost:3001/healthz` | `ok` |
+| `GET http://localhost:3001/api/v1/estimations` | `[]` |
+| `GET http://localhost:3001/api/v1/ai/settings` | HTTP 403 |
+| Interfaz React en el navegador | Carga: formulario de estimación, metadatos del proyecto, contexto del prompt, ejemplos few-shot y modelo `gpt-4o-mini` |
+| `Test-NetConnection <servidor> -Port 3001` | `TcpTestSucceeded: False` (el ping responde, `PingSucceeded: True`) |
+| `curl.exe -m 5 http://<servidor>:3001/healthz` | `curl: (28)` tiempo de espera agotado |
+
+Acceso positivo por el túnel y fallo de la conexión directa sin túnel, como exige 13.2. La estimación sintética no se
+mostraba en el historial porque se eliminó antes de esta prueba.
 
 ## Pendiente (no dado por completado)
 

@@ -34,7 +34,7 @@ app/
 │   ├── attachments/#   extracción de texto de PDF/DOCX
 │   └── persistence/#   engine SQLAlchemy, modelos, repositorios y migraciones de la ingesta
 ├── domain/         # contrato y conductor
-│   ├── schemas/    #   contratos Pydantic que consumen los clientes (web Go, React, Streamlit)
+│   ├── schemas/    #   contratos Pydantic que consumen los clientes (web Go, React)
 │   ├── pipeline.py #   conductor de /estimate: guardrails → cag → prompt → llm → validación → cag
 │   ├── session_estimation.py · acb.py   # conductores conversacional y Actor–Crítico–Boss
 │   └── validation.py · audience.py · history.py · evaluation.py   # reglas de negocio y servicios de dominio
@@ -49,7 +49,6 @@ app/
 │   └── conversation/ # sesiones en memoria, anclas, compresión y resumen
 ├── ingestion/      # pipeline batch offline (catálogo, loaders, parsers, limpieza, PII, orquestador)
 ├── api/            # routers finos: transporte, sin lógica de negocio
-└── streamlit_client.py · streamlit_support.py   # cliente Streamlit: solo habla HTTP; fuera de las capas
 ```
 
 Fuera de `app/`: `evals/` (evaluación y stress test, hablan HTTP), `scripts/` (CLIs) y `tests/`.
@@ -204,7 +203,7 @@ Las tres tablas de chunks tienen HNSW halfvec (migración `0006` para las dos nu
 
 - **Rutas HTTP**: `/api/v1/estimate`, `/api/v1/transcription/*`, `/api/v1/sessions/*`, `/api/v1/estimations`,
   `/api/v1/prompts/*`, `/api/v1/ingestion/*`. (`/embeddings/ingest` cambió de contrato en la Sesión 8 —ahora persiste— tras
-  comprobar que ningún cliente lo usaba.) Los clientes web Go, React y Streamlit
+  comprobar que ningún cliente lo usaba.) Los clientes web Go y React
   dependen de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/search`, `/api/v1/config/models`,
   `/v1/retrieval/*`, `/v1/estimate/*`, `/api/v1/config/retrieval`), nunca cambios de forma de las existentes.
   `POST /search` (Sesión 8) se conserva sin cambios; `POST /embeddings/ingest` solo gana el campo opcional `chunk_type`.

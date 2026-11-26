@@ -868,7 +868,7 @@ estimador-cag/
 │   │   ├── attachments/    — extracción local de PDF y Word
 │   │   └── persistence/    — SQLAlchemy asíncrono, modelos, repositorios y migrate.py
 │   ├── domain/             — contrato y conductores
-│   │   ├── schemas/        — contratos Pydantic (compartidos con la web Go, React y Streamlit)
+│   │   ├── schemas/        — contratos Pydantic (compartidos con la web Go y React)
 │   │   ├── pipeline.py · session_estimation.py · acb.py — conductores (estimar, sesión, Actor–Critic–Boss)
 │   │   └── validation.py · audience.py · history.py · evaluation.py
 │   ├── generation/
@@ -938,7 +938,7 @@ Con Docker (recomendado; ver [Ejecución con Docker](#ejecución-con-docker)):
 
 ```bash
 cp .env.example .env        # completa la API key del proveedor elegido
-docker compose up --build   # API: http://localhost:8000  ·  Chat: http://localhost:8501
+docker compose up --build   # API: http://localhost:8000
 ```
 
 O sin contenedores:
@@ -948,47 +948,6 @@ uv run uvicorn app.main:app --reload
 ```
 
 La API queda disponible en `http://localhost:8000`.
-
-## Interfaz web (Streamlit)
-
-Chat para probar la estimación estructurada sin curl/Postman/Swagger, con memoria
-conversacional: mensaje o transcripción, archivo `.txt`, varios adjuntos PDF o Word,
-tipo de proyecto, nivel de detalle, formato de salida y versión del prompt.
-
-```bash
-uv run streamlit run streamlit_app.py
-```
-
-Se abre en `http://localhost:8501`. Arranca también la API en otra terminal.
-Al cargar la página crea una sesión (`POST /api/v1/sessions`) y conserva su
-`session_id` en `st.session_state`; cada envío valida las opciones con el mismo
-`EstimationRequest` que usa la API (lo importa de `app.domain.schemas`) y va como
-`multipart/form-data` a `POST /api/v1/sessions/{id}/estimate`. Con adjuntos el
-mensaje puede ser corto: la API valida la longitud del conjunto. No necesita claves LLM.
-Configura `ESTIMATOR_API_BASE_URL` (por defecto `http://localhost:8000`) en
-el entorno, `.env` o `st.secrets`; el entorno tiene prioridad. Las claves de
-proveedores se configuran únicamente en el backend.
-
-El `st.sidebar` muestra, de solo lectura:
-
-- los **metadatos del proyecto** de la conversación (nombre, equipo supuesto,
-  tecnologías y alcance acordado) y el botón **«Nueva conversación»**, que crea otra
-  sesión y reinicia el historial, los metadatos y las métricas;
-- el system prompt renderizado con las plantillas de la última solicitud y los
-  metadatos ya conocidos (el que recibirá el modelo en el siguiente turno; vacío
-  antes de la primera);
-- los ejemplos few-shot que incluye ese prompt;
-- las métricas de la última llamada: modelo, versión del prompt, tokens de
-  entrada y salida, latencia, coste y si la respuesta vino de caché.
-
-El prompt se renderiza con las plantillas de esta versión del cliente. Si la API
-remota tiene otras plantillas, el panel no las refleja. Si la API pierde la sesión
-(reinicio o caducidad), el chat abre otra conversación y lo avisa. El historial
-visible no es lo que ve el modelo: la API mantiene su propia ventana de turnos.
-
-Los errores de validación (por ejemplo, una descripción de menos de 20
-caracteres) se muestran sin llamar a la API. Los errores de red, HTTP o del
-stream se muestran como mensajes genéricos y nunca se guardan como estimaciones.
 
 ## Ejecución con Docker
 
@@ -1006,8 +965,8 @@ Compose de desarrollo) arranca igualmente y solo la API de ingesta responde 503.
 
 ```bash
 cp .env.example .env        # completa la API key del proveedor elegido
-docker compose up --build   # API: http://localhost:8000  ·  Chat: http://localhost:8501
-docker compose ps           # STATUS pasa a "healthy" cuando /health y /_stcore/health responden
+docker compose up --build   # API: http://localhost:8000
+docker compose ps           # STATUS pasa a "healthy" cuando /health responde
 docker compose down
 ```
 

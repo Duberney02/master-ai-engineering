@@ -1,11 +1,20 @@
-# Stack completo: API del estimador, chat Streamlit, aplicaciones web (Go y React), Redis Stack y PostgreSQL.
+# Stack de integración: API del estimador (IA), aplicaciones web (Go y React), Redis Stack y dos PostgreSQL.
 #
 #   cp estimador-cag/.env.example estimador-cag/.env   # y completa la API key del proveedor elegido
 #   cp .env.example .env                               # opcional: contraseñas y secretos propios
 #   docker compose up --build
 #
-# Web Go: http://localhost:3000 · Web React: http://localhost:3001 · Chat Streamlit: http://localhost:8501 · API (docs): http://localhost:8000/docs
-# La API, las webs, el chat y PostgreSQL (5432, para psql en desarrollo) publican puertos; Redis es interno a la red.
+# Único acceso: React/Nginx en http://127.0.0.1:3001, solo desde el propio host (túnel SSH para el operador). Entorno
+# privado de desarrollo: sin exposición pública ni uso multiusuario hasta completar homelab-authentication-authorization.
+# Go, la API de IA (8000), Redis y PostgreSQL no publican puertos; se comprueban con sondas internas
+# (docker compose exec <servicio> ...).
+#
+# Redes (DA-03, DA-04, DA-22):
+#   client-net     React/Nginx y Go. Única red de React; es la que permite publicar 127.0.0.1:3001.
+#   service-net    Go y estimador-cag (interna).
+#   go-data-net    Go y su PostgreSQL del Chunking Lab (interna).
+#   ai-data-net    estimador-cag, Redis Stack y PostgreSQL de IA (interna).
+#   ai-egress-net  Solo estimador-cag, para HTTPS hacia los proveedores; sin puertos publicados.
 # Para desarrollar solo el backend con recarga en caliente usa estimador-cag/docker-compose.yml.
 
 name: estimator
@@ -16,8 +25,6 @@ services:
       context: ./estimador-cag
       target: runtime
     image: estimador-cag:latest
-    ports:
-      - "8000:8000"
     # Claves del proveedor y ajustes del estimador (ignorado por git y por la imagen).
     env_file:
       - path: ./estimador-cag/.env
@@ -30,7 +37,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    networks: [estimator-net]
+    # Única con credenciales de proveedores (DA-06) y única con salida a Internet.
+    networks: [service-net, ai-data-net, ai-egress-net]
     init: true
     restart: unless-stopped
     healthcheck:
@@ -40,35 +48,12 @@ services:
       start_period: 15s
       retries: 3
 
-  estimador-cag-chat:
-    # Cliente Streamlit: misma imagen que la API, pero solo habla HTTP con ella (sin claves de proveedores).
-    image: estimador-cag:latest
-    ports:
-      - "8501:8501"
-    environment:
-      ESTIMATOR_API_BASE_URL: http://estimador-cag:8000
-    command: ["streamlit", "run", "streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
-    depends_on:
-      estimador-cag:
-        condition: service_healthy
-    networks: [estimator-net]
-    init: true
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
-      interval: 15s
-      timeout: 5s
-      start_period: 20s
-      retries: 3
-
   estimator-web:
     build:
       context: ./estimator-web-go
       target: runtime
     image: estimator-web:latest
-    ports:
-      - "3000:3000"
-    # La web solo habla HTTP con la API: no recibe claves de proveedores.
+    # Go es la única frontera hacia la IA (DA-04) y no recibe claves de proveedores.
     environment:
       ESTIMATOR_API_URL: http://estimador-cag:8000
       ESTIMATOR_READ_TIMEOUT: "300"
@@ -84,7 +69,7 @@ services:
         condition: service_healthy
       estimator-web-db:
         condition: service_healthy
-    networks: [estimator-net]
+    networks: [client-net, service-net, go-data-net]
     init: true
     restart: unless-stopped
     healthcheck:
@@ -104,7 +89,7 @@ services:
       POSTGRES_DB: estimator_web
     volumes:
       - estimator_web_db_data:/var/lib/postgresql/data
-    networks: [estimator-net]
+    networks: [go-data-net]
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U estimator -d estimator_web"]
@@ -118,14 +103,15 @@ services:
     build:
       context: ./estimator-web-react
     image: estimator-web-react:latest
+    # Único puerto publicado, solo en el loopback IPv4 del host (acceso del operador por túnel SSH).
     ports:
-      - "3001:8080"
+      - "127.0.0.1:3001:8080"
     environment:
       API_UPSTREAM: http://estimator-web:3000
     depends_on:
       estimator-web:
         condition: service_healthy
-    networks: [estimator-net]
+    networks: [client-net]
     init: true
     restart: unless-stopped
     healthcheck:
@@ -140,7 +126,7 @@ services:
     image: redis/redis-stack-server:latest
     volumes:
       - redis_data:/data
-    networks: [estimator-net]
+    networks: [ai-data-net]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -168,12 +154,10 @@ services:
       POSTGRES_USER: estimator
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-estimator-dev}
       POSTGRES_DB: estimator
-    # Solo desarrollo: permite psql desde el host.
-    ports:
-      - "5432:5432"
+    # Sin puerto publicado: psql con `docker compose exec postgres psql -U estimator -d estimator`.
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks: [estimator-net]
+    networks: [ai-data-net]
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U estimator -d estimator"]
@@ -182,7 +166,14 @@ services:
       retries: 10
 
 networks:
-  estimator-net:
+  client-net:
+  service-net:
+    internal: true
+  go-data-net:
+    internal: true
+  ai-data-net:
+    internal: true
+  ai-egress-net:
 
 volumes:
   redis_data:

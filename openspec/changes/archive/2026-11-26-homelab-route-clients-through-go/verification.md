@@ -632,7 +632,7 @@ resultados históricos de los bloques anteriores.
 ### Fase 1: verificaciones ligeras (sin construir imágenes ni levantar la pila)
 
 Realizadas tras mover los arneses a `verification/` y renombrar el fixture de Python y su variable de entorno; los arneses
-originales siguen en esta carpeta hasta validar la fase 2.
+originales se conservaron en esta carpeta hasta validar la fase 2 (ver abajo).
 
 | Comprobación | Resultado |
 |---|---|
@@ -644,22 +644,38 @@ originales siguen en esta carpeta hasta validar la fase 2.
 | Ningún Compose, script, prueba o CI accede al cambio archivado | Confirmado; solo hay enlaces documentales a `verification.md` en `AGENTS.md`, `README.md` y `EVIDENCIA-RETIRADA-HTML.md` |
 | `git diff --check` y `openspec validate --all --strict` | Limpio; 57 de 58 (solo el fallo heredado de `session-11-calidad-generacion-rag`) |
 
-### Fase 2: validación dinámica (pendiente de autorización)
+### Fase 2: validación dinámica desde un clon limpio
 
-Debe ejecutarse desde un clon limpio, sin `.block*`, sin imágenes `homelab-block1-*` y sin evidencias previas, con `PROJECT=verify-<nombre>`:
+Ejecutada el 2026-11-26 sobre un clon local del commit de la fase 1 (`git clone --no-hardlinks`), sin `.block*`, sin `.env`, sin
+`.verification/` y sin evidencias previas, con `PROJECT=verify-p2` y `HEAVY_LOCK` compartido. Las imágenes se construyeron desde los
+Dockerfile versionados reutilizando capas de la caché de Docker (las 31 etapas de la construcción de la pila resultaron `CACHED`), de modo que
+la reproducibilidad de la construcción queda demostrada para las definiciones, no para una construcción sin caché. Los comandos fueron:
 
 ```bash
-verification/prepare.sh --build                 # imágenes de pruebas y de la pila; descarga y verifica cl100k_base.tiktoken
-verification/verify-integration.sh run          # cancelación REST, SSE y del Chunking Lab de Go a Python real
-verification/verify-parity.sh                   # matriz de paridad con go test -json y Vitest
-verification/verify-nginx.sh run                # Nginx: SSE, cancelación, plazos, límites y plazos incoherentes
-verification/verify-network.sh static && verification/verify-network.sh stack \
-  && verification/verify-network.sh persistence && verification/verify-network.sh network
-verification/verify-e2e.sh stack && verification/verify-e2e.sh flows \
-  && verification/verify-e2e.sh backend-down && verification/verify-e2e.sh cancellation
-# y, al terminar, `clean` en cada arnés (solo down -v del proyecto)
+verification/prepare.sh --build && verification/verify-integration.sh run && verification/verify-parity.sh && verification/verify-nginx.sh run
+verification/verify-network.sh {static,stack,persistence,network} && verification/verify-e2e.sh {stack,flows,backend-down,cancellation}
+# y `clean` en cada arnés (solo down -v del proyecto)
 ```
 
-Criterio de aceptación: los mismos resultados que los históricos (39/39 flujos, 3/3, 8/8, 3 integraciones Go↔Python, 17 filas de
-paridad con 124 pruebas, 43 comprobaciones de red sin fallos, 33 de Nginx y plazos incoherentes rechazados). Solo entonces se
-eliminan de esta carpeta los arneses históricos restantes (Compose, scripts y `.mjs`).
+| Grupo | Resultado |
+|---|---|
+| Preparación | Descarga real de `cl100k_base.tiktoken` con SHA-256 `223921b7…b2a7`; reutilización con hash correcto; un archivo corrompido se sustituye por una descarga verificada; un hash esperado incorrecto aborta con error y sin escribir archivo |
+| `gofmt` / `go vet` (`web-lint`) tras el renombrado del fixture | Sin diagnósticos |
+| Integración Go↔Python | 3 de 3 (`TestSSECancellationThroughPython` con 4 escenarios, `TestRESTCancellationThroughPython`, `TestLabCancellationThroughPython`) |
+| Paridad | 17 filas, 124 pruebas vigentes exigidas; Go ejecutó 230 y React 175; 70 referencias HTML retiradas y 2 conservadas |
+| Nginx | 33 de 33 comprobaciones y negativa a arrancar con plazos incoherentes |
+| Red | Autopruebas 20 de 20 y topología sin fallos; 6 servicios saludables; persistencia tras reiniciar sin borrar volúmenes; 43 comprobaciones de matriz OK más la entrada informativa de `sshd`; salida HTTPS al proveedor simulado, sin claves de proveedor en Go, React ni bases de datos |
+| Extremo a extremo | 39 de 39 flujos, 3 de 3 con Python detenido, 8 de 8 de cancelación |
+
+La evidencia del túnel SSH desde Windows se mantiene: la configuración funcional que la sustenta no cambió.
+
+Defectos de los arneses portados detectados y corregidos durante la validación (sin tocar la aplicación ni reducir aserciones):
+
+1. `compose.nginx.yml`, usado solo, resolvía sus rutas relativas desde `verification/`; `verify-nginx.sh` fija ahora `--project-directory` en la raíz.
+2. El alias y el certificado del proveedor HTTPS simulado (`proveedor-simulado.test`) no coincidían con el nombre que consulta `verify-network.sh network`; ambos pasan a `https-provider-fake.test`.
+
+Tras la validación se eliminaron de esta carpeta los 22 archivos históricos de arneses sustituidos (siete `compose.*.yml`, `preparar-bloque2.py`,
+`preparar-fuentes.py`, `verificar-*.mjs|.sh`, `sonda-red-bloque4.mjs`, `proveedor-simulado.mjs`, `e2e-bloque6.mjs`, `openai-simulado.mjs`,
+`nginx-*.mjs` y `paridad-bloque3.json`). Se recuperan desde Git en `1ef22c4c72ff72efcd71df7fe1fdff5ef043c14c` (ruta
+`openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/`). La carpeta contiene ahora solo `.openspec.yaml`, `proposal.md`,
+`design.md`, `tasks.md`, `specs/` (11 deltas) y `verification.md`.

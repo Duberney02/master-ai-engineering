@@ -1,0 +1,43 @@
+# Complemento de PRUEBAS del Compose raíz para 13.1 y 13.2. Invocar desde la raíz con un proyecto propio:
+#   docker compose --env-file /dev/null -p hl-s1 -f docker-compose.yml -f <cambio>/compose.bloque4.yml ...
+# No cambia la topología (redes, puertos, volúmenes): solo sustituye credenciales por valores ficticios, da tags propios
+# a las imágenes y añade, bajo perfiles explícitos, el proveedor simulado y la sonda situada en client-net.
+# Las rutas relativas son del directorio de trabajo (la raíz del repositorio o del worktree).
+x-sondas: &sonda
+  image: homelab-block1-307a8b9-react:test
+  pull_policy: never
+  volumes:
+    - ./openspec/changes/homelab-route-clients-through-go:/sondas:ro
+  working_dir: /sondas
+  init: true
+
+services:
+  estimador-cag:
+    image: estimador-cag:hl-stack
+    env_file: !override
+      - ./.block4/estimador-cag.env
+  estimator-web:
+    image: estimator-web:hl-stack
+  estimator-web-react:
+    image: estimator-web-react:hl-stack
+
+  # Destino HTTPS simulado en la red de salida de IA. Alias estable para probar DNS y TLS desde estimador-cag.
+  proveedor-simulado:
+    <<: *sonda
+    profiles: ["sondas"]
+    command: ["node", "proveedor-simulado.mjs"]
+    environment:
+      CERT_DIR: /certs
+    volumes:
+      - ./openspec/changes/homelab-route-clients-through-go:/sondas:ro
+      - ./.block4/certs:/certs:ro
+    networks:
+      ai-egress-net:
+        aliases: [proveedor-simulado.test]
+
+  # Sonda en la misma posición que React/Nginx (solo client-net). Se usa con `run --rm`, nunca en el arranque normal.
+  sonda-cliente:
+    <<: *sonda
+    profiles: ["sondas"]
+    entrypoint: ["node", "sonda-red-bloque4.mjs"]
+    networks: [client-net]

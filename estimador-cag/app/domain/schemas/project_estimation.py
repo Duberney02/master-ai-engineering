@@ -1,6 +1,6 @@
 """Contrato tipado entre clientes y servicio IA para `POST /api/v1/estimate`.
 
-Lo comparten el servidor y el cliente Streamlit: ambos importan estas clases
+Lo comparten el servidor y sus clientes Python: ambos importan estas clases
 desde `app.domain.schemas`.
 """
 

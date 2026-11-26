@@ -47,3 +47,14 @@ def test_estimate_endpoint_is_registered(client):
     # Just verify the route exists (not calling LLM); 422 means the route is there
     resp = client.post("/api/v1/estimate", json={})
     assert resp.status_code == 422
+
+
+def test_sse_demo_page_is_gone_and_static_is_not_mounted(client):
+    assert client.get("/static/sse_demo.html").status_code == 404
+    assert not any(getattr(route, "path", "") == "/static" for route in client.app.routes)
+
+
+def test_both_sse_routes_remain_published(client):
+    paths = set(client.get("/openapi.json").json()["paths"])
+    assert "/api/v1/estimate/stream" in paths
+    assert "/api/v1/transcription/estimate/stream" in paths

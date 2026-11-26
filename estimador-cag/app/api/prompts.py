@@ -1,7 +1,7 @@
 """`GET /api/v1/prompts/estimation`: prompt de sistema renderizado y ejemplos few-shot.
 
-Permite a clientes que no tienen las plantillas Jinja2 (p. ej. la web Rails) mostrar el contexto
-del prompt, igual que la barra lateral de Streamlit.
+Permite a clientes que no tienen las plantillas Jinja2 (p. ej. la web Go o React) mostrar el contexto
+del prompt.
 """
 
 from fastapi import APIRouter, Query

@@ -7,7 +7,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-C=(docker compose --env-file /dev/null -p "$PROJECT" -f verification/compose.nginx.yml)
+C=(docker compose --env-file /dev/null --project-directory "$ROOT" -p "$PROJECT" -f verification/compose.nginx.yml)
 
 case "${1:-}" in
   run)

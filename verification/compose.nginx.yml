@@ -1,6 +1,6 @@
 # Nginx delante de un upstream simulado de Go: SSE sin buffering, cancelación, plazos por ruta, límites y validación de plazos.
 # Independiente del Compose raíz. Desde la raíz del repositorio:
-#   docker compose --env-file /dev/null -p verify-local -f verification/compose.nginx.yml ...
+#   docker compose --env-file /dev/null --project-directory . -p verify-local -f verification/compose.nginx.yml ...
 # Usa la imagen base pública de Nginx sin privilegios con la plantilla y el script de plazos versionados del cliente React, y la
 # imagen de herramientas Node (estimator-web-react:test, de docker-compose.verify.yml) para el upstream y el comprobador.
 x-tool: &tool

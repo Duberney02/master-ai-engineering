@@ -63,12 +63,12 @@
 
 ## 12. Dockerfiles, Compose y CI
 
-- [ ] 12.1 Tras 10 y 11, eliminar arranque, mounts, variables y puerto 8501 de ambos Compose y del Dockerfile, y ajustar empaquetado Go/React. Verificar configuración e imágenes en Docker con valores ficticios, incluida la imagen mínima de Go sin privilegios y con sonda local.
-- [ ] 12.2 Adaptar scripts, Compose de verificación y CI a sondas internas, API Go y suites en Docker. Verificar que funcionan sin chat ni FastAPI publicado.
+- [x] 12.1 Tras 10 y 11, eliminar arranque, mounts, variables y puerto 8501 de ambos Compose y del Dockerfile, y ajustar empaquetado Go/React. Verificar configuración e imágenes en Docker con valores ficticios, incluida la imagen mínima de Go sin privilegios y con sonda local.
+- [x] 12.2 Adaptar scripts, Compose de verificación y CI a sondas internas, API Go y suites en Docker. Verificar que funcionan sin chat ni FastAPI publicado.
 
 ## 13. Segmentación de redes
 
-- [ ] 13.1 Tras 12, configurar client-net, service-net, go-data-net y ai-data-net y salida aislada de IA. Verificar seis servicios propios saludables, orden de arranque, sondas nativas, Redis Stack y conservación de estimaciones y comparaciones al reiniciar el proyecto con sus volúmenes. Comprobar que los recursos preexistentes de PostgreSQL, Ollama y Open WebUI quedan fuera del ciclo de vida del proyecto y que el aislamiento de 2.1 se mantiene.
+- [x] 13.1 Tras 12, configurar client-net, service-net, go-data-net y ai-data-net y salida aislada de IA. Verificar seis servicios propios saludables, orden de arranque, sondas nativas, Redis Stack y conservación de estimaciones y comparaciones al reiniciar el proyecto con sus volúmenes. Comprobar que los recursos preexistentes de PostgreSQL, Ollama y Open WebUI quedan fuera del ciclo de vida del proyecto y que el aislamiento de 2.1 se mantiene.
 - [ ] 13.2 Publicar solo 127.0.0.1:3001 y verificar acceso del operador autorizado por túnel SSH, ausencia de publicación IPv6 y fallo de acceso remoto directo sin túnel. Probar DNS, IP y TCP desde cliente, incluidos gateway, host y servicios preexistentes, y comprobar salida HTTPS simulada y credenciales exclusivas de IA.
 
 ## 14. Pruebas transversales

@@ -41,3 +41,10 @@ services:
     profiles: ["sondas"]
     entrypoint: ["node", "sonda-red-bloque4.mjs"]
     networks: [client-net]
+
+  # Sonda en la posición de red de Go (client-net, service-net y go-data-net); la imagen de Go no tiene shell ni nc.
+  sonda-go:
+    <<: *sonda
+    profiles: ["sondas"]
+    entrypoint: ["node", "sonda-red-bloque4.mjs"]
+    networks: [client-net, service-net, go-data-net]

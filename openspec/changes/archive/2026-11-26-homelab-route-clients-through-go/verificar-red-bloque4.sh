@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Arnés de 13.1 y 13.2 (y de la parte de red de 12.1). Solo opera sobre un proyecto Compose propio (hl-s1, hl-s2, hl-s3).
 #
-#   openspec/changes/homelab-route-clients-through-go/verificar-red-bloque4.sh estatico        # sin contenedores
-#   openspec/changes/homelab-route-clients-through-go/verificar-red-bloque4.sh pila            # construye y levanta (pesado)
-#   openspec/changes/homelab-route-clients-through-go/verificar-red-bloque4.sh persistencia    # reinicio sin borrar volúmenes
-#   openspec/changes/homelab-route-clients-through-go/verificar-red-bloque4.sh red             # 13.2: publicaciones y sondas
-#   openspec/changes/homelab-route-clients-through-go/verificar-red-bloque4.sh limpiar         # down -v SOLO del proyecto
+#   openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/verificar-red-bloque4.sh estatico        # sin contenedores
+#   openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/verificar-red-bloque4.sh pila            # construye y levanta (pesado)
+#   openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/verificar-red-bloque4.sh persistencia    # reinicio sin borrar volúmenes
+#   openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/verificar-red-bloque4.sh red             # 13.2: publicaciones y sondas
+#   openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/verificar-red-bloque4.sh limpiar         # down -v SOLO del proyecto
 #
 # Variables: PROYECTO (hl-s1 por defecto), HEAVY (envoltorio flock), TUNEL=1 para probar el túnel SSH a localhost.
 # Los resultados se guardan en .block4/evidencias/. Se detiene si cambia /sys/fs/ext4/sda2/errors_count.
@@ -14,7 +14,7 @@ set -euo pipefail
 PROYECTO="${PROYECTO:-hl-s1}"
 [[ "$PROYECTO" =~ ^hl-s[123]$ ]] || { echo "PROYECTO debe ser hl-s1, hl-s2 o hl-s3 (recibido '$PROYECTO')" >&2; exit 2; }
 RAIZ="$(git rev-parse --show-toplevel)"; cd "$RAIZ"
-CAMBIO=openspec/changes/homelab-route-clients-through-go
+CAMBIO=openspec/changes/archive/2026-11-26-homelab-route-clients-through-go
 BLOQUE=.block4; [[ "$PROYECTO" != hl-s1 ]] && BLOQUE=".block4-${PROYECTO#hl-}"
 EVID="$BLOQUE/evidencias"; mkdir -p "$EVID" "$BLOQUE/certs" "$BLOQUE/docker-config"
 [[ -f "$BLOQUE/docker-config/config.json" ]] || echo '{}' > "$BLOQUE/docker-config/config.json"

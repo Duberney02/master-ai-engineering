@@ -1,5 +1,5 @@
 // Autopruebas del comprobador: una configuración válida y mutaciones que deben detectarse.
-//   node --test openspec/changes/homelab-route-clients-through-go/verificar-compose-bloque4.test.mjs
+//   node --test openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/verificar-compose-bloque4.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import { validar, REDES } from "./verificar-compose-bloque4.mjs";

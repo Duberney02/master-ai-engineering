@@ -1,46 +1,43 @@
 # estimator/deployment-stack Specification
 
 ## Purpose
-Arrancar el sistema completo con un único comando desde la raíz del repositorio.
+Arrancar la pila de integración completa con un único comando desde la raíz del repositorio, con redes segmentadas y publicando únicamente React/Nginx en `127.0.0.1:3001`.
 
 ## Requirements
 
 ### Requirement: Compose raíz con todos los servicios
-El repositorio SHALL incluir un `docker-compose.yml` en su raíz que defina los servicios API (`estimador-cag`), chat Streamlit (`estimador-cag-chat`), aplicación web en Go (`estimator-web`), su base de datos (`estimator-web-db`), aplicación web React (`estimator-web-react`), Redis Stack (`redis`) y PostgreSQL (`postgres`) en una red compartida. La API SHALL recibir `REDIS_URL` y `DATABASE_URL` apuntando a los servicios internos y la web Go SHALL recibir `ESTIMATOR_API_URL` apuntando a la API. La web React SHALL recibir la dirección interna de la API para su proxy inverso. Solo la API (8000), el chat (8501), la web Go (3000) y la web React (3001) SHALL publicar puertos; el chat SHALL recibir `ESTIMATOR_API_BASE_URL` y ninguna clave de proveedor. El Compose SHALL NOT definir ningún servicio Rails.
-
-#### Scenario: Configuración válida
-- **WHEN** se ejecuta `docker compose config` en la raíz con `estimador-cag/.env` presente
-- **THEN** la configuración es válida y contiene los siete servicios y la red compartida.
-
-#### Scenario: Arranque completo
-- **WHEN** se ejecuta `docker compose up --build`
-- **THEN** los servicios llegan a `healthy`, el chat responde en el puerto 8501 y las webs Go (3000) y React (3001) pueden consultar el historial de la API.
+El Compose raíz SHALL definir React/Nginx, Go, estimador-cag, PostgreSQL de Go, PostgreSQL de IA con pgvector y Redis Stack. SHALL conectar React y Go en `client-net`, Go e IA en `service-net`, Go y su PostgreSQL en `go-data-net`, e IA, Redis Stack y PostgreSQL de IA en `ai-data-net`. React SHALL apuntar su proxy a Go. Solo React/Nginx SHALL publicar un puerto en integración, enlazado a 127.0.0.1:3001 y accesible mediante túnel SSH. estimador-cag SHALL disponer de salida a proveedores cloud sin abrir puertos de entrada ni habilitar tránsito desde el cliente. Go SHALL recibir `ESTIMATOR_API_URL` y la IA SHALL recibir `REDIS_URL` y `DATABASE_URL` internos. El Compose SHALL NOT definir servicios Rails ni Streamlit.
 
 #### Scenario: Web React tras el proxy
-- **WHEN** se abre `http://localhost:3001/estimations`
-- **THEN** la aplicación se sirve desde su propio origen y sus llamadas a `/api/v1/...` llegan a la API sin exponer la dirección interna ni requerir CORS.
+- **WHEN** el navegador solicita el historial en el origen React
+- **THEN** Nginx llama a Go desde el mismo origen, sin CORS ni exposición de la URL interna, y Go consulta la API de IA por su red interna
+
+#### Scenario: Aislamiento efectivo
+- **WHEN** se prueba DNS y conexión directa por IP desde la red cliente y desde el host
+- **THEN** el cliente alcanza a Go, falla al alcanzar IA, Redis, PostgreSQL u Ollama, el cliente tampoco alcanza esos servicios mediante el gateway o rutas y puertos del host, y el host no dispone de puertos publicados de backend o almacenes
+
+#### Scenario: Salida de IA
+- **WHEN** se prueba resolución y HTTPS desde IA hacia un proveedor simulado
+- **THEN** la operación funciona sin publicar FastAPI
+
+#### Scenario: Configuración válida
+- **WHEN** se ejecuta docker compose config con valores ficticios
+- **THEN** aparecen los seis servicios con las redes y publicaciones declaradas
+
+#### Scenario: Arranque completo
+- **WHEN** se levantan los servicios de integración con fakes
+- **THEN** las sondas alcanzan healthy y React consulta el historial vía Go
 
 ### Requirement: Volúmenes y healthchecks
-PostgreSQL y Redis SHALL usar volúmenes con nombre para conservar sus datos. Cada servicio SHALL declarar un healthcheck (`pg_isready`, `redis-cli ping`, `/health` de la API, `/_stcore/health` del chat, `/up` de la web Go y `/healthz` de la web React) y los servicios dependientes SHALL esperar con `depends_on` y `condition: service_healthy`.
+Los dos PostgreSQL y Redis Stack SHALL conservar sus volúmenes con nombre. Todos los servicios SHALL disponer de healthcheck y los dependientes SHALL esperar a los servicios necesarios mediante `condition: service_healthy`. Las sondas de PostgreSQL y Redis Stack SHALL usar `pg_isready` y `redis-cli ping`. Las sondas locales de Go, Nginx e IA SHALL usar respectivamente `/up`, `/healthz` y `/health` interno, sin generar estimaciones.
 
 #### Scenario: Orden de arranque
-- **WHEN** arranca el stack
-- **THEN** la API espera a PostgreSQL y Redis saludables, y las webs y el chat esperan a la API saludable.
+- **WHEN** se inicia el stack
+- **THEN** IA espera a sus almacenes, Go espera a IA y su PostgreSQL, y React espera a Go
 
 #### Scenario: Persistencia entre reinicios
-- **WHEN** se reinicia el stack sin eliminar volúmenes
-- **THEN** el historial de estimaciones sigue disponible.
-
-### Requirement: Secretos fuera del repositorio
-Las claves de proveedores SHALL leerse de `estimador-cag/.env` (ignorado por git) y SHALL NOT incluirse en las webs ni en el chat. La contraseña de PostgreSQL SHALL parametrizarse con `POSTGRES_PASSWORD`.
-
-#### Scenario: La web y el chat no reciben claves
-- **WHEN** se inspecciona el entorno de los servicios `estimator-web` y `estimador-cag-chat`
-- **THEN** ninguno contiene `OPENAI_API_KEY` ni `ANTHROPIC_API_KEY`.
-
-#### Scenario: La web React no recibe claves
-- **WHEN** se inspecciona el entorno del servicio `estimator-web-react`
-- **THEN** no contiene `OPENAI_API_KEY` ni `ANTHROPIC_API_KEY`.
+- **WHEN** se reinicia sin eliminar volúmenes
+- **THEN** se conservan estimaciones y comparaciones existentes
 
 ### Requirement: Migraciones y datos de ingesta en la API
 La imagen de la API SHALL incluir el catálogo y el corpus de ejemplo (`data/`) y las migraciones Alembic (`alembic/`, `alembic.ini`), y su comando de arranque SHALL aplicar `alembic upgrade head` antes de iniciar el servidor cuando `DATABASE_URL` está definida; sin `DATABASE_URL` SHALL arrancar igualmente sin aplicar migraciones. El Compose raíz SHALL conservar la imagen de PostgreSQL y los volúmenes con nombre existentes, sin servicios adicionales para la ingesta.
@@ -56,3 +53,28 @@ La imagen de la API SHALL incluir el catálogo y el corpus de ejemplo (`data/`) 
 #### Scenario: Datos preservados
 - **WHEN** se reinicia el stack sin eliminar volúmenes
 - **THEN** el historial de estimaciones y los trabajos de ingesta siguen disponibles.
+
+### Requirement: Acceso acotado durante la integración
+Hasta completar `homelab-authentication-authorization`, la aplicación SHALL operar exclusivamente como entorno privado de desarrollo, accesible solo por el operador autorizado mediante túnel SSH, sin exposición pública ni habilitación multiusuario. Go SHALL denegar por defecto las operaciones administrativas. React/Nginx SHALL carecer de ruta directa a IA y almacenes, incluidas rutas disponibles a través del host.
+
+#### Scenario: Verificación de publicaciones
+- **WHEN** se comprueban las publicaciones efectivas en IPv4 e IPv6 y se compara acceso por túnel SSH con acceso desde otra máquina sin túnel
+- **THEN** el operador autorizado accede por el túnel, la conexión remota directa falla, Go, IA y almacenes carecen de publicaciones y una petición administrativa en la composición normal recibe 403
+
+### Requirement: Perfiles de desarrollo y verificación
+Vite SHALL dirigir API y salud a Go. Los Compose secundarios y de verificación SHALL mantener el aislamiento del despliegue de integración y SHALL usar sondas internas o fakes para comprobaciones de servicio. Los seis servicios del Compose raíz SHALL usar recursos propios del proyecto. PostgreSQL, Ollama y Open WebUI preexistentes del homelab y sus recursos SHALL quedar fuera del ciclo de vida de Compose del proyecto. Las pruebas SHALL usar proyectos Compose, redes, bases de datos y volúmenes independientes, con datos efímeros. Las operaciones de prueba SHALL NOT detener, modificar ni eliminar infraestructura preexistente, ejecutar limpiezas globales ni eliminar volúmenes de infraestructura.
+
+#### Scenario: Recursos de prueba independientes
+- **WHEN** se inspeccionan las configuraciones, se ejecutan las suites y se limpian sus recursos efímeros
+- **THEN** los recursos de prueba tienen identidad propia, ningún servicio o recurso preexistente cambia y la limpieza se limita al proyecto de prueba
+
+#### Scenario: Desarrollo y CI
+- **WHEN** se valida el proxy de Vite y se ejecutan pruebas en Docker con credenciales ficticias
+- **THEN** el flujo de navegador solo alcanza Go y los servicios de prueba funcionan sin publicar FastAPI en integración ni contactar proveedores reales
+
+### Requirement: Credenciales exclusivas de IA
+Las credenciales reales SHALL NOT versionarse. Las claves de proveedores SHALL cargarse desde entorno local excluido o secretos de despliegue en estimador-cag exclusivamente. Las contraseñas de PostgreSQL SHALL parametrizarse y las bases y usuarios SHALL mantenerse separados.
+
+#### Scenario: Inspección de variables
+- **WHEN** se renderiza Compose con valores ficticios y se inspeccionan los servicios
+- **THEN** solo estimador-cag recibe claves de proveedores, cada base usa su propia configuración y los archivos versionados contienen únicamente valores ficticios o referencias a secretos

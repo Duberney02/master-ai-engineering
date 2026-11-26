@@ -1,7 +1,7 @@
 # Evidencia de retirada del cliente HTML de Go (tareas 10.1 y 10.2)
 
 Base: `6322a1d`. Esta nota sustituye, para las referencias que dejan de ser válidas, a las pruebas Go de HTML citadas
-en `openspec/changes/homelab-route-clients-through-go/caracterizacion.md` y en los documentos de verificación (solo
+en `openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/caracterizacion.md` y en los documentos de verificación (solo
 lectura). Cada prueba retirada tiene una correspondencia explícita con cobertura vigente en Go (REST/SSE/frontera) o en
 React (`estimator-web-react/src`). «Go» = `estimator-web-go/internal/…`.
 

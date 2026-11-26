@@ -7,7 +7,7 @@ x-sondas: &sonda
   image: homelab-block1-307a8b9-react:test
   pull_policy: never
   volumes:
-    - ./openspec/changes/homelab-route-clients-through-go:/sondas:ro
+    - ./openspec/changes/archive/2026-11-26-homelab-route-clients-through-go:/sondas:ro
   working_dir: /sondas
   init: true
 
@@ -29,7 +29,7 @@ services:
     environment:
       CERT_DIR: /certs
     volumes:
-      - ./openspec/changes/homelab-route-clients-through-go:/sondas:ro
+      - ./openspec/changes/archive/2026-11-26-homelab-route-clients-through-go:/sondas:ro
       - ./.block4/certs:/certs:ro
     networks:
       ai-egress-net:

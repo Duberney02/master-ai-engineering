@@ -10,7 +10,7 @@ set -euo pipefail
 PROYECTO="${PROYECTO:-hl-s1}"
 [[ "$PROYECTO" =~ ^hl-s[123]$ ]] || { echo "PROYECTO debe ser hl-s1, hl-s2 o hl-s3" >&2; exit 2; }
 RAIZ="$(git rev-parse --show-toplevel)"; cd "$RAIZ"
-CAMBIO=openspec/changes/homelab-route-clients-through-go
+CAMBIO=openspec/changes/archive/2026-11-26-homelab-route-clients-through-go
 BLOQUE=.block4; [[ "$PROYECTO" != hl-s1 ]] && BLOQUE=".block4-${PROYECTO#hl-}"
 EVID="$BLOQUE/evidencias"; mkdir -p "$EVID" "$BLOQUE/docker-config"; [[ -f "$BLOQUE/docker-config/config.json" ]] || echo '{}' > "$BLOQUE/docker-config/config.json"
 export DOCKER_CONFIG="$RAIZ/$BLOQUE/docker-config"

@@ -5,7 +5,7 @@ services:
   parity-check:
     volumes: !override
       - type: bind
-        source: ./openspec/changes/homelab-route-clients-through-go
+        source: ./openspec/changes/archive/2026-11-26-homelab-route-clients-through-go
         target: /fixtures
         read_only: true
       - type: bind

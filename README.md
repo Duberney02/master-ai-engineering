@@ -138,7 +138,7 @@ docker compose -f docker-compose.verify.yml run --rm openspec validate --all --s
 
 Usa siempre un nombre de proyecto propio (`-p <nombre>`) para no compartir redes ni volúmenes entre ejecuciones. Los recorridos
 de extremo a extremo, la matriz de aislamiento de red y la evidencia del cambio activo están en
-[`openspec/changes/homelab-route-clients-through-go/`](./openspec/changes/homelab-route-clients-through-go/verificacion-bloque4.md).
+[`openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/`](./openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/verificacion-bloque4.md).
 Ahí se describen también los arneses (`verificar-red-bloque4.sh`, `verificar-e2e-bloque6.sh`), que solo operan sobre proyectos
 `hl-s1`, `hl-s2` o `hl-s3`.
 

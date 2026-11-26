@@ -1,5 +1,8 @@
 # Revisión de propósitos obsoletos de las especificaciones
 
+> **Ejecutada.** Los propósitos de la tabla se aplicaron a las especificaciones principales en la sincronización de deltas del
+> archivado de este cambio (2026-11-26). Se conserva como registro de la revisión; el texto de abajo describe el estado previo.
+
 Preparada para el paso de integración de deltas (archivado), que **no se ejecuta aquí**. No se ha modificado ninguna
 especificación principal: este documento solo registra, por capacidad, qué propósito de `openspec/specs/estimator/*/spec.md`
 queda obsoleto tras el cambio y la redacción propuesta para sustituirlo al integrar los deltas. Los requisitos los gobiernan

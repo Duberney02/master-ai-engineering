@@ -1,12 +1,13 @@
 # estimator/prompt-preview Specification
 
 ## Purpose
-Exponer por HTTP el prompt de sistema renderizado y sus ejemplos few-shot, para que clientes sin las plantillas (la web Rails) muestren el contexto del prompt como el cliente Streamlit.
+Exponer el prompt de sistema renderizado y sus ejemplos few-shot, a través de Go, para que React muestre el contexto informativo del prompt sin memoria de sesión.
 
 ## Requirements
 
 ### Requirement: Vista previa del prompt de estimación
 `GET /api/v1/prompts/estimation` SHALL devolver `{prompt_version, system_prompt, examples}` para una `prompt_version` (por defecto `v3`) y unos `project_type`, `detail_level` y `output_format` (por defecto `mobile_app`, `medium` y `phases_table`). `examples` SHALL contener el título y la descripción de cada ejemplo few-shot del prompt. Una versión desconocida o un valor fuera de los enumerados SHALL rechazarse con 422. El endpoint SHALL NOT invocar al proveedor ni usar datos de usuario.
+El navegador SHALL consultar el mismo contrato a través de Go. Solo estimador-cag SHALL renderizar la vista previa y sus ejemplos. La vista previa SHALL representar las opciones solicitadas sin leer la memoria de una sesión.
 
 #### Scenario: Valores por defecto
 - **WHEN** se llama sin parámetros
@@ -19,3 +20,7 @@ Exponer por HTTP el prompt de sistema renderizado y sus ejemplos few-shot, para 
 #### Scenario: Valores inválidos
 - **WHEN** se llama con `prompt_version=v9`, con una ruta como versión o con un `project_type` inexistente
 - **THEN** la respuesta es 422.
+
+#### Scenario: Renderizado único
+- **WHEN** React cambia opciones y solicita la vista previa a Go
+- **THEN** recibe el prompt y los ejemplos renderizados por estimador-cag con la forma vigente.

@@ -22,7 +22,7 @@ services:
     profiles: ["e2e"]
     command: ["node", "openai-simulado.mjs"]
     volumes:
-      - ./openspec/changes/homelab-route-clients-through-go:/sondas:ro
+      - ./openspec/changes/archive/2026-11-26-homelab-route-clients-through-go:/sondas:ro
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/__sim/state').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 2s
@@ -72,7 +72,7 @@ services:
       SIM: http://openai-simulado:8080
       FIXTURE: http://ia-fixture:8000
     volumes:
-      - ./openspec/changes/homelab-route-clients-through-go:/sondas:ro
+      - ./openspec/changes/archive/2026-11-26-homelab-route-clients-through-go:/sondas:ro
       - ./.block4/fixtures:/fixtures:ro
     # Posición de cliente (client-net) más acceso de control al proveedor simulado y al upstream con barreras.
     networks: [client-net, service-net, ai-egress-net]

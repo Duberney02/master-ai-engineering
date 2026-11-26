@@ -5,12 +5,15 @@
 #   docker compose -f docker-compose.verify.yml run --rm api-test            # pytest -q (añade argumentos: api-test -k sessions)
 #   docker compose -f docker-compose.verify.yml run --rm api-lint            # ruff check
 #   docker compose -f docker-compose.verify.yml run --rm api-eval --help     # runner de evaluación
-#   docker compose -f docker-compose.verify.yml run --rm api-stress --help   # stress test del CAG (necesita la API en marcha)
+#   docker compose -f docker-compose.verify.yml run --rm api-stress --help   # stress test del CAG (en proceso; sin acceso al host)
+#   docker compose -f docker-compose.verify.yml run --rm react-test          # Vitest del cliente React (sin red)
+#   docker compose -f docker-compose.verify.yml run --rm react-build         # tsc + vite build del cliente React (sin red)
 #   docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
 #   docker compose -f docker-compose.verify.yml run --rm api-uv lock         # regenerar uv.lock
 #   docker compose -f docker-compose.verify.yml run --rm --entrypoint python api-test scripts/demo_cleaning_s06.py   # demos de la sesión 6
 # api-test levanta su propio PostgreSQL con pgvector (api-db): las pruebas de integración ya no se omiten.
-# El preflight se ejecuta con el stack raíz levantado (ver estimador-cag/README.md).
+# Usa siempre un nombre de proyecto propio (-p) para no compartir redes, volúmenes ni contenedores entre sesiones.
+# Ningún servicio publica puertos ni alcanza el host: las comprobaciones de servicio usan sondas internas o fakes.
 
 name: estimator-verify
 
@@ -62,12 +65,11 @@ services:
     <<: *api-dev
     entrypoint: ["python", "-m", "evals.runner"]
 
-  # Stress test del CAG contra la API del Compose raíz (docker compose up -d estimador-cag): usa --http http://host.docker.internal:8000
+  # Stress test del CAG. Sin --http usa la aplicación en proceso (TestClient). El modo --http exige una API de un
+  # proyecto temporal propio: este servicio no recibe host-gateway ni se une a las redes internas del despliegue.
   api-stress:
     <<: *api-dev
     entrypoint: ["python", "-m", "evals.stress.run"]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   api-uv:
     <<: *api-dev
@@ -132,6 +134,30 @@ services:
       - web_go_cache:/go
     working_dir: /src
     entrypoint: ["go"]
+
+  # Cliente React: Vitest y compilación en contenedor y sin red. node_modules vive en la imagen (/app); solo se montan las
+  # fuentes, en solo lectura.
+  #   docker compose -p <proyecto> -f docker-compose.verify.yml run --rm react-test
+  react-test:
+    build: &react-build
+      context: ./estimator-web-react
+      target: build
+    image: estimator-web-react:test
+    volumes: &react-src
+      - ./estimator-web-react/src:/app/src:ro
+      - ./estimator-web-react/index.html:/app/index.html:ro
+      - ./estimator-web-react/vite.config.ts:/app/vite.config.ts:ro
+      - ./estimator-web-react/tsconfig.json:/app/tsconfig.json:ro
+      - ./estimator-web-react/package.json:/app/package.json:ro
+    network_mode: none
+    command: ["npm", "test"]
+
+  react-build:
+    build: *react-build
+    image: estimator-web-react:test
+    volumes: *react-src
+    network_mode: none
+    command: ["npm", "run", "build"]
 
   openspec:
     build:

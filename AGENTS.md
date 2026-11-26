@@ -96,5 +96,8 @@ El Compose raíz levanta la pila de integración: solo React/Nginx publica `127.
 ## OpenSpec, secretos y Git
 
 - Consulta la [guía de OpenSpec](openspec/README.md) para instalar el CLI, invocar los seis workflows, validar y gestionar las habilidades. Usa el CLI nativo para planificación y valida antes del archivado. No invoques superpowers.
+- Mantén cada cambio OpenSpec con sus artefactos de especificación (`.openspec.yaml`, `proposal.md`, `design.md`, `tasks.md`, `specs/`) y, si hace falta, un único `verification.md` consolidado. Ningún componente activo (Compose, script, prueba o CI) depende de un cambio archivado.
+- Incorpora los arneses reutilizables a `verification/` o a los directorios de pruebas del servicio. Sus resultados, cachés y evidencias van a `.verification/` (ignorado por Git). No crees directorios temporales por funcionalidad en la raíz del repositorio.
+- Tras validar y respaldar el trabajo, retira snapshots, logs y recursos temporales, y comprueba que no quedan residuos antes de cerrar la funcionalidad.
 - Carga los secretos desde el entorno o archivos locales excluidos, como `.env`. Revisa que las configuraciones versionadas incluyan solo información compartida y que las credenciales de IA lleguen exclusivamente a `estimador-cag`.
 - Verifica la rama y el estado de Git antes de editar. Trabaja en la rama indicada para la tarea, con `master` como base habitual, y preserva los cambios ajenos. Revisa el diff y el resultado de las verificaciones antes de preparar un commit. Agrega archivos, crea commits o publica cambios cuando la tarea lo autorice.

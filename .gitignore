@@ -12,3 +12,8 @@ estimador-cag/evals/reports/
 /.block2/
 
 /.block3/
+
+# Evidencias locales de las ejecuciones paralelas (S1, S2 y S3).
+/.block4/
+/.block4-s2/
+/.block4-s3/

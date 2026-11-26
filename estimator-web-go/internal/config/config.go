@@ -8,6 +8,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"math"
+	"net/url"
+
 	"strconv"
 	"strings"
 	"time"
@@ -15,14 +18,18 @@ import (
 
 // Config reúne los ajustes del servicio.
 type Config struct {
-	Port           string
-	APIURL         string
-	OpenTimeout    time.Duration
-	ReadTimeout    time.Duration
-	CompareTimeout time.Duration
-	BadgeTimeout   time.Duration
-	DatabaseURL    string
-	SecretKeyBase  string
+	StreamTotal, StructuredStreamTotal                                                        time.Duration
+	StreamIdle, StructuredStreamIdle                                                          time.Duration
+	Port                                                                                      string
+	PublicOrigin                                                                              string
+	PublicRegularHeaders, PublicRegularTotal, PublicLongHeaders, PublicLongTotal, PublicProbe time.Duration
+	APIURL                                                                                    string
+	OpenTimeout                                                                               time.Duration
+	ReadTimeout                                                                               time.Duration
+	CompareTimeout                                                                            time.Duration
+	BadgeTimeout                                                                              time.Duration
+	DatabaseURL                                                                               string
+	SecretKeyBase                                                                             string
 	// EphemeralSecret indica que SECRET_KEY_BASE no estaba definido y se generó uno aleatorio para este proceso.
 	EphemeralSecret bool
 }
@@ -38,7 +45,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	seconds := func(name, fallback string) (time.Duration, error) {
 		raw := value(name, fallback)
 		parsed, err := strconv.ParseFloat(raw, 64)
-		if err != nil || parsed <= 0 {
+		if err != nil || parsed <= 0 || math.IsNaN(parsed) || parsed >= float64(math.MaxInt64)/float64(time.Second) {
 			return 0, fmt.Errorf("%s debe ser un número de segundos positivo (recibido %q)", name, raw)
 		}
 		return time.Duration(parsed * float64(time.Second)), nil
@@ -63,6 +70,33 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 
+	cfg.PublicOrigin = value("ESTIMATOR_PUBLIC_ORIGIN", "")
+	if cfg.PublicOrigin != "" {
+		u, parseErr := url.Parse(cfg.PublicOrigin)
+		if parseErr != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" ||
+			u.User != nil || u.Path != "" || u.ForceQuery || u.RawQuery != "" || u.Fragment != "" {
+			return Config{}, fmt.Errorf("ESTIMATOR_PUBLIC_ORIGIN debe ser un origen HTTP válido")
+		}
+	}
+	for _, item := range []struct {
+		name, fallback string
+		destination    *time.Duration
+	}{
+		{"ESTIMATOR_REGULAR_HEADERS_TIMEOUT", "30", &cfg.PublicRegularHeaders},
+		{"ESTIMATOR_REGULAR_TOTAL_TIMEOUT", "30", &cfg.PublicRegularTotal},
+		{"ESTIMATOR_LONG_HEADERS_TIMEOUT", "600", &cfg.PublicLongHeaders},
+		{"ESTIMATOR_LONG_TOTAL_TIMEOUT", "600", &cfg.PublicLongTotal},
+		{"ESTIMATOR_PROBE_TIMEOUT", "3", &cfg.PublicProbe},
+		{"ESTIMATOR_TRANSCRIPTION_IDLE_TIMEOUT", "600", &cfg.StreamIdle},
+		{"ESTIMATOR_TRANSCRIPTION_TOTAL_TIMEOUT", "600", &cfg.StreamTotal},
+		{"ESTIMATOR_STRUCTURED_TOTAL_TIMEOUT", "600", &cfg.StructuredStreamTotal},
+		{"ESTIMATOR_STRUCTURED_IDLE_TIMEOUT", "600", &cfg.StructuredStreamIdle},
+	} {
+		if *item.destination, err = seconds(item.name, item.fallback); err != nil {
+			return Config{}, err
+		}
+	}
+
 	cfg.SecretKeyBase = strings.TrimSpace(getenv("SECRET_KEY_BASE"))
 	if cfg.SecretKeyBase == "" {
 		random := make([]byte, 32)
@@ -73,4 +107,28 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		cfg.EphemeralSecret = true
 	}
 	return cfg, nil
+}
+
+type APITimeouts struct {
+	Connection, RegularHeaders, RegularTotal, LongHeaders, LongTotal, Probe time.Duration
+	StructuredTotal, TranscriptionTotal                                     time.Duration
+}
+
+func (c Config) PublicTimeouts() APITimeouts {
+	defaultSeconds := func(value time.Duration, fallback time.Duration) time.Duration {
+		if value > 0 {
+			return value
+		}
+		return fallback * time.Second
+	}
+	return APITimeouts{
+		Connection:         defaultSeconds(c.OpenTimeout, 5),
+		RegularHeaders:     defaultSeconds(c.PublicRegularHeaders, 30),
+		RegularTotal:       defaultSeconds(c.PublicRegularTotal, 30),
+		LongHeaders:        defaultSeconds(c.PublicLongHeaders, 600),
+		LongTotal:          defaultSeconds(c.PublicLongTotal, 600),
+		Probe:              defaultSeconds(c.PublicProbe, 3),
+		StructuredTotal:    defaultSeconds(c.StructuredStreamTotal, 600),
+		TranscriptionTotal: defaultSeconds(c.StreamTotal, 600),
+	}
 }

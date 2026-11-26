@@ -17,9 +17,21 @@ Go SHALL intermediar las dos rutas POST de streaming explícitamente, con las se
 - **WHEN** IA devuelve error saneado, corta la conexión sin terminal o deja vencer la inactividad
 - **THEN** el flujo termina con error cuando se puede escribir, sin done y sin reintento
 
-#### Scenario: Cancelación
-- **WHEN** React aborta después del primer evento de cualquiera de las dos rutas SSE a través de Nginx o Vite
-- **THEN** el proxy propaga el cierre a Go, Go cancela y cierra el cuerpo upstream, Python cierra el generador, el fake del proveedor observa la liberación de recursos y no hay resultado parcial persistido, caché parcial ni segundo POST
+#### Scenario: Cancelación estructurada durante la generación
+- **WHEN** el cliente cancela mientras el proveedor simulado genera y el stream aún no ha emitido `result`
+- **THEN** Go cancela y cierra el upstream, Python libera el recurso del proveedor y no queda persistencia ni caché parcial
+
+#### Scenario: Cancelación estructurada después del resultado
+- **WHEN** el cliente cancela tras recibir `result`
+- **THEN** Go cancela y cierra el upstream, y toda escritura confirmada se conserva intacta
+
+#### Scenario: Cancelación de transcripción tras el primer token
+- **WHEN** el cliente cancela después del primer `token` mientras la generación sigue activa
+- **THEN** Go cancela y cierra el upstream y Python interrumpe el generador y libera el recurso del proveedor simulado, sin caché parcial ni segundo POST
+
+#### Scenario: Cancelación alrededor de la escritura
+- **WHEN** se cancela antes, durante o después de la escritura
+- **THEN** se preserva la atomicidad y las escrituras confirmadas, con independencia de si se entregó `result`
 
 ## REMOVED Requirements
 

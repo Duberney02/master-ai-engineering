@@ -12,6 +12,7 @@ from fastapi.datastructures import FormData
 from fastapi.routing import APIRoute
 from pydantic import TypeAdapter, ValidationError
 
+from app.api.disconnect import complete_while_connected
 from app.dependencies import get_actor_critic_boss, get_history, get_session_estimation_service, get_session_store
 from app.domain.acb import ActorCriticBoss
 from app.domain.audience import Audience
@@ -245,6 +246,7 @@ async def _save(
 @router.post("/sessions/{session_id}/estimate", response_model=SessionEstimationResponse, responses=_ESTIMATE_RESPONSES)
 async def estimate_in_session(
     session_id: str,
+    connection: Request,
     transcript: str = Form("", description="Mensaje o transcripción de este turno."),
     attachments: list[UploadFile] = File(default=[], description="Adjuntos PDF o Word (.docx)."),
     project_type: ProjectType = Form(...),
@@ -261,24 +263,27 @@ async def estimate_in_session(
     service: SessionEstimationService = Depends(get_session_estimation_service),
     history: EstimationHistory = Depends(get_history),
 ) -> SessionEstimationResponse:
-    session, request, audience = await _prepare(
-        store,
-        session_id,
-        transcript,
-        attachments,
-        project_type,
-        detail_level,
-        output_format,
-        reference_projects,
-        tier,
-    )
-    requested_at = datetime.now(timezone.utc)
-    result = await service.estimate(
-        session, request, prompt_version or service.settings.conversation_prompt_version, audience
-    )
-    store.touch(session)
-    estimation_id = await _save(history, session, request, result, requested_at)
-    return SessionEstimationResponse(**_response_fields(session, result, estimation_id))
+    async def complete() -> SessionEstimationResponse:
+        session, request, audience = await _prepare(
+            store,
+            session_id,
+            transcript,
+            attachments,
+            project_type,
+            detail_level,
+            output_format,
+            reference_projects,
+            tier,
+        )
+        requested_at = datetime.now(timezone.utc)
+        result = await service.estimate(
+            session, request, prompt_version or service.settings.conversation_prompt_version, audience
+        )
+        store.touch(session)
+        estimation_id = await _save(history, session, request, result, requested_at)
+        return SessionEstimationResponse(**_response_fields(session, result, estimation_id))
+
+    return await complete_while_connected(connection, complete())
 
 
 @router.post(

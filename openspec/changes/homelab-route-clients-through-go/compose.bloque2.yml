@@ -1,0 +1,77 @@
+# Verificación del Bloque 2. Cargar después del Compose de verificación y del complemento del Bloque 1.
+services:
+  web-test:
+    build: !reset null
+    volumes: !override &bloque2-go
+      - type: bind
+        source: ./.block2/fuentes/estimator-web-go
+        target: /src
+        read_only: true
+        bind:
+          create_host_path: false
+  web-lint:
+    build: !reset null
+    volumes: !override
+      - type: bind
+        source: ./.block2/fuentes/estimator-web-go
+        target: /src
+        read_only: true
+        bind:
+          create_host_path: false
+  api-test:
+    build: !reset null
+    volumes: !override &bloque2-api
+      - type: bind
+        source: ./.block2/fuentes/estimador-cag
+        target: /app
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./.block1-evidencias/parte-c/cl100k_base.tiktoken
+        target: /opt/tiktoken-cache/9b5ad71b2ce5302211f9c61530b329a4922fc6a4
+        read_only: true
+        bind:
+          create_host_path: false
+  api-lint:
+    build: !reset null
+    volumes: !override
+      - type: bind
+        source: ./.block2/fuentes/estimador-cag
+        target: /app
+        read_only: true
+        bind:
+          create_host_path: false
+  react-test:
+    build: !reset null
+
+  api-sse-fixture:
+    image: homelab-block1-307a8b9-api:test
+    pull_policy: never
+    working_dir: /app
+    volumes: *bloque2-api
+    environment:
+      LLM_PROVIDER: openai
+      OPENAI_API_KEY: sk-test-dummy
+      TIKTOKEN_CACHE_DIR: /opt/tiktoken-cache
+      TEST_DATABASE_URL: postgresql+asyncpg://estimator:estimator-dev@block1-api-db:5432/estimator_test
+    entrypoint: ["python", "-m", "uvicorn", "tests.block2_sse_fixture:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks: [block1-api]
+  web-sse-test:
+    image: homelab-block1-307a8b9-go:test
+    pull_policy: never
+    working_dir: /src
+    volumes: *bloque2-go
+    environment:
+      GOTOOLCHAIN: local
+      GOPROXY: "off"
+      GOSUMDB: "off"
+      BLOCK2_SSE_FIXTURE_URL: http://api-sse-fixture:8000
+    entrypoint: ["go", "test", "-p", "1", "-count=1", "-v"]
+    command: ["./internal/web", "-run", "^Test(SSE|REST)CancellationThroughPython$"]
+    networks: [block1-api]

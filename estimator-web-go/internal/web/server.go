@@ -38,16 +38,18 @@ const maxBodyBytes = 64 << 20
 
 // Server reúne las dependencias de los handlers.
 type Server struct {
-	cfg         config.Config
-	log         *slog.Logger
-	sessions    *session.Manager
-	estimations *estimatorai.EstimationsClient
-	chats       *estimatorai.SessionsClient
-	compare     *estimatorai.EmbeddingsClient // con el tiempo de espera ampliado: solo lo usa el Chunking Lab
-	models      *estimatorai.ConfigClient
-	badge       *badgeCache
-	store       rag.Store
-	pages       map[string]*template.Template
+	adminDecision administrativeDecision
+	publicAI      *estimatorai.PublicClient
+	cfg           config.Config
+	log           *slog.Logger
+	sessions      *session.Manager
+	estimations   *estimatorai.EstimationsClient
+	chats         *estimatorai.SessionsClient
+	compare       *estimatorai.EmbeddingsClient // con el tiempo de espera ampliado: solo lo usa el Chunking Lab
+	models        *estimatorai.ConfigClient
+	badge         *badgeCache
+	store         rag.Store
+	pages         map[string]*template.Template
 }
 
 // New construye el servidor. `store` puede ser nil (sin base de datos): el Chunking Lab degrada como con un fallo de BD.
@@ -63,6 +65,7 @@ func New(cfg config.Config, store rag.Store, logger *slog.Logger) (*Server, erro
 	}
 	server := &Server{
 		cfg:         cfg,
+		publicAI:    estimatorai.NewPublicClient(cfg.APIURL, estimatorai.PublicTimeouts(cfg.PublicTimeouts())),
 		log:         logger,
 		sessions:    session.NewManager(cfg.SecretKeyBase),
 		estimations: estimatorai.NewEstimationsClient(settings),
@@ -118,7 +121,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /ai_settings", s.route(s.settingsUpdate))
 
 	mux.HandleFunc("/", s.notFound)
-	return s.recoverer(s.logging(s.methodOverride(mux)))
+	legacy := s.recoverer(s.logging(s.protectLegacy(s.methodOverride(mux))))
+	api := s.apiHandler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" || r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			api.ServeHTTP(w, r)
+			return
+		}
+		legacy.ServeHTTP(w, r)
+	})
 }
 
 // route carga la sesión y exige el token CSRF en las peticiones que cambian estado.

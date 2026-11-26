@@ -8,9 +8,10 @@ import json
 from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
+from app.api.disconnect import complete_while_connected
 from app.dependencies import get_history, get_pipeline
 from app.domain.history import EstimationHistory
 from app.domain.pipeline import EstimationPipeline, PipelineOutcome
@@ -52,22 +53,26 @@ def _log_completed(outcome: PipelineOutcome, streamed: bool) -> None:
 )
 async def estimate(
     request: EstimationRequest,
+    connection: Request,
     prompt_version: str = PromptVersionQuery,
     pipeline: EstimationPipeline = Depends(get_pipeline),
     history: EstimationHistory = Depends(get_history),
 ) -> EstimationResponse:
-    requested_at = datetime.now(timezone.utc)
-    outcome = await pipeline.run(request, prompt_version)
-    estimation_id = await history.save(request, outcome, requested_at)
-    _log_completed(outcome, streamed=False)
-    return EstimationResponse(
-        result=outcome.result,
-        prompt_version=outcome.prompt_version,
-        cached=outcome.cached,
-        cache_source=outcome.cache_source,
-        estimation_id=estimation_id,
-        metrics=outcome.metrics(),
-    )
+    async def complete() -> EstimationResponse:
+        requested_at = datetime.now(timezone.utc)
+        outcome = await pipeline.run(request, prompt_version)
+        estimation_id = await history.save(request, outcome, requested_at)
+        _log_completed(outcome, streamed=False)
+        return EstimationResponse(
+            result=outcome.result,
+            prompt_version=outcome.prompt_version,
+            cached=outcome.cached,
+            cache_source=outcome.cache_source,
+            estimation_id=estimation_id,
+            metrics=outcome.metrics(),
+        )
+
+    return await complete_while_connected(connection, complete())
 
 
 def _event(name: str, data: dict) -> str:

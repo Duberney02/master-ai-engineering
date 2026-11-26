@@ -397,6 +397,7 @@ func newHarness(t *testing.T, opts ...option) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	server.adminDecision = func(context.Context, administrativeOperation) (bool, error) { return true, nil }
 	h.server = server
 	h.app = httptest.NewServer(server.Handler())
 	t.Cleanup(h.app.Close)

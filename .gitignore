@@ -8,3 +8,5 @@ estimador-cag/evals/reports/
 # Fuentes revisadas para el entorno Docker de caracterización del Bloque 1.
 /.block1/
 /.block1-evidencias/
+
+/.block2/

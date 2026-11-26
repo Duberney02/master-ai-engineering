@@ -13,20 +13,20 @@
 
 ## 3. API REST de Go
 
-- [ ] 3.1 Tras 2, exponer sesiones y estimaciones explícitas. Verificar 201 UUID, valores opcionales, JSON, multipart repetido, URL-encoded admitido, adjuntos y referencias.
-- [ ] 3.2 Exponer vista previa, historial, detalle y salud. Verificar defaults y forma de la vista previa sin memoria de sesión, datos de usuario ni llamadas al proveedor, versión y opciones inválidas, límites 1–50, ID ausente o inválido, historial indisponible y /up independiente de /health.
-- [ ] 3.3 Aplicar límites de cabeceras, JSON, multipart y archivos, origen y limpieza de temporales. Verificar cuerpos sin Content-Length, Unicode válido, 404/405, 413/415/422 y guardrails 400 saneados, sin llamadas inesperadas.
-- [ ] 3.4 Configurar conexión, espera de cabeceras y plazo total habitual y largo. Verificar cancelación hasta Python, 502/503/504 saneados en español, respuestas inválidas, mapeo de errores tipados, una generación válida que supera el plazo habitual y ausencia de reintentos de POST.
+- [x] 3.1 Tras 2, exponer sesiones y estimaciones explícitas. Verificar 201 UUID, valores opcionales, JSON, multipart repetido, URL-encoded admitido, adjuntos y referencias.
+- [x] 3.2 Exponer vista previa, historial, detalle y salud. Verificar defaults y forma de la vista previa sin memoria de sesión, datos de usuario ni llamadas al proveedor, versión y opciones inválidas, límites 1–50, ID ausente o inválido, historial indisponible y /up independiente de /health.
+- [x] 3.3 Aplicar límites de cabeceras, JSON, multipart y archivos, origen y limpieza de temporales. Verificar cuerpos sin Content-Length, Unicode válido, 404/405, 413/415/422 y guardrails 400 saneados, sin llamadas inesperadas.
+- [x] 3.4 Configurar conexión, espera de cabeceras y plazo total habitual y largo. Verificar cancelación hasta Python, 502/503/504 saneados en español, respuestas inválidas, mapeo de errores tipados, una generación válida que supera el plazo habitual y ausencia de reintentos de POST.
 
 ## 4. Intermediación SSE
 
-- [ ] 4.1 Tras 3, intermediar las dos rutas con flush y un evento acotado en memoria. Verificar entrega incremental, fragmentación, comentarios, CRLF, datos multilínea, orden, cabeceras y metadatos.
-- [ ] 4.2 Verificar HTTP previo, error terminal, EOF prematuro, secuencia inválida, inactividad, plazo total y cierre upstream ante cancelación. Aceptación: fallo saneado sin done falso ni reintento. En ambas rutas, cancelar tras el primer evento y comprobar que Python libera el generador y el recurso del proveedor, sin persistencia ni caché parcial.
+- [x] 4.1 Tras 3, intermediar las dos rutas con flush y un evento acotado en memoria. Verificar entrega incremental, fragmentación, comentarios, CRLF, datos multilínea, orden, cabeceras y metadatos.
+- [x] 4.2 Verificar HTTP previo, error terminal, EOF prematuro, secuencia inválida, inactividad, plazo total y cierre upstream ante cancelación. Aceptación: fallo saneado sin done falso ni reintento. En estimación estructurada, cancelar durante la generación antes de result y después de result; en transcripción, tras el primer token. Verificar cierre upstream, liberación explícita del proveedor simulado cuando sigue activo y ausencia de persistencia o caché parciales. Distinguir cancelación antes, durante y después de la escritura y preservar escrituras confirmadas.
 
 ## 5. Frontera de autorización
 
-- [ ] 5.1 Tras 3, introducir decisión reutilizable en Go y denegar por defecto ante falta o fallo. Verificar 403 antes de invocar IA o almacenamiento en lecturas y mutaciones administrativas.
-- [ ] 5.2 Componer fakes solo en pruebas y proteger toda coexistencia de rutas administrativas HTML. Verificar rechazo con cabeceras, cookies legacy, UUID conversacional y origen cruzado y que la imagen normal no puede activar el fake ni acepta credenciales predeterminadas. Verificar que el HTML transitorio conserva la cookie firmada, sus atributos, la compactación y los avisos flash, y rechaza con 422 las mutaciones sin token CSRF válido antes de invocar IA.
+- [x] 5.1 Tras 3, introducir decisión reutilizable en Go y denegar por defecto ante falta o fallo. Verificar 403 antes de invocar IA o almacenamiento en lecturas y mutaciones administrativas.
+- [x] 5.2 Componer fakes solo en pruebas y proteger toda coexistencia de rutas administrativas HTML. Verificar rechazo con cabeceras, cookies legacy, UUID conversacional y origen cruzado y que la imagen normal no puede activar el fake ni acepta credenciales predeterminadas. Verificar que el HTML transitorio conserva la cookie firmada, sus atributos, la compactación y los avisos flash, y rechaza con 422 las mutaciones sin token CSRF válido antes de invocar IA.
 
 ## 6. Comunicaciones de React
 

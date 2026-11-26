@@ -71,6 +71,7 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		Addr:              net.JoinHostPort("", cfg.Port),
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    32 << 10,
 		// Sin WriteTimeout: una estimación o una comparación de pago pueden tardar minutos antes de responder.
 		IdleTimeout: 120 * time.Second,
 		BaseContext: func(net.Listener) context.Context { return context.WithoutCancel(ctx) },
@@ -78,7 +79,7 @@ func run(cfg config.Config, logger *slog.Logger) error {
 
 	failed := make(chan error, 1)
 	go func() {
-		logger.Info("escuchando", "addr", httpServer.Addr, "api", cfg.APIURL, "history", store != nil)
+		logger.Info("escuchando", "addr", httpServer.Addr, "history", store != nil)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			failed <- err
 		}

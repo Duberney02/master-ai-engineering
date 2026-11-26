@@ -23,8 +23,7 @@ var allowed = map[string][]string{
 	"rag":         {"jsondoc"},
 	"ai":          {"jsondoc"},
 	"estimation":  {},
-	"session":     {"jsondoc"},
-	"web":         {"config", "jsondoc", "estimatorai", "rag", "ai", "estimation", "session"},
+	"web":         {"config", "jsondoc", "estimatorai", "rag", "ai"},
 	"archtest":    {},
 }
 

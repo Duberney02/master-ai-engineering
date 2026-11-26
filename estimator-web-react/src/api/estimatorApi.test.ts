@@ -1,5 +1,5 @@
 import {
-  CONNECTION_MESSAGE, EstimatorApiError, HISTORY_UNAVAILABLE_MESSAGE, INVALID_RESPONSE_MESSAGE,
+  CONNECTION_MESSAGE, DEFAULT_TIMEOUT_MS, ESTIMATE_TIMEOUT_MS, EstimatorApiError, HISTORY_UNAVAILABLE_MESSAGE, INVALID_RESPONSE_MESSAGE,
   NOT_FOUND_MESSAGE, REJECTED_MESSAGE, SERVER_MESSAGE, VALIDATION_MESSAGE,
   createEstimation, findEstimation, listEstimations, promptPreview,
 } from "./estimatorApi";
@@ -100,8 +100,54 @@ describe("createEstimation", () => {
         }),
     );
     const pending = messageOf(createEstimation({}));
-    await vi.advanceTimersByTimeAsync(300_001);
+    await vi.advanceTimersByTimeAsync(ESTIMATE_TIMEOUT_MS + 1);
     expect((await pending).message).toBe(CONNECTION_MESSAGE);
+  });
+
+  test("presupuesto coordinado: 630 s para las largas y 40 s para las habituales", async () => {
+    expect([ESTIMATE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS]).toEqual([630_000, 40_000]);
+    vi.useFakeTimers();
+    const slowThenOk = (delay: number, body: unknown) =>
+      fetchMock.mockImplementationOnce(
+        (_url: string, init: RequestInit) =>
+          new Promise((resolve, reject) => {
+            init.signal?.addEventListener("abort", () => reject(new DOMException("abort", "AbortError")));
+            setTimeout(() => resolve(reply(body)), delay);
+          }),
+      );
+    // Una estimación que supera el plazo habitual y termina dentro del largo llega a React sin abortar antes.
+    slowThenOk(300_000, { result: RESULT, estimation_id: 7 });
+    const long = createEstimation({});
+    await vi.advanceTimersByTimeAsync(300_001);
+    expect((await long).estimation_id).toBe(7);
+    // Una operación habitual se rinde tras 40 s.
+    slowThenOk(100_000, []);
+    const regular = messageOf(listEstimations(10));
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS - 1);
+    await vi.advanceTimersByTimeAsync(2);
+    expect((await regular).message).toBe(CONNECTION_MESSAGE);
+  });
+
+  test("una señal ya abortada o abortada en vuelo cancela sin reintentar", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(createEstimation({}, undefined, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    const flying = new AbortController();
+    let received: AbortSignal | undefined;
+    fetchMock.mockImplementationOnce(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          received = init.signal ?? undefined;
+          init.signal?.addEventListener("abort", () => reject(new DOMException("abort", "AbortError")));
+        }),
+    );
+    const pending = createEstimation({}, undefined, flying.signal);
+    await vi.waitFor(() => expect(received).toBeDefined());
+    flying.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(received?.aborted).toBe(true);
+    // Una señal ya abortada no llega a enviar y la cancelada en vuelo no se reenvía: un único fetch en total.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { EstimatorApiError, SessionExpiredError, createSessionEstimation } from "../api/estimatorApi";
 import type { EstimationResponse } from "../api/types";
@@ -26,6 +26,10 @@ export function NewEstimationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [inline, setInline] = useState<InlineEstimation | null>(null);
   const elapsedSeconds = useElapsedSeconds(submitting);
+  const controller = useRef<AbortController | null>(null);
+
+  // Salir de la pantalla cancela la estimación en curso: Nginx/Vite y Go cierran la solicitud hasta Python.
+  useEffect(() => () => controller.current?.abort(), []);
 
   const shown = inline?.estimation.options ?? values;
   const { preview, loading } = usePromptPreview({
@@ -43,10 +47,14 @@ export function NewEstimationPage() {
     }
     setErrors([]);
     setSubmitting(true);
+    const abort = new AbortController();
+    controller.current = abort;
     try {
       const attributes = apiAttributes(values);
       const sessionId = await conversation.ensureSession();
-      const response = await createSessionEstimation(sessionId, sessionFormData(values));
+      if (abort.signal.aborted) return;
+      const response = await createSessionEstimation(sessionId, sessionFormData(values), abort.signal);
+      if (abort.signal.aborted) return;
       conversation.recordEstimation(response);
       if (response.estimation_id) {
         navigate(`/estimations/${response.estimation_id}`);
@@ -58,6 +66,8 @@ export function NewEstimationPage() {
         });
       }
     } catch (error) {
+      // Cancelada por el usuario: sin resultado parcial, sin error y sin reenviar. El borrador se conserva.
+      if (abort.signal.aborted) return;
       if (error instanceof SessionExpiredError) {
         // La API perdió la sesión: se abre otra y el aviso aparece sobre el formulario, que conserva lo escrito.
         await conversation.recoverExpired();
@@ -65,6 +75,7 @@ export function NewEstimationPage() {
         setErrors([error instanceof EstimatorApiError ? error.message : "No se pudo completar la operación."]);
       }
     } finally {
+      controller.current = null;
       setSubmitting(false);
     }
   }
@@ -93,6 +104,7 @@ export function NewEstimationPage() {
         elapsedSeconds={elapsedSeconds}
         onChange={setValues}
         onSubmit={submit}
+        onCancel={() => controller.current?.abort()}
         onUploadError={(message) => setErrors([message])}
       />
     </WithSidebar>

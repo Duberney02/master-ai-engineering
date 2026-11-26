@@ -47,6 +47,7 @@ type Server struct {
 	chats         *estimatorai.SessionsClient
 	compare       *estimatorai.EmbeddingsClient // con el tiempo de espera ampliado: solo lo usa el Chunking Lab
 	models        *estimatorai.ConfigClient
+	settingsAPI   *estimatorai.ConfigClient // plazo habitual de la API JSON de Ajustes; el HTML conserva el suyo
 	badge         *badgeCache
 	store         rag.Store
 	pages         map[string]*template.Template
@@ -72,6 +73,7 @@ func New(cfg config.Config, store rag.Store, logger *slog.Logger) (*Server, erro
 		chats:       estimatorai.NewSessionsClient(settings),
 		compare:     estimatorai.NewEmbeddingsClient(settings.WithTimeouts(0, cfg.CompareTimeout)),
 		models:      estimatorai.NewConfigClient(settings),
+		settingsAPI: estimatorai.NewConfigClient(settings.WithTimeouts(0, cfg.PublicTimeouts().RegularTotal)),
 		store:       store,
 		pages:       pages,
 	}
@@ -318,13 +320,25 @@ func (s *Server) redirect(w http.ResponseWriter, r *http.Request, sess *session.
 // badgeCache guarda unos segundos el modelo primario vigente (a lo sumo una llamada HTTP cada `ttl`). Es pura
 // decoración: si el servicio no responde, devuelve "" y la barra no muestra nada. Un servicio caído nunca debe impedir
 // ni retrasar el renderizado de una página; el fallo también se cachea para no reintentar en cada una.
+//
+// Concurrencia: las lecturas simultáneas comparten una única consulta en vuelo y esperan su resultado o la
+// cancelación de su propio contexto. La consulta usa un contexto desligado del primer llamante (su cancelación no debe
+// cachear una ausencia falsa) y sus plazos son los del cliente. Invalidate incrementa la generación: la consulta que
+// estaba en vuelo entrega su valor a quienes ya la esperaban, pero no lo guarda, y la siguiente lectura consulta de nuevo.
 type badgeCache struct {
-	mu      sync.Mutex
-	ttl     time.Duration
-	now     func() time.Time
-	fetch   func(context.Context) string
-	value   string
-	expires time.Time
+	mu         sync.Mutex
+	ttl        time.Duration
+	now        func() time.Time
+	fetch      func(context.Context) string
+	value      string
+	expires    time.Time
+	generation uint64
+	flight     *badgeFlight
+}
+
+type badgeFlight struct {
+	done  chan struct{}
+	value string
 }
 
 func newBadgeCache(ttl time.Duration, now func() time.Time, fetch func(context.Context) string) *badgeCache {
@@ -334,20 +348,47 @@ func newBadgeCache(ttl time.Duration, now func() time.Time, fetch func(context.C
 // Get devuelve el modelo primario ("" si no se pudo leer).
 func (b *badgeCache) Get(ctx context.Context) string {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	if b.now().Before(b.expires) {
-		return b.value
+		value := b.value
+		b.mu.Unlock()
+		return value
 	}
-	b.value = b.fetch(ctx)
-	b.expires = b.now().Add(b.ttl)
-	return b.value
+	if flight := b.flight; flight != nil {
+		b.mu.Unlock()
+		select {
+		case <-flight.done:
+			return flight.value
+		case <-ctx.Done():
+			return ""
+		}
+	}
+	flight := &badgeFlight{done: make(chan struct{})}
+	b.flight = flight
+	generation := b.generation
+	b.mu.Unlock()
+
+	value := b.fetch(context.WithoutCancel(ctx))
+
+	b.mu.Lock()
+	flight.value = value
+	if b.generation == generation {
+		b.value = value
+		b.expires = b.now().Add(b.ttl)
+		b.flight = nil
+	}
+	b.mu.Unlock()
+	close(flight.done)
+	return value
 }
 
-// Invalidate descarta el valor: el siguiente renderizado vuelve a consultar el servicio.
+// Invalidate descarta el valor y la consulta en vuelo: el siguiente renderizado vuelve a consultar el servicio.
 func (b *badgeCache) Invalidate() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.generation++
 	b.expires = time.Time{}
+	b.value = ""
+	b.flight = nil
 }
 
 var errNoStore = errors.New("web: sin base de datos para el historial")

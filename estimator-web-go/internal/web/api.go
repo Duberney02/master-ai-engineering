@@ -36,12 +36,13 @@ func (s *Server) apiHandler() http.Handler {
 	mux.HandleFunc("GET /api/v1/estimations", s.apiHistory)
 	mux.HandleFunc("GET /api/v1/estimations/{estimation_id}", s.apiDetail)
 	mux.HandleFunc("GET /health", s.apiHealth)
-	mux.HandleFunc("GET /api/v1/ai/settings", s.administrativeAPI("settings.read"))
-	mux.HandleFunc("PUT /api/v1/ai/settings", s.administrativeAPI("settings.write"))
-	mux.HandleFunc("GET /api/v1/rag/chunking-comparisons/options", s.administrativeAPI("lab.options"))
-	mux.HandleFunc("GET /api/v1/rag/chunking-comparisons", s.administrativeAPI("lab.list"))
-	mux.HandleFunc("POST /api/v1/rag/chunking-comparisons", s.administrativeAPI("lab.create"))
-	mux.HandleFunc("GET /api/v1/rag/chunking-comparisons/{id}", s.administrativeAPI("lab.detail"))
+	mux.HandleFunc("GET /api/v1/ai/settings", s.administrativeAPI("settings.read", s.apiSettingsRead))
+	mux.HandleFunc("PUT /api/v1/ai/settings", s.administrativeAPI("settings.write", s.apiSettingsWrite))
+	mux.HandleFunc("GET /api/v1/ai/primary-model", s.apiPrimaryModel)
+	mux.HandleFunc("GET /api/v1/rag/chunking-comparisons/options", s.administrativeAPI("lab.options", s.apiLabOptions))
+	mux.HandleFunc("GET /api/v1/rag/chunking-comparisons", s.administrativeAPI("lab.list", s.apiLabList))
+	mux.HandleFunc("POST /api/v1/rag/chunking-comparisons", s.administrativeAPI("lab.create", s.apiLabCreate))
+	mux.HandleFunc("GET /api/v1/rag/chunking-comparisons/{id}", s.administrativeAPI("lab.detail", s.apiLabDetail))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if path.Clean(r.URL.Path) != r.URL.Path {

@@ -32,6 +32,18 @@ La operación explícita de comparación en Go SHALL ignorar estrategias descono
 - **WHEN** se ejecuta una comparación
 - **THEN** se respeta el plazo del laboratorio sin ampliar el plazo de las operaciones habituales.
 
+#### Scenario: top_k que no es entero
+- **WHEN** `top_k` llega como decimal (`3.5`, `1.0`), con exponente (`1e1`), cadena, booleano o `null`
+- **THEN** Go responde 422 sin llamar al servicio ni guardar, y un entero JSON de cualquier magnitud (incluso fuera del rango de 64 bits) se acota a 1–10 sin error
+
+#### Scenario: Consultas sin límites arbitrarios
+- **WHEN** se envían muchas consultas o una consulta muy larga dentro del límite general de transporte del cuerpo JSON
+- **THEN** Go las conserva íntegras y en orden, sin imponer un máximo propio de cantidad ni de longitud individual
+
+#### Scenario: Cancelación
+- **WHEN** el navegador cancela la comparación mientras IA calcula
+- **THEN** Go cierra la solicitud a IA, no guarda ninguna fila, no responde ni reintenta, y una ejecución ya guardada es una única fila completa
+
 ### Requirement: Mapeo de errores del Lab
 Los errores del servicio SHALL traducirse a avisos accionables: 400 a 422 con un aviso saneado, 503 por clave ausente a 503 con la variable nombrada, tiempo de espera agotado a 504 sugiriendo menos estrategias, servicio inalcanzable a 503 sin exponer la URL y errores del servidor a 502 sin exponer el cuerpo. En todos los casos SHALL mostrarse de nuevo el formulario.
 

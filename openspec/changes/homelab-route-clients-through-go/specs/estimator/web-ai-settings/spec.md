@@ -39,6 +39,10 @@ La barra de navegación de React SHALL mostrar el modelo primario vigente, obten
 - **WHEN** se guarda un cambio del modelo primario
 - **THEN** la siguiente página muestra el modelo nuevo.
 
+#### Scenario: Lecturas concurrentes e invalidación
+- **WHEN** varias solicitudes leen el indicador a la vez, o se guarda un cambio mientras una consulta sigue en vuelo
+- **THEN** las lecturas simultáneas comparten una única consulta, la consulta en vuelo cuyo valor quedó obsoleto por el guardado no se almacena en la caché y la siguiente lectura consulta de nuevo
+
 ## ADDED Requirements
 
 ### Requirement: Consulta y actualización del catálogo

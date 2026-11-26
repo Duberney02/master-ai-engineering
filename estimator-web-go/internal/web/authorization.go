@@ -19,14 +19,15 @@ func (s *Server) permitsAdministration(r *http.Request, operation administrative
 	return err == nil && allowed
 }
 
-func (s *Server) administrativeAPI(op administrativeOperation) http.HandlerFunc {
+// administrativeAPI consulta la decisión antes de entrar al handler: una denegación, la ausencia de mecanismo o un
+// fallo de la decisión responden 403 sin leer datos, tocar cachés, invocar IA ni acceder al repositorio.
+func (s *Server) administrativeAPI(op administrativeOperation, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.permitsAdministration(r, op) {
 			apiFailure(w, http.StatusForbidden, "Acceso administrativo denegado.")
 			return
 		}
-		// El Bloque 3 implementará la operación; aquí solo se registra su frontera.
-		apiFailure(w, http.StatusNotImplemented, "Operación administrativa aún no disponible.")
+		next(w, r)
 	}
 }
 

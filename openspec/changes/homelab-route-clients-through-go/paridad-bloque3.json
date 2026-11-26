@@ -1,0 +1,372 @@
+{
+ "version": 1,
+ "descripcion": "Matriz de paridad HTML Go → React del Bloque 3. Cada fila nombra pruebas reales; verificar-paridad.mjs comprueba que existen y pasaron.",
+ "capacidades": [
+  {
+   "id": "inicio-navegacion",
+   "capacidad_html": "Inicio y enlaces por contexto, sección activa y páginas no encontradas",
+   "referencia_html_go": [
+    "TestTheNavbarMarksTheActiveSectionOnEveryScreen",
+    "TestUnknownRoutesAreA404Page"
+   ],
+   "recorrido_react": [
+    "ofrece las cuatro entradas y marca la vista activa con aria-current",
+    "la sección RAG sigue activa en sus subrutas y Ajustes en su vista",
+    "la cabecera enlaza a nueva estimación e historial",
+    "las rutas desconocidas muestran la página no encontrada",
+    "la navegación lleva del historial al formulario",
+    "el inicio y la navegación son utilizables sin IA ni PostgreSQL"
+   ],
+   "contrato_go": [
+    "TestAdminRoutesRejectUnsupportedMethodsAndUnknownSubpaths"
+   ]
+  },
+  {
+   "id": "indicador-primario",
+   "capacidad_html": "Indicador del modelo primario: visible, cacheado 15 s, ausencia, invalidación al guardar",
+   "referencia_html_go": [
+    "TestTheNavbarShowsTheEffectivePrimaryModel",
+    "TestTheLayoutRendersWithoutTheServiceThePrimaryModelBadgeJustDisappears",
+    "TestAFailureIsCachedTooSoADeadServiceIsNotRetriedOnEveryPage",
+    "TestTheBadgeCacheExpiresAfterTheWindowAndCanBeInvalidated",
+    "TestSavingRefreshesTheNavbarIndicatorAtOnce"
+   ],
+   "recorrido_react": [
+    "muestra el modelo primario y solo enlaza a Ajustes cuando Go ya concedió acceso",
+    "sin servicio la página conserva la navegación y omite el indicador",
+    "un valor ausente no deja indicador",
+    "guarda los siete campos, envía null para vaciar, confirma y vuelve a consultar el indicador"
+   ],
+   "contrato_go": [
+    "TestPrimaryModelProjectionIsPublicAndOmitsTheCatalog",
+    "TestPrimaryModelCachesAbsenceAndFailureForFifteenSeconds",
+    "TestPrimaryModelUsesTheShortConfigurableDeadline",
+    "TestSettingsWriteInvalidatesThePrimaryProjection",
+    "TestSettingsRejectionLeavesTheBadgeCacheUntouched",
+    "TestBadgeCacheSharesOneFetchBetweenConcurrentReaders",
+    "TestBadgeCacheInvalidationDiscardsTheInflightValue",
+    "TestBadgeCacheDoesNotStoreAnInflightValueAfterInvalidation",
+    "TestBadgeCacheExpiresAfterTheTTLAndKeepsAbsenceUntilThen",
+    "TestBadgeCacheFetchIgnoresTheCallerCancellationAndWaitersCanLeave"
+   ]
+  },
+  {
+   "id": "estimacion-formulario",
+   "capacidad_html": "Formulario de estimación: contador, carga TXT, temporizador, validación local",
+   "referencia_html_go": [
+    "TestTheFormShowsTheFieldsTheUploadTheLoadingIndicatorAndTheTimer",
+    "TestATxtFileReplacesTheTypedDescription",
+    "TestShortAndOverlongDescriptionsAreRejectedWithoutCallingTheAPI",
+    "TestAnEightyThousandCharacterTranscriptionIsAccepted"
+   ],
+   "recorrido_react": [
+    "muestra el formulario, el contador, la carga de .txt y el prompt por defecto en la barra",
+    "una descripción válida llama a la API y navega al detalle",
+    "una descripción fuera de rango muestra el mensaje y no llama a la API",
+    "al cargar un .txt válido su contenido sustituye a la descripción y actualiza el contador",
+    "durante el envío deshabilita el botón y muestra el indicador con el temporizador"
+   ],
+   "contrato_go": [
+    "TestPublicRESTContracts",
+    "TestPublicJSONKeepsMaximumUnicodeDescription"
+   ]
+  },
+  {
+   "id": "estimacion-adjuntos",
+   "capacidad_html": "Adjuntos PDF/DOCX: varios archivos, rechazo local y rechazo del servidor",
+   "referencia_html_go": [
+    "TestSeveralAttachmentsAreSentToTheAPIAsMultipartFiles",
+    "TestAShortMessageIsAcceptedWhenThereAreAttachments",
+    "TestInvalidAttachmentsAreRejectedWithoutCallingTheAPI",
+    "TestAnAttachmentRejectedByTheAPIShowsItsMessageAndKeepsTheForm"
+   ],
+   "recorrido_react": [
+    "permite seleccionar varios adjuntos y los envía como attachments, con un mensaje corto",
+    "un rechazo de adjunto del servidor muestra su mensaje en español",
+    "un adjunto que no es PDF ni Word se rechaza sin llamar a la API",
+    "un adjunto que pesa más de 10 MB se rechaza sin llamar a la API"
+   ],
+   "contrato_go": [
+    "TestMultipartTurnPreservesRepeatedFileParts",
+    "TestTurnLimitsRejectOversizedAndUnsupportedParts"
+   ]
+  },
+  {
+   "id": "estimacion-errores",
+   "capacidad_html": "Errores de estimación saneados y formulario conservado",
+   "referencia_html_go": [
+    "TestTheFormKeepsTheTypedValuesAfterAValidationError",
+    "TestAGuardrailRejectionShowsTheAPIMessage",
+    "TestAnUnreachableAPIShowsASanitizedMessageAndKeepsTheForm",
+    "TestAServerErrorNeverShowsTheRawAPIBody",
+    "TestAnInvalidAPIResponseShowsAGenericError"
+   ],
+   "recorrido_react": [
+    "tras un error de la API conserva los datos y muestra el mensaje saneado",
+    "con la API caída muestra el mensaje de conexión sin detalles internos"
+   ],
+   "contrato_go": [
+    "TestPublicErrorsAndHealthAreSanitized",
+    "TestRESTRejectsInvalidUpstreamContracts"
+   ]
+  },
+  {
+   "id": "resultado",
+   "capacidad_html": "Resultado con ID (detalle), sin ID (inline) y no estimable",
+   "referencia_html_go": [
+    "TestAValidSubmissionCallsTheAPIAndRedirectsToTheSavedEstimation",
+    "TestWithoutEstimationIDTheResultIsRenderedDirectly",
+    "TestTheResultViewShowsDurationCostConfidenceAndThePhasesTable",
+    "TestALowConfidenceResultIsShownAsNotEstimableWithoutFigures",
+    "TestAVeryLongDescriptionIsTruncatedInTheResultView"
+   ],
+   "recorrido_react": [
+    "sin estimation_id muestra el resultado en línea con métricas y sin enlace permanente",
+    "un resultado out_of_scope muestra «No estimable» sin cifras",
+    "carga la estimación, sus métricas y el prompt de sus opciones",
+    "baja confianza: «No estimable» sin cifras de coste ni duración",
+    "trunca la descripción a 2000 caracteres e indica el total"
+   ],
+   "contrato_go": [
+    "TestPublicRESTContracts",
+    "TestRESTPreservesAdditiveFieldsAndExactNumbers"
+   ]
+  },
+  {
+   "id": "conversacion",
+   "capacidad_html": "Conversación: sesión única, metadatos, nueva conversación, caducidad y cancelación",
+   "referencia_html_go": [
+    "TestOpeningThePageCreatesASessionOnceAndKeepsItAcrossPageLoads",
+    "TestIfTheAPICouldNotCreateTheSessionOnLoadSubmittingRetriesIt",
+    "TestTheMetadataReturnedByTheAPIIsShownOnTheResultPageAndOnLaterPages",
+    "TestNewConversationOpensAnotherSessionAndClearsTheMetadata",
+    "TestWhenTheAPILostTheSessionANewOneIsOpenedAndTheUserIsTold"
+   ],
+   "recorrido_react": [
+    "crea una sesión al cargar la página y la conserva durante todos los envíos",
+    "muestra los project_metadata devueltos por la API en la barra lateral",
+    "los metadatos se conservan al navegar a otra pantalla y volver",
+    "«Nueva conversación» crea otra sesión y reinicia formulario y metadatos",
+    "si la API perdió la sesión abre otra, avisa y conserva lo escrito",
+    "tras el 404 de sesión no se reenvía la estimación por sí solo",
+    "si la creación de la sesión falló al cargar, el envío la reintenta",
+    "cancelar aborta la solicitud, rehabilita el formulario, no muestra resultado parcial ni reenvía",
+    "salir de la pantalla durante la estimación aborta la solicitud"
+   ],
+   "contrato_go": [
+    "TestPublicRESTContracts",
+    "TestRESTSessionRequiresExactSessionIDKey"
+   ]
+  },
+  {
+   "id": "historial-estimaciones",
+   "capacidad_html": "Historial de estimaciones, estados vacío y no disponible, detalle inexistente",
+   "referencia_html_go": [
+    "TestTheHistoryListsTheLatestEstimationsLinkingToEachOne",
+    "TestAnEmptyHistoryShowsAnExplanatoryMessage",
+    "TestADisabledHistoryShowsAFriendlyMessageInsteadOfATechnicalError",
+    "TestAnUnknownEstimationRendersA404Page",
+    "TestANonNumericEstimationIDIsA404WithoutCallingTheAPI"
+   ],
+   "recorrido_react": [
+    "lista las estimaciones en el orden recibido con enlace al detalle",
+    "trunca el extracto a 90 caracteres",
+    "con la lista vacía invita a crear la primera estimación",
+    "con 503 muestra un aviso explicativo y no un error técnico",
+    "una estimación inexistente muestra la pantalla de error sin barra lateral",
+    "un identificador no numérico muestra el error de no encontrada sin llamar a la API"
+   ],
+   "contrato_go": [
+    "TestPublicRESTContracts",
+    "TestInvalidRESTTransportNeverCallsUpstream"
+   ]
+  },
+  {
+   "id": "barra-contexto",
+   "capacidad_html": "Barra de contexto: prompt, ejemplos, métricas, plegado y fallo de la vista previa",
+   "referencia_html_go": [
+    "TestTheFormPageHasTheLeftSidebarWithTheSystemPromptAndFewShotExamples",
+    "TestTheResultPageShowsTheLastCallMetricsInTheSidebar",
+    "TestCacheHitsAndUnknownPricesAreLabelled",
+    "TestAnOldRecordWithoutMetricsShowsTheEmptyState",
+    "TestIfThePromptCannotBeRenderedThePageStillWorksWithANotice"
+   ],
+   "recorrido_react": [
+    "si el prompt no se puede renderizar avisa en la barra y el formulario sigue funcionando",
+    "el botón de la barra la oculta y la vuelve a mostrar",
+    "muestra las métricas de la última llamada",
+    "indica respuesta de caché, modelo desconocido y «Sin tarifa»",
+    "muestra el prompt de solo lectura, los ejemplos y el estado vacío de métricas",
+    "al cambiar las opciones la barra pide el prompt de las nuevas opciones"
+   ],
+   "contrato_go": [
+    "TestPublicRESTContracts"
+   ]
+  },
+  {
+   "id": "ajustes-lectura",
+   "capacidad_html": "Ajustes: siete knobs, override marcado, proveedor por chunker y embeddings de solo lectura",
+   "referencia_html_go": [
+    "TestSettingsShowListsTheSevenKnobsWithTheirDefaultAndEffectiveModel",
+    "TestEachSelectOffersAnEmptyOptionThatMeansResetToTheDefault",
+    "TestAnOverriddenKnobIsPreselected",
+    "TestChunkerSelectsOnlyOfferModelsOfTheirProvider"
+   ],
+   "recorrido_react": [
+    "muestra los siete knobs con su vigente, el override marcado y los embeddings de solo lectura",
+    "los chunkers solo ofrecen los modelos de su proveedor"
+   ],
+   "contrato_go": [
+    "TestSettingsReadProjectsTheCatalogWithNullsAndProviderFilters"
+   ]
+  },
+  {
+   "id": "ajustes-guardado",
+   "capacidad_html": "Ajustes: guardar todos los knobs, restablecer, desconocidos, vacío sin llamada, rechazos y fallos",
+   "referencia_html_go": [
+    "TestUpdateSendsEveryKnobWithBlanksAsNullsAndConfirms",
+    "TestUpdateIgnoresUnknownKnobs",
+    "TestUpdateWithoutAnyModelDoesNotCallTheService",
+    "TestARejectedChangeIsShownWithTheAPIDetailAndTheFormIsKept",
+    "TestAnUnavailableConfigStoreIsA503WithTheAPIMessage",
+    "TestAnUnreachableServiceOnUpdateIsASanitized503",
+    "TestAnUnreachableServiceOnShowRendersThePageWithoutTheForm",
+    "TestAServerErrorOnShowIsABadGateway"
+   ],
+   "recorrido_react": [
+    "guarda los siete campos, envía null para vaciar, confirma y vuelve a consultar el indicador",
+    "un rechazo muestra el aviso saneado con la variable conocida, vuelve a leer lo vigente y conserva el formulario",
+    "si falla la lectura inicial muestra el aviso sin formulario y permite reintentar",
+    "si tras un rechazo tampoco se puede leer lo vigente, la pantalla queda sin formulario",
+    "un cuerpo fuera de contrato es una respuesta inválida"
+   ],
+   "contrato_go": [
+    "TestSettingsWriteSendsEveryKnobAndConvertsEmptyToNull",
+    "TestSettingsWriteWithoutRecognizedFieldsNeverCallsTheService",
+    "TestSettingsErrorsAreSanitizedAndNeverRetried",
+    "TestSettingsRejectionIsPrefixedOnlyOnWriteAndKeepsTheAtomicRequestWhole"
+   ]
+  },
+  {
+   "id": "lab-formulario",
+   "capacidad_html": "Chunking Lab: ocho estrategias, selección inicial, avisos de coste y clave, consultas y top_k 3 (1–10)",
+   "referencia_html_go": [
+    "TestNewPreselectsTheFreeStrategiesAndFlagsThePaidOnes",
+    "TestNewOffersThePredefinedQueriesAndTopK"
+   ],
+   "recorrido_react": [
+    "muestra las ocho estrategias con solo las gratuitas marcadas, avisos de clave y top_k 3 con límites 1–10"
+   ],
+   "contrato_go": [
+    "TestLabOptionsExposeTheCatalogDefaultsAndLimits"
+   ]
+  },
+  {
+   "id": "lab-ejecucion",
+   "capacidad_html": "Chunking Lab: normalización, top_k (DA-28), selección vacía, plazo propio, guardado y cancelación",
+   "referencia_html_go": [
+    "TestCreateSendsTheCorpusStrategiesQueriesAndTopKThenSavesAndRedirects",
+    "TestCreateIgnoresUnknownStrategiesDeduplicatesAndClampsTopK",
+    "TestCreateWithoutStrategiesIsRefusedBeforeCallingTheService",
+    "TestCreateUsesTheExtendedTimeoutOnlyForThisCall"
+   ],
+   "recorrido_react": [
+    "envía estrategias, consultas, consultas propias y top_k, y navega al detalle con el ID textual",
+    "sin estrategias avisa localmente y no llama a Go",
+    "muestra el indicador de carga con el temporizador mientras calcula",
+    "cancelar aborta la solicitud, rehabilita el formulario, no muestra resultado parcial y no reenvía",
+    "salir de la pantalla durante el cálculo aborta la solicitud"
+   ],
+   "contrato_go": [
+    "TestLabCreateNormalizesTopKPerDA28",
+    "TestLabCreateFiltersStrategiesAndNormalizesQueriesWithoutArbitraryLimits",
+    "TestLabCreateRejectsEmptySelectionAndBadShapesBeforeCallingAI",
+    "TestLabCreateSavesAndReturnsDecimalIDLocationAndOrderedResult",
+    "TestLabTimeoutDoesNotWidenTheOtherOperations",
+    "TestLabCreateCancellationReachesTheAIAndPersistsNothing",
+    "TestLabAtomicPersistenceInPostgreSQL"
+   ]
+  },
+  {
+   "id": "lab-errores",
+   "capacidad_html": "Chunking Lab: mapeo de errores, formulario conservado, guardado fallido con aviso",
+   "referencia_html_go": [
+    "TestServiceErrorsMapToTheRightStatusAndSanitizedMessage",
+    "TestAServiceTimeoutIsA504ThatSuggestsFewerStrategies",
+    "TestIfTheHistoryCannotSaveAComputedRunItIsShownAnyway",
+    "TestWithoutADatabaseTheLabStillComputesAndShowsTheRun"
+   ],
+   "recorrido_react": [
+    "con el servicio caído no expone detalles internos",
+    "si el guardado falló muestra el resultado calculado con su aviso y sin ID ni enlace permanente"
+   ],
+   "contrato_go": [
+    "TestLabCreateMapsEveryAIErrorWithoutRetries",
+    "TestLabCreateWithSaveFailureReturnsTheResultWithNullIDAndWarning"
+   ]
+  },
+  {
+   "id": "lab-resultados",
+   "capacidad_html": "Chunking Lab: estadísticas, barras de coste, playground jerárquico y solo estadísticas",
+   "referencia_html_go": [
+    "TestShowRendersTheStatsTableCostBarsAndTheRetrievalPlayground",
+    "TestShowOfAStatsOnlyRunSaysThereWereNoQueriesAndFreeRunsHaveNoCostBars"
+   ],
+   "recorrido_react": [
+    "pide el ID tal cual y muestra estadísticas, barras de coste y playground jerárquico",
+    "las barras de coste son proporcionales al mayor coste",
+    "solo estadísticas y todas gratuitas: lo indica y no muestra playground ni barras"
+   ],
+   "contrato_go": [
+    "TestLabCreateSavesAndReturnsDecimalIDLocationAndOrderedResult",
+    "TestLabDetailReturnsTheStoredRunAndMapsTheFailures"
+   ]
+  },
+  {
+   "id": "lab-historial",
+   "capacidad_html": "Chunking Lab: historial de 20, repositorio caído, detalle 404/500 e IDs grandes",
+   "referencia_html_go": [
+    "TestIndexListsPersistedRunsNewestFirstWithoutCallingTheService",
+    "TestIndexOfAnEmptyHistoryInvitesToCreateTheFirstRun",
+    "TestIndexSurvivesAnUnavailableDatabase",
+    "TestShowOfAnUnknownRunIsA404",
+    "TestShowSurvivesNothingWhenTheDatabaseIsDownItIsAServerError",
+    "TestLabEndToEndWithPostgreSQL"
+   ],
+   "recorrido_react": [
+    "lista las ejecuciones recientes con enlaces de ID decimal exacto",
+    "sin datos invita a crear la primera y con repositorio caído muestra el aviso",
+    "un fallo de Go se muestra con reintento",
+    "un ID que no es decimal canónico es «no encontrada» sin llamar a Go",
+    "un ID numérico en el JSON (fuera de contrato) es una respuesta inválida"
+   ],
+   "contrato_go": [
+    "TestLabListReturnsTheTwentyNewestWithoutCallingAI",
+    "TestLabListWithUnavailableHistoryIsEmptyWithAWarning",
+    "TestLabDetailReturnsTheStoredRunAndMapsTheFailures",
+    "TestLabLargeIDsKeepExactDigitsThroughGoAndPostgreSQL"
+   ]
+  },
+  {
+   "id": "denegacion-administrativa",
+   "capacidad_html": "Bloqueo administrativo por defecto, origen cruzado y estado restringido en React",
+   "referencia_html_go": [
+    "TestAdministrativeOperationsDenyBeforeEffects",
+    "TestOriginRejectionAndLegacyCSRFPrecedeUpstream"
+   ],
+   "recorrido_react": [
+    "la entrada directa a /settings muestra el estado restringido sin datos y permite volver",
+    "la entrada directa a /rag/chunking-comparisons muestra el estado restringido sin datos y permite volver",
+    "la entrada directa a /rag/chunking-comparisons/new muestra el estado restringido sin datos y permite volver",
+    "la entrada directa a /rag/chunking-comparisons/9007199254740993 muestra el estado restringido sin datos y permite volver",
+    "un 403 al guardar pasa al estado restringido sin mostrar los datos",
+    "un 403 al comparar muestra el estado restringido"
+   ],
+   "contrato_go": [
+    "TestAdminMutationsRejectCrossOriginBeforeAnyEffect",
+    "TestNoProductionCodeEnablesAnAdministrativeDecision",
+    "TestNormalCompositionDeniesEveryAdministrativeRouteWhateverTheClientSends"
+   ]
+  }
+ ]
+}

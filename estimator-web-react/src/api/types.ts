@@ -96,3 +96,103 @@ export interface PromptPreviewParams {
   detail_level?: string;
   output_format?: string;
 }
+
+// --- Ajustes de IA (GET/PUT /api/v1/ai/settings) ---
+
+export interface ModelValue {
+  effective: string | null;
+  default: string | null;
+  overridden: boolean;
+}
+
+export interface SettingsField {
+  key: string;
+  label: string;
+  description: string;
+  /** Modelos seleccionables para este campo (los chunkers solo ofrecen los de su proveedor). */
+  options: string[];
+}
+
+export interface ModelSettings {
+  models: Record<string, ModelValue>;
+  available_models: string[];
+  embedding_model: string;
+  embedding_model_note: string;
+  fields: SettingsField[];
+}
+
+// --- Chunking Lab (/api/v1/rag/chunking-comparisons) ---
+
+export interface StrategyOption {
+  name: string;
+  label: string;
+  description: string;
+  cost_tier: "free" | "cheap" | "expensive";
+  cost_label: string;
+  /** Variable de la clave de proveedor que necesita, o `null`. */
+  key_name: string | null;
+  default_checked: boolean;
+}
+
+export interface LabOptions {
+  strategies: StrategyOption[];
+  sample_queries: string[];
+  top_k: { default: number; min: number; max: number };
+  compare_timeout_seconds: number;
+}
+
+export interface LabRequest {
+  strategies: string[];
+  queries: string[];
+  custom_queries: string;
+  /** Omitido, el Lab usa 3 (DA-28). */
+  top_k?: number;
+}
+
+export interface StrategyStats {
+  strategy: string;
+  n_chunks: number;
+  token_distribution: { min: number; p50: number; p95: number; max: number };
+  n_orphan_chunks: number;
+  n_obese_chunks: number;
+  ingestion_cost_usd: number;
+  extra_api_calls: number;
+  ingestion_seconds: number;
+}
+
+export interface RetrievedChunk {
+  chunk_id: string;
+  cosine: number;
+  text_preview: string;
+  level: "parent" | "child" | null;
+  parent_chunk_id: string | null;
+}
+
+export interface QueryOutcome {
+  strategy: string;
+  query: string;
+  top_k: RetrievedChunk[];
+}
+
+/** DA-27: `id` es una cadena decimal (un número JSON perdería dígitos por encima de 2^53 − 1) y `null` si no se guardó. */
+export interface ComparisonSummary {
+  id: string | null;
+  strategies: string[];
+  queries: string[];
+  top_k: number;
+  corpus_label: string;
+  corpus_count: number;
+  duration_ms: number | null;
+  created_at: string | null;
+  total_ingestion_cost_usd: number;
+}
+
+export interface ComparisonDetail extends ComparisonSummary {
+  result: { stats_per_strategy: StrategyStats[]; queries_per_strategy: QueryOutcome[] };
+  warning: string | null;
+}
+
+export interface ComparisonList {
+  items: ComparisonSummary[];
+  warning: string | null;
+}

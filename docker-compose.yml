@@ -73,6 +73,8 @@ services:
       ESTIMATOR_API_URL: http://estimador-cag:8000
       ESTIMATOR_READ_TIMEOUT: "300"
       ESTIMATOR_COMPARE_TIMEOUT: "600"
+      # Origen canónico del navegador para validar las mutaciones. Con túnel SSH a otro puerto local, defínelo en .env.
+      ESTIMATOR_PUBLIC_ORIGIN: ${ESTIMATOR_PUBLIC_ORIGIN:-http://localhost:3001}
       # Historial del Chunking Lab: su propia base, distinta de la de la API.
       DATABASE_URL: postgres://estimator:${WEB_DB_PASSWORD:-estimator-web-dev}@estimator-web-db:5432/estimator_web
       # Solo desarrollo: define SECRET_KEY_BASE (openssl rand -hex 64) en .env para otro entorno.
@@ -111,17 +113,17 @@ services:
       retries: 5
 
   estimator-web-react:
-    # Misma funcionalidad que estimator-web, en React: SPA estática con nginx, que reenvía /api/ a la API
-    # (el navegador solo habla con su origen: sin CORS). No recibe claves de proveedores.
+    # SPA estática con nginx, que reenvía /api/ al servicio Go (DA-03: React solo habla con Go, que es la única
+    # frontera hacia la IA). El navegador solo habla con su origen: sin CORS. No recibe claves de proveedores.
     build:
       context: ./estimator-web-react
     image: estimator-web-react:latest
     ports:
       - "3001:8080"
     environment:
-      API_UPSTREAM: http://estimador-cag:8000
+      API_UPSTREAM: http://estimator-web:3000
     depends_on:
-      estimador-cag:
+      estimator-web:
         condition: service_healthy
     networks: [estimator-net]
     init: true

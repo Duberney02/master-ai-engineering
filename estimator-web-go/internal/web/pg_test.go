@@ -81,3 +81,105 @@ func TestLabHistoryPersistsAcrossServerInstances(t *testing.T) {
 	second.wantContains(history, `<a href="/rag/chunking_comparisons/1">Ver</a>`)
 	second.wantAbsent(history, `id="lab-history-empty"`)
 }
+
+// DA-27: los IDs de comparación superiores a 2^53 − 1 conservan sus dígitos en el alta, `Location`, el listado y el
+// detalle, y PostgreSQL mantiene el tipo y el valor. Un segundo servidor sobre la misma base representa el reinicio.
+func TestLabLargeIDsKeepExactDigitsThroughGoAndPostgreSQL(t *testing.T) {
+	store := pgStore(t)
+	pool, err := pgxpool.New(context.Background(), os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	const previous, next = "9007199254740993", "9007199254741001" // 2^53 + 1 y el siguiente valor de la secuencia
+	payload, _ := jsonMarshal(compareBody([]string{"structural", "hierarchical"}, []string{"oauth"}, 0))
+	if _, err := pool.Exec(context.Background(), `
+		INSERT INTO chunking_comparisons (id, strategies, queries, top_k, corpus_label, corpus_count, response_payload, duration_ms, created_at, updated_at)
+		VALUES (9007199254740993, '["structural","hierarchical"]', '["oauth"]', 4, 'budgets_previos', 18, $1::jsonb, 3200, '2026-10-05 10:00:00', '2026-10-05 10:00:00')`,
+		string(payload)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(context.Background(), `SELECT setval('chunking_comparisons_id_seq', 9007199254741000)`); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newHarness(t, withStore(store))
+	stubCompare(h, compareBody([]string{"structural"}, nil, 0))
+	created := h.rest("POST", labAPI, `{"strategies":["structural"]}`)
+	h.wantREST(created, 201)
+	if !strings.Contains(string(created.body), `"id":"`+next+`"`) || created.header.Get("Location") != labAPI+"/"+next {
+		t.Fatalf("alta: Location=%q cuerpo=%s", created.header.Get("Location"), abbreviate(string(created.body)))
+	}
+
+	restarted := newHarness(t, withStore(store)) // otro servidor, la misma base
+	list := restarted.rest("GET", labAPI, "")
+	restarted.wantREST(list, 200)
+	if !strings.Contains(string(list.body), `"id":"`+previous+`"`) || !strings.Contains(string(list.body), `"id":"`+next+`"`) {
+		t.Errorf("listado: %s", abbreviate(string(list.body)))
+	}
+	ids := []string{}
+	for _, item := range list.json(t)["items"].([]any) {
+		ids = append(ids, item.(map[string]any)["id"].(string))
+	}
+	if strings.Join(ids, ",") != next+","+previous {
+		t.Errorf("orden del listado: %v", ids)
+	}
+	detail := restarted.rest("GET", created.header.Get("Location"), "")
+	restarted.wantREST(detail, 200)
+	if !strings.Contains(string(detail.body), `"id":"`+next+`"`) {
+		t.Errorf("detalle nuevo: %s", abbreviate(string(detail.body)))
+	}
+	old := restarted.rest("GET", labAPI+"/"+previous, "")
+	restarted.wantREST(old, 200)
+	body := old.json(t)
+	if body["id"] != previous || body["corpus_label"] != "budgets_previos" || body["corpus_count"] != float64(18) || body["duration_ms"] != float64(3200) ||
+		body["top_k"] != float64(4) || body["created_at"] != "2026-10-05T10:00:00Z" {
+		t.Errorf("registro previo: %v", body)
+	}
+	if got := len(body["result"].(map[string]any)["stats_per_strategy"].([]any)); got != 2 || len(restarted.api.calls) != 0 {
+		t.Errorf("el detalle no debe recalcular: estadísticas=%d llamadas a IA=%d", got, len(restarted.api.calls))
+	}
+
+	var dataType, row string
+	if err := pool.QueryRow(context.Background(), `SELECT data_type FROM information_schema.columns WHERE table_name='chunking_comparisons' AND column_name='id'`).Scan(&dataType); err != nil || dataType != "bigint" {
+		t.Errorf("tipo de la columna: %q %v", dataType, err)
+	}
+	if err := pool.QueryRow(context.Background(), `SELECT string_agg(id::text, ',' ORDER BY id) FROM chunking_comparisons`).Scan(&row); err != nil || row != previous+","+next {
+		t.Errorf("valores en PostgreSQL: %q %v", row, err)
+	}
+}
+
+// Persistencia atómica en PostgreSQL: la cancelación durante el cálculo, un contexto cancelado y una ejecución inválida
+// no dejan filas parciales; una ejecución guardada es una única fila completa.
+func TestLabAtomicPersistenceInPostgreSQL(t *testing.T) {
+	store := pgStore(t)
+	count := func() int {
+		rows, err := store.Recent(context.Background(), 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(rows)
+	}
+	if posts := cancelDuringCompare(t, store); posts != 1 || count() != 0 {
+		t.Fatalf("cancelación durante el cálculo: POST=%d filas=%d", posts, count())
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	payload, _ := jsonMarshal(compareBody([]string{"structural"}, nil, 0))
+	row := rag.Comparison{Strategies: []string{"structural"}, TopK: 3, CorpusLabel: "x", CorpusCount: 1, ResponsePayload: payload}
+	if err := store.Create(canceled, &row); err == nil || count() != 0 {
+		t.Fatalf("contexto cancelado: error=%v filas=%d", err, count())
+	}
+	for _, invalid := range []rag.Comparison{{TopK: 3}, {Strategies: []string{"structural"}, TopK: 11}, {Strategies: []string{"structural"}, TopK: 0}} {
+		if err := store.Create(context.Background(), &invalid); err == nil || count() != 0 {
+			t.Fatalf("ejecución inválida %+v: error=%v filas=%d", invalid, err, count())
+		}
+	}
+	h := newHarness(t, withStore(store))
+	stubCompare(h, compareBody([]string{"structural"}, nil, 0))
+	h.wantREST(h.rest("POST", labAPI, `{"strategies":["structural"]}`), 201)
+	rows, err := store.Recent(context.Background(), 50)
+	if err != nil || len(rows) != 1 || rows[0].CreatedAt.IsZero() || len(rows[0].ResponsePayload) == 0 || rows[0].DurationMS == nil {
+		t.Fatalf("una ejecución guardada es una fila completa: %v %+v", err, rows)
+	}
+}

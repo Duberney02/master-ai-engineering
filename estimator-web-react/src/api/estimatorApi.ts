@@ -20,9 +20,14 @@ export const REJECTED_MESSAGE = "La API rechazó la solicitud.";
 export const SESSION_EXPIRED_MESSAGE = "La conversación anterior expiró en el servidor; se inició una nueva. Vuelve a enviar tu mensaje.";
 export const GUARDRAIL_MESSAGE_LIMIT = 300;
 
-/** La estimación puede tardar un par de minutos con transcripciones largas. */
-export const ESTIMATE_TIMEOUT_MS = 300_000;
-export const DEFAULT_TIMEOUT_MS = 30_000;
+/**
+ * Plazos totales coordinados con Nginx/Vite y Go: Go corta a los 30 s (operaciones habituales) o 600 s (largas) y los
+ * intermediarios esperan 35/615 s, de modo que React solo se rinde después y recibe el error saneado de Go.
+ */
+export const ESTIMATE_TIMEOUT_MS = 630_000;
+export const DEFAULT_TIMEOUT_MS = 40_000;
+export const ADMIN_ACCESS_DENIED_MESSAGE = "Acceso administrativo denegado.";
+export const SERVICE_TIMEOUT_MESSAGE = "El servicio IA no respondió a tiempo. Inténtalo de nuevo.";
 
 export class EstimatorApiError extends Error {
   readonly status: number | null;
@@ -42,20 +47,23 @@ export class SessionExpiredError extends EstimatorApiError {
   }
 }
 
-interface RequestOptions {
-  method?: "GET" | "POST";
+export interface RequestOptions {
+  method?: "GET" | "POST" | "PUT";
   params?: Record<string, string | number | undefined>;
   /** JSON, o `FormData` para multipart (el navegador fija el `Content-Type` con su frontera). */
   body?: unknown;
   history?: boolean;
   /** Llamada de sesión: 404 es sesión caducada y los 413/415/422 traen un `detail` de texto apto para el usuario. */
   session?: boolean;
-  expectedStatus?: number;
+  /** Estados de éxito admitidos (el alta del Lab responde 201, o 200 si no pudo guardarse). */
+  expectedStatus?: number | number[];
+  /** Rutas de Go con `{detail}` saneado (Ajustes y Lab): se muestra tal cual y 403 es acceso denegado. */
+  detail?: boolean;
   timeoutMs?: number;
   signal?: AbortSignal;
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
+export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -81,6 +89,15 @@ function detailMessage(body: string): string | null {
   }
 }
 
+function adminMessageFor(status: number, body: string): string {
+  const detail = detailMessage(body);
+  if (status === 403) return ADMIN_ACCESS_DENIED_MESSAGE;
+  if (status === 504) return detail ?? SERVICE_TIMEOUT_MESSAGE;
+  if (status === 404 || status === 422 || status === 500 || status === 503) return detail ?? messageFor(status, body, false);
+  if (status === 502) return SERVER_MESSAGE;
+  return messageFor(status, body, false);
+}
+
 function messageFor(status: number, body: string, history: boolean, session = false): string {
   if (session && [413, 415, 422].includes(status)) return detailMessage(body) ?? (status === 422 ? VALIDATION_MESSAGE : REJECTED_MESSAGE);
   if (status === 400) return guardrailMessage(body);
@@ -100,12 +117,15 @@ function buildUrl(path: string, params?: RequestOptions["params"]): string {
   return text ? `${path}?${text}` : path;
 }
 
-async function request(path: string, options: RequestOptions = {}): Promise<unknown> {
+export async function request(path: string, options: RequestOptions = {}): Promise<unknown> {
   const {
-    method = "GET", params, body, history = false, session = false, expectedStatus = 200,
+    method = "GET", params, body, history = false, session = false, expectedStatus = 200, detail = false,
     timeoutMs = DEFAULT_TIMEOUT_MS, signal,
   } = options;
+  const accepted = Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus];
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
+  // Cancelada antes de empezar: ni siquiera se envía.
+  if (signal?.aborted) throw new DOMException("Solicitud cancelada", "AbortError");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const onAbort = () => controller.abort();
@@ -119,9 +139,12 @@ async function request(path: string, options: RequestOptions = {}): Promise<unkn
       signal: controller.signal,
     });
     const text = await response.text();
-    if (response.status !== expectedStatus) {
+    if (!accepted.includes(response.status)) {
       if (session && response.status === 404) throw new SessionExpiredError();
-      throw new EstimatorApiError(messageFor(response.status, text, history, session), response.status);
+      throw new EstimatorApiError(
+        detail ? adminMessageFor(response.status, text) : messageFor(response.status, text, history, session),
+        response.status,
+      );
     }
     try {
       return JSON.parse(text);
@@ -148,19 +171,21 @@ function expectResult(body: unknown): EstimationResponse {
 export async function createEstimation(
   attributes: Record<string, unknown>,
   promptVersion?: string,
+  signal?: AbortSignal,
 ): Promise<EstimationResponse> {
   const body = await request("/api/v1/estimate", {
     method: "POST",
     params: { prompt_version: promptVersion },
     body: attributes,
     timeoutMs: ESTIMATE_TIMEOUT_MS,
+    signal,
   });
   return expectResult(body);
 }
 
 /** Crea una conversación vacía y devuelve su `session_id` (vive en memoria del servicio). */
-export async function createSession(): Promise<string> {
-  const body = await request("/api/v1/sessions", { method: "POST", expectedStatus: 201 });
+export async function createSession(signal?: AbortSignal): Promise<string> {
+  const body = await request("/api/v1/sessions", { method: "POST", expectedStatus: 201, signal });
   if (!isObject(body) || typeof body.session_id !== "string") throw new EstimatorApiError(INVALID_RESPONSE_MESSAGE);
   return body.session_id;
 }
@@ -175,12 +200,17 @@ function expectMetadata(value: unknown): ProjectMetadata {
 }
 
 /** Una estimación dentro de la conversación (multipart: `transcript`, opciones y `attachments`). */
-export async function createSessionEstimation(sessionId: string, form: FormData): Promise<SessionEstimationResponse> {
+export async function createSessionEstimation(
+  sessionId: string,
+  form: FormData,
+  signal?: AbortSignal,
+): Promise<SessionEstimationResponse> {
   const body = await request(`/api/v1/sessions/${encodeURIComponent(sessionId)}/estimate`, {
     method: "POST",
     body: form,
     session: true,
     timeoutMs: ESTIMATE_TIMEOUT_MS,
+    signal,
   });
   const estimation = expectResult(body) as SessionEstimationResponse;
   return { ...estimation, project_metadata: expectMetadata((body as Record<string, unknown>).project_metadata) };

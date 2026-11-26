@@ -30,25 +30,25 @@
 
 ## 6. Comunicaciones de React
 
-- [ ] 6.1 Tras 3 y 4, dirigir Vite/Nginx a Go para API y salud. Verificar rutas relativas, límites y plazos coordinados y flush SSE real tras Nginx.
-- [ ] 6.2 Mantener contratos JSON/multipart y conectar AbortSignal. Verificar sesión inicial y nueva, 404 con borrador sin reenvío, TXT/PDF/DOCX y rechazo local con borrador intacto, carga y temporizador, prompt, historial, métricas y resultados con y sin ID. Al cancelar, verificar que se rehabilita el formulario sin mostrar un resultado parcial ni reenviar la solicitud.
+- [x] 6.1 Tras 3 y 4, dirigir Vite/Nginx a Go para API y salud. Verificar rutas relativas, límites y plazos coordinados y flush SSE real tras Nginx.
+- [x] 6.2 Mantener contratos JSON/multipart y conectar AbortSignal. Verificar sesión inicial y nueva, 404 con borrador sin reenvío, TXT/PDF/DOCX y rechazo local con borrador intacto, carga y temporizador, prompt, historial, métricas y resultados con y sin ID. Al cancelar, verificar que se rehabilita el formulario sin mostrar un resultado parcial ni reenviar la solicitud.
 
 ## 7. Ajustes de IA en React
 
-- [ ] 7.1 Tras 5, conectar GET/PUT de Ajustes al cliente existente. Probar catálogo filtrado, campos vigentes y por defecto, actualización parcial atómica, null, vacío sin llamada y mensajes saneados de Python.
-- [ ] 7.2 Exponer proyección del primario con plazo corto configurable (2 s por defecto) y caché de 15 s. Probar caché de ausencia, invalidación al guardar y ausencia de datos del catálogo en la respuesta.
-- [ ] 7.3 Tras 6 y 7.1–7.2, integrar selectores, embeddings de solo lectura, navegación, indicador, estados de error, reintento y confirmación con las convenciones visuales actuales. Verificar paridad, estado 403 en entrada directa con retorno a estimaciones, vista activa con `aria-current="page"` e inicio y navegación utilizables sin IA ni PostgreSQL.
+- [x] 7.1 Tras 5, conectar GET/PUT de Ajustes al cliente existente. Probar catálogo filtrado, campos vigentes y por defecto, actualización parcial atómica, null, vacío sin llamada y mensajes saneados de Python.
+- [x] 7.2 Exponer proyección del primario con plazo corto configurable (2 s por defecto) y caché de 15 s. Probar caché de ausencia, invalidación al guardar y ausencia de datos del catálogo en la respuesta.
+- [x] 7.3 Tras 6 y 7.1–7.2, integrar selectores, embeddings de solo lectura, navegación, indicador, estados de error, reintento y confirmación con las convenciones visuales actuales. Verificar paridad, estado 403 en entrada directa con retorno a estimaciones, vista activa con `aria-current="page"` e inicio y navegación utilizables sin IA ni PostgreSQL.
 
 ## 8. Chunking Lab en React
 
-- [ ] 8.1 Tras 5, exponer opciones y comparación reutilizando catálogo, corpus, adaptador y repositorio. Verificar ocho estrategias, avisos, consultas, `top_k=3` al omitirlo y en las opciones (DA-28), límites 1–10, valores válidos intactos, defaults ajenos al Lab preservados, validación, mapeo completo de errores, plazo largo y guardado 201 o resultado visible 200 con ID nulo.
-- [ ] 8.2 Exponer historial y detalle en Go. Verificar 20 recientes, indisponibilidad, 404/500 y ausencia de llamadas a IA. Sembrar y crear IDs mayores que 2⁵³ − 1 para verificar alta, `Location`, listado, ruta React y detalle con dígitos exactos (DA-27), y comprobar que PostgreSQL conserva esquema, tipo y valor.
-- [ ] 8.3 Tras 6 y 8.1–8.2, integrar navegación RAG y formularios, carga, errores, historial y detalle con estadísticas, costes y playground jerárquico. Probar conservación del formulario al fallar y recorridos con o sin datos guardados.
+- [x] 8.1 Tras 5, exponer opciones y comparación reutilizando catálogo, corpus, adaptador y repositorio. Verificar ocho estrategias, avisos, consultas, `top_k=3` al omitirlo y en las opciones (DA-28), límites 1–10, valores válidos intactos, defaults ajenos al Lab preservados, validación, mapeo completo de errores, plazo largo y guardado 201 o resultado visible 200 con ID nulo.
+- [x] 8.2 Exponer historial y detalle en Go. Verificar 20 recientes, indisponibilidad, 404/500 y ausencia de llamadas a IA. Sembrar y crear IDs mayores que 2⁵³ − 1 para verificar alta, `Location`, listado, ruta React y detalle con dígitos exactos (DA-27), y comprobar que PostgreSQL conserva esquema, tipo y valor.
+- [x] 8.3 Tras 6 y 8.1–8.2, integrar navegación RAG y formularios, carga, errores, historial y detalle con estadísticas, costes y playground jerárquico. Probar conservación del formulario al fallar y recorridos con o sin datos guardados.
 
 ## 9. Verificación de paridad
 
-- [ ] 9.1 Tras 6–8, ejecutar la matriz comparativa en Docker, incluidas acciones, resultados, avisos y errores. Aceptación: cada capacidad HTML tiene un recorrido React equivalente con IA simulada y autorización de pruebas donde aplica.
-- [ ] 9.2 Verificar acceso a los mismos IDs y datos sembrados, avisos por fallo del repositorio y bloqueo en la composición normal. Registrar evidencia de aprobación del corte basada en resultados, sin depender del futuro sistema de identidad.
+- [x] 9.1 Tras 6–8, ejecutar la matriz comparativa en Docker, incluidas acciones, resultados, avisos y errores. Aceptación: cada capacidad HTML tiene un recorrido React equivalente con IA simulada y autorización de pruebas donde aplica.
+- [x] 9.2 Verificar acceso a los mismos IDs y datos sembrados, avisos por fallo del repositorio y bloqueo en la composición normal. Registrar evidencia de aprobación del corte basada en resultados, sin depender del futuro sistema de identidad.
 
 ## 10. Retirada de HTML de Go
 

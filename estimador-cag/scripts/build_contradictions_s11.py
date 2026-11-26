@@ -38,7 +38,7 @@ import httpx
 DOCUMENT_TYPE = "historical_task_contradiction"
 CHUNK_TYPE = "historical_task"
 SOURCE_PREFIX = "data/contradictions_s11.json#"
-DEFAULT_API = os.getenv("ESTIMATOR_API_BASE_URL", "http://localhost:8000")
+DEFAULT_API = os.getenv("ESTIMATOR_API_BASE_URL", "http://127.0.0.1:8000")
 TIMEOUT_SECONDS = 120
 
 

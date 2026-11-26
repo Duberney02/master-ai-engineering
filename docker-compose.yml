@@ -62,8 +62,6 @@ services:
       ESTIMATOR_PUBLIC_ORIGIN: ${ESTIMATOR_PUBLIC_ORIGIN:-http://localhost:3001}
       # Historial del Chunking Lab: su propia base, distinta de la de la API.
       DATABASE_URL: postgres://estimator:${WEB_DB_PASSWORD:-estimator-web-dev}@estimator-web-db:5432/estimator_web
-      # Solo desarrollo: define SECRET_KEY_BASE (openssl rand -hex 64) en .env para otro entorno.
-      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-only-secret-key-base-change-me-0123456789abcdef0123456789abcdef0123456789abcdef}
     depends_on:
       estimador-cag:
         condition: service_healthy

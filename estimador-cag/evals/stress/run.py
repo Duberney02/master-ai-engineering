@@ -1,6 +1,6 @@
 """Runner del stress test del CAG: ejecuta escenarios multi-turno contra la API y escribe un CSV por turno.
 
-    uv run python -m evals.stress.run --http http://localhost:8000 \\
+    uv run python -m evals.stress.run --http http://127.0.0.1:8000 \\
         --scenarios growing,pivot,contradiction --attachment-sizes 0,5,20,50,100 --repeats 3 \\
         --output evals/stress/results.csv
 
@@ -257,7 +257,7 @@ def write_csv(path: Path, rows: Sequence[dict[str, Any]]) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m evals.stress.run", description=__doc__.split("\n\n")[0])
-    parser.add_argument("--http", help="URL de la API (p. ej. http://localhost:8000); sin ella, en proceso.")
+    parser.add_argument("--http", help="URL de la API (p. ej. http://127.0.0.1:8000); sin ella, en proceso.")
     parser.add_argument("--scenarios", default=",".join(PROFILES), help=f"Perfiles separados por comas: {PROFILES}.")
     parser.add_argument("--attachment-sizes", default="0,5,20,50,100", help="KB del PDF del turno 1 (0 = sin adjunto).")
     parser.add_argument("--repeats", type=int, default=1, help="Repeticiones por escenario × tamaño.")

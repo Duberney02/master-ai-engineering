@@ -15,7 +15,7 @@ from collections.abc import Sequence
 
 import httpx
 
-DEFAULT_API = os.getenv("ESTIMATOR_API_BASE_URL", "http://localhost:8000")
+DEFAULT_API = os.getenv("ESTIMATOR_API_BASE_URL", "http://127.0.0.1:8000")
 TOP_K = 5
 PREVIEW_CHARS = 120
 

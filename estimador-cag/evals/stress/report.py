@@ -309,10 +309,10 @@ LIMITS = """- El tope de texto de la API es `MAX_DESCRIPTION_CHARS` = 80 000 car
 - Con `--workers` > 1 la latencia incluye la contención de la API del proveedor."""
 
 REPRODUCE = """```sh
-# desde la raíz del repositorio (Docker; estimador-cag/.env con la clave del proveedor)
-docker compose up -d --build estimador-cag          # API + Redis + PostgreSQL del proyecto
+# desde la raíz del repositorio (Docker). Se ejecuta en proceso: la API no publica puertos. Para medir con un proveedor real,
+# pasa LLM_PROVIDER y la clave con `-e` en la ejecución (el servicio usa claves ficticias por defecto).
 docker compose -f docker-compose.verify.yml run --rm api-stress \
-    --http http://host.docker.internal:8000 --scenarios growing,pivot,contradiction \
+    --scenarios growing,pivot,contradiction \
     --attachment-sizes 0,5,20,50,100 --repeats 3 --workers 4 --output evals/stress/results.csv
 docker compose -f docker-compose.verify.yml run --rm --entrypoint python api-stress -m evals.stress.report
 ```

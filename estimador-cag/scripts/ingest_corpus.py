@@ -20,7 +20,7 @@ import httpx
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CORPUS = ROOT / "data" / "budgets_sample.json"
-DEFAULT_API = os.getenv("ESTIMATOR_API_BASE_URL", "http://localhost:8000")
+DEFAULT_API = os.getenv("ESTIMATOR_API_BASE_URL", "http://127.0.0.1:8000")
 # Cada solicitud embebe los chunks de un presupuesto: tarda unos segundos.
 TIMEOUT_SECONDS = 120
 

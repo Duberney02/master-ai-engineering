@@ -109,16 +109,23 @@ def test_root_compose_defines_all_services_on_a_shared_network():
 
     assert set(compose["services"]) == {
         "estimador-cag",
-        "estimador-cag-chat",
         "estimator-web",
         "estimator-web-db",
         "estimator-web-react",
         "redis",
         "postgres",
     }
-    assert "estimator-net" in compose["networks"]
-    for name, service in compose["services"].items():
-        assert service["networks"] == ["estimator-net"], name
+    assert set(compose["networks"]) == {"client-net", "service-net", "go-data-net", "ai-data-net", "ai-egress-net"}
+    assert {n for n, v in compose["networks"].items() if v and v.get("internal")} == {"service-net", "go-data-net", "ai-data-net"}
+    members = {
+        "client-net": {"estimator-web", "estimator-web-react"},
+        "service-net": {"estimador-cag", "estimator-web"},
+        "go-data-net": {"estimator-web", "estimator-web-db"},
+        "ai-data-net": {"estimador-cag", "postgres", "redis"},
+        "ai-egress-net": {"estimador-cag"},
+    }
+    for network, expected in members.items():
+        assert {n for n, s in compose["services"].items() if network in s["networks"]} == expected, network
 
 
 def test_root_compose_has_named_volumes_and_healthchecks():
@@ -158,14 +165,26 @@ def test_root_compose_wires_services_and_keeps_keys_out_of_the_web():
     assert "env_file" not in services["estimator-web"]
 
 
-def test_root_compose_publishes_api_web_and_postgres_ports():
+def test_root_compose_publishes_only_react_on_loopback():
     services = _root_compose()["services"]
 
-    assert services["estimador-cag"]["ports"] == ["8000:8000"]
-    assert services["estimator-web"]["ports"] == ["3000:3000"]
-    # Sesión 8: PostgreSQL publica 5432 solo para desarrollo (psql desde el host); Redis sigue siendo interno.
-    assert services["postgres"]["ports"] == ["5432:5432"]
-    assert "ports" not in services["redis"]
+    assert services["estimator-web-react"]["ports"] == ["127.0.0.1:3001:8080"]
+    for name, service in services.items():
+        if name != "estimator-web-react":
+            assert "ports" not in service, f"{name} no debe publicar puertos"
+    assert "estimador-cag-chat" not in services
+
+
+def test_secondary_compose_publishes_nothing_unless_the_diagnostic_profile_is_chosen():
+    import yaml
+
+    compose = yaml.safe_load((REPO_ROOT / "estimador-cag" / "docker-compose.yml").read_text(encoding="utf-8"))
+    services = compose["services"]
+
+    assert "ports" not in services["estimador-cag"] and "container_name" not in services["estimador-cag"]
+    assert "estimador-cag-chat" not in services
+    diagnostic = services["estimador-cag-diagnostico"]
+    assert diagnostic["profiles"] == ["diagnostico"] and diagnostic["ports"] == ["127.0.0.1:8000:8000"]
 
 
 def test_web_app_files_exist():

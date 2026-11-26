@@ -21,7 +21,7 @@ printf 'LLM_PROVIDER=openai\nOPENAI_API_KEY=sk-test-dummy\nMODERATION_ENABLED=fa
 log "certificado autofirmado efímero para el proveedor HTTPS simulado"
 if [[ ! -f "$LOCAL/certs/cert.pem" ]]; then
   docker run --rm --network none --user "$(id -u):$(id -g)" --entrypoint sh -v "$LOCAL/certs:/c" pgvector/pgvector:pg17 -c \
-    'openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=proveedor-simulado.test" -addext "subjectAltName=DNS:proveedor-simulado.test" -keyout /c/key.pem -out /c/cert.pem 2>/dev/null && chmod 644 /c/key.pem /c/cert.pem'
+    'openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=https-provider-fake.test" -addext "subjectAltName=DNS:https-provider-fake.test" -keyout /c/key.pem -out /c/cert.pem 2>/dev/null && chmod 644 /c/key.pem /c/cert.pem'
 fi
 
 log "caché de tiktoken (cl100k_base)"

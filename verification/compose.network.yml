@@ -34,7 +34,7 @@ services:
       - ./.verification/certs:/certs:ro
     networks:
       ai-egress-net:
-        aliases: [proveedor-simulado.test]
+        aliases: [https-provider-fake.test]
 
   # Sonda en la misma posición que React/Nginx (solo client-net). Se usa con `run --rm`, nunca en el arranque normal.
   probe-client:

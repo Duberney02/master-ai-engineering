@@ -1,0 +1,24 @@
+[heavy] s1-paridad esperando 15:28:05
+[heavy] s1-paridad adquirido 15:28:05
+time="2026-11-26T15:28:05Z" level=warning msg="Found orphan containers (hl-s1-web-db-1) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container hl-s1-parity-check-run-203c3320672b Creating 
+ Container hl-s1-parity-check-run-203c3320672b Created 
+OK    inicio-navegacion — React 6, contrato Go 1, HTML retiradas 2, conservadas 0
+OK    indicador-primario — React 4, contrato Go 10, HTML retiradas 5, conservadas 0
+OK    estimacion-formulario — React 5, contrato Go 2, HTML retiradas 4, conservadas 0
+OK    estimacion-adjuntos — React 4, contrato Go 2, HTML retiradas 4, conservadas 0
+OK    estimacion-errores — React 2, contrato Go 2, HTML retiradas 5, conservadas 0
+OK    resultado — React 5, contrato Go 2, HTML retiradas 5, conservadas 0
+OK    conversacion — React 9, contrato Go 2, HTML retiradas 5, conservadas 0
+OK    historial-estimaciones — React 6, contrato Go 2, HTML retiradas 5, conservadas 0
+OK    barra-contexto — React 6, contrato Go 1, HTML retiradas 5, conservadas 0
+OK    ajustes-lectura — React 2, contrato Go 1, HTML retiradas 4, conservadas 0
+OK    ajustes-guardado — React 5, contrato Go 4, HTML retiradas 8, conservadas 0
+OK    lab-formulario — React 1, contrato Go 1, HTML retiradas 2, conservadas 0
+OK    lab-ejecucion — React 5, contrato Go 7, HTML retiradas 4, conservadas 0
+OK    lab-errores — React 2, contrato Go 2, HTML retiradas 4, conservadas 0
+OK    lab-resultados — React 3, contrato Go 2, HTML retiradas 2, conservadas 0
+OK    lab-historial — React 5, contrato Go 4, HTML retiradas 5, conservadas 1
+OK    denegacion-administrativa — React 6, contrato Go 3, HTML retiradas 1, conservadas 1
+Filas: 17. Pruebas vigentes exigidas: 124. Referencias HTML retiradas: 70, conservadas: 2. Go ejecutadas: 230. React ejecutadas: 175.
+[heavy] s1-paridad liberado rc=0 15:28:05

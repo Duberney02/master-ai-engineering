@@ -1,3 +1,8 @@
+> **Documento histórico (cierre de la Sesión 08).** Describe la arquitectura de entonces, con Streamlit, el cliente HTML de Go y React
+> llamando directamente a la API de IA. Desde el cambio `homelab-route-clients-through-go` esas rutas ya no existen: React es el
+> único cliente, Go la única puerta hacia la IA y solo React/Nginx publica `127.0.0.1:3001`. La arquitectura vigente está en
+> [`AGENTS.md`](./AGENTS.md), en el [README raíz](./README.md) y en la arquitectura de cada servicio.
+
 # Diagnóstico arquitectónico — Sesión 09 (pre-work)
 
 > Estado analizado: cierre de la Sesión 08 (`master`, commit `4138d3c`). Todo el trace se ejecutó contra el stack

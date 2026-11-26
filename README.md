@@ -22,9 +22,9 @@ master-ai-engineering/
 │   ├── tests/                    ← suite de pytest
 │   ├── docs/                    ← documentación e historial de diseño
 │   └── README.md                 ← documentación completa del proyecto
-├── estimator-web-go/             ← aplicación web en Go (cliente HTTP de la API; sustituye al cliente Rails)
-├── estimator-web-react/          ← la misma web en React + TypeScript (SPA con proxy nginx)
-├── docker-compose.yml            ← stack completo: API + webs + Redis Stack + PostgreSQL
+├── estimator-web-go/             ← backend HTTP de aplicación en Go: API REST/SSE, autorización y Chunking Lab (sin HTML)
+├── estimator-web-react/          ← cliente web único: React + TypeScript servido por Nginx
+├── docker-compose.yml            ← pila de integración: React/Nginx, Go, IA, Redis Stack y dos PostgreSQL
 ├── docker-compose.verify.yml     ← pruebas, lint, evaluación y OpenSpec en contenedores
 ├── openspec/                     ← especificaciones y cambios SDD actuales
 └── .agents/skills/               ← integración OpenSpec para Codex
@@ -36,32 +36,85 @@ master-ai-engineering/
 |---|---|---|
 | [`estimador-cag/`](./estimador-cag/README.md) | API FastAPI que genera estimaciones iniciales de proyectos de software a partir de transcripciones de reuniones con clientes, usando CAG (Context-Augmented Generation): los ejemplos históricos se inyectan directamente en el prompt del LLM, sin embeddings ni vector store. Soporta OpenAI y Anthropic como proveedores. | Python 3.11, FastAPI, Pydantic, uv, OpenAI SDK, Anthropic SDK |
 
-| [`estimator-web-go/`](./estimator-web-go/README.md) | Servicio web en Go para el estimador (reemplaza al cliente Rails original, con las mismas pantallas): formulario con carga de transcripciones `.txt` (hasta 80 000 caracteres), historial de estimaciones y vista del resultado con duración, coste, confianza y tabla de fases; **Chunking Lab** (comparación de estrategias con historial en PostgreSQL) y **Ajustes** (modelos del LLM en tiempo de ejecución). Consume la API por HTTP, organizado por contextos. | Go 1.25, net/http, html/template, pgx |
-| [`estimator-web-react/`](./estimator-web-react/README.md) | La misma web del estimador en React: formulario con carga de `.txt`, historial, resultado y barra lateral del prompt, como componentes reutilizables. Se sirve con nginx, que reenvía `/api/` a la API (sin CORS). | React 19, TypeScript, Vite, Vitest, nginx |
+| [`estimator-web-go/`](./estimator-web-go/README.md) | Backend de aplicación en Go. Única puerta de React hacia la IA: expone la API REST y SSE pública con rutas explícitas, validación de transporte, errores saneados y cancelación hasta Python; decide la autorización de las operaciones administrativas (denegadas por defecto) y guarda en su PostgreSQL el historial del **Chunking Lab**. No sirve HTML. | Go 1.25, net/http, pgx |
+| [`estimator-web-react/`](./estimator-web-react/README.md) | Cliente web único del estimador: formulario con carga de `.txt`, PDF y Word, conversación con memoria, historial, resultado, barra lateral del prompt, **Ajustes de IA** y **Chunking Lab**. Se sirve con Nginx, que reenvía `/api/` a Go (mismo origen, sin CORS). | React 19, TypeScript, Vite, Vitest, nginx |
 
 A medida que se agreguen nuevos proyectos del máster (RAG, agentes,
 evaluación, etc.), se listarán aquí con un enlace a su propio README.
 
-## Arranque completo con Docker
+## Arquitectura de la pila de integración
 
-Desde la raíz, un único Compose levanta API, aplicaciones web, Redis Stack y PostgreSQL en la red
-`estimator-net`, con volúmenes y healthchecks:
+```
+Navegador ──► React/Nginx ──► Go ──► estimador-cag (IA) ──► Redis Stack · PostgreSQL (pgvector) · proveedores de IA
+ (túnel SSH)   127.0.0.1:3001   │
+                                └──► PostgreSQL de Go (historial del Chunking Lab)
+```
+
+- **React** es el único cliente. Habla solo con Go, por su propio origen.
+- **Go** es la única puerta hacia `estimador-cag`; ningún cliente llama a la IA, a Redis ni a PostgreSQL.
+- **`estimador-cag`** concentra la lógica de IA, RAG, embeddings y las credenciales de los proveedores.
+- Redes de Docker: `client-net` (React y Go, sin NAT de salida), `service-net`, `go-data-net` y `ai-data-net` (internas) y
+  `ai-egress-net` (solo la IA, para HTTPS hacia los proveedores).
+- Solo React/Nginx publica un puerto: `127.0.0.1:3001`. Go, la API de IA (8000), Redis y PostgreSQL no publican nada. Las
+  sondas son internas: `/healthz` (Nginx), `/up` (Go, `estimator-web healthcheck`), `/health` (IA), `pg_isready` y `redis-cli ping`.
+
+**Estado y alcance.** Es un entorno **privado de desarrollo**, validado en una pila temporal de pruebas; no es un despliegue
+de producción. Solo lo usa el operador autorizado mediante túnel SSH, sin exposición pública ni uso multiusuario hasta
+completar `homelab-authentication-authorization`. Las operaciones administrativas (Ajustes de IA y Chunking Lab) devuelven
+403 por defecto en la composición normal. PostgreSQL, Ollama y Open WebUI del homelab son servicios preexistentes y quedan
+fuera de este Compose.
+
+## Arranque con Docker
 
 ```bash
-cp estimador-cag/.env.example estimador-cag/.env   # completa la API key del proveedor
+cp estimador-cag/.env.example estimador-cag/.env   # completa la API key del proveedor (solo la recibe estimador-cag)
+cp .env.example .env                               # opcional: contraseñas propias
 docker compose up --build
 ```
 
-Web Go en <http://localhost:3000>, web React en <http://localhost:3001>, chat Streamlit en <http://localhost:8501> y API en <http://localhost:8000/docs>. Solo esos cuatro puertos se publican. Variables
-opcionales (`POSTGRES_PASSWORD`, `SECRET_KEY_BASE`) en [`.env.example`](./.env.example).
+Los puertos 3000 y 5432 del host pueden estar ocupados por otros servicios del homelab; esta pila ya no publica ninguno
+salvo `127.0.0.1:3001`. Para inspeccionar un servicio usa sondas internas, por ejemplo:
+
+```bash
+docker compose exec estimador-cag python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read())"
+docker compose exec postgres psql -U estimator -d estimator
+docker compose exec estimator-web /estimator-web healthcheck
+```
+
+Variables opcionales (`POSTGRES_PASSWORD`, `WEB_DB_PASSWORD`, `ESTIMATOR_PUBLIC_ORIGIN`) en [`.env.example`](./.env.example).
+`ESTIMATOR_PUBLIC_ORIGIN` (por defecto `http://localhost:3001`) es el origen que Go acepta en las mutaciones del navegador.
+Para desarrollar solo el backend de IA con recarga en caliente usa
+[`estimador-cag/docker-compose.yml`](./estimador-cag/docker-compose.yml); su perfil `diagnostico` publica `127.0.0.1:8000`
+y no forma parte de la pila de integración.
+
+### Acceso desde Windows (VS Code Remote SSH y navegador)
+
+Desde PowerShell, deja abierto un túnel con el mismo puerto local (el origen canónico es `http://localhost:3001`):
+
+```powershell
+ssh -N -L 3001:127.0.0.1:3001 <usuario>@<servidor>
+```
+
+y abre <http://localhost:3001>. Sin el túnel, `http://<servidor>:3001` no responde: el puerto solo escucha en el loopback del
+servidor. El flujo no requiere Docker Desktop, Node.js, Python ni Go en Windows.
+
+### Limitaciones conocidas
+
+- Autenticación y roles reales: pendientes de `homelab-authentication-authorization` (hoy todo lo administrativo está cerrado).
+- Los servicios del host que escuchan en todas las interfaces, como `sshd`, son alcanzables desde los contenedores por el
+  gateway. El aislamiento de red de Docker (redes internas, `client-net` sin NAT) no sustituye a una política de firewall
+  del host; su endurecimiento queda para la fase de seguridad del homelab.
+- Reutilización de PostgreSQL/pgvector y Ollama del homelab, proveedores Ollama y separación de proveedores de generación y
+  embeddings: objetivos de integración futuros (ver `AGENTS.md`).
+- La vista previa del prompt es informativa: no incluye la memoria de la sesión.
 
 ## Conversación con memoria y adjuntos
 
 La API admite **sesiones conversacionales** (`POST /api/v1/sessions` y `POST /api/v1/sessions/{id}/estimate`): recuerdan
 los últimos 6 turnos y los metadatos del proyecto (nombre, equipo, tecnologías, alcance) y aceptan adjuntos PDF/Word cuyo
-texto se extrae en local. Las tres interfaces (chat Streamlit, web Go y web React) crean la sesión al cargar la página,
-permiten transcripción más varios archivos, muestran los metadatos en la barra lateral y ofrecen «Nueva conversación». Las
-sesiones viven en memoria de la API (se pierden al reiniciar). Detalle, decisiones y límites en el
+texto se extrae en local. React crea la sesión al cargar la página, permite transcripción más varios archivos, muestra los metadatos en la barra
+lateral y ofrece «Nueva conversación»; Go intermedia las llamadas. Las sesiones viven en memoria de la API (se pierden al
+reiniciar y una recarga completa del navegador inicia otra conversación). Detalle, decisiones y límites en el
 [README de `estimador-cag`](./estimador-cag/README.md#conversación-con-memoria-sesiones).
 
 La memoria conversacional conserva además un **resumen acumulativo** y **anclas** (compromisos relevantes) de los turnos
@@ -73,13 +126,21 @@ independiente y un Boss en código con traza de auditoría. El dataset de refere
 Las validaciones se ejecutan en contenedores (`docker-compose.verify.yml`: nada se instala en el host):
 
 ```bash
-docker compose -f docker-compose.verify.yml run --rm api-test                       # pytest (API + Streamlit)
+docker compose -f docker-compose.verify.yml run --rm api-test                       # pytest (API de IA)
 docker compose -f docker-compose.verify.yml run --rm api-lint check .               # Ruff
+docker compose -f docker-compose.verify.yml run --rm web-test                       # go test (con PostgreSQL efímero)
+docker compose -f docker-compose.verify.yml run --rm web-lint                       # gofmt y go vet
+docker compose -f docker-compose.verify.yml run --rm react-test                     # Vitest
+docker compose -f docker-compose.verify.yml run --rm react-build                    # tsc y vite build
 docker compose -f docker-compose.verify.yml run --rm api-eval --list                # dataset de evaluación
 docker compose -f docker-compose.verify.yml run --rm openspec validate --all --strict
 ```
 
-Las pruebas de las webs tienen su comando Docker en el README de cada una.
+Usa siempre un nombre de proyecto propio (`-p <nombre>`) para no compartir redes ni volúmenes entre ejecuciones. Los recorridos
+de extremo a extremo, la matriz de aislamiento de red y la evidencia del cambio activo están en
+[`openspec/changes/homelab-route-clients-through-go/`](./openspec/changes/homelab-route-clients-through-go/verificacion-bloque4.md).
+Ahí se describen también los arneses (`verificar-red-bloque4.sh`, `verificar-e2e-bloque6.sh`), que solo operan sobre proyectos
+`hl-s1`, `hl-s2` o `hl-s3`.
 
 ## Metodología de trabajo (SDD)
 
@@ -96,22 +157,16 @@ anterior se conserva como referencia; no forma parte del flujo actual.
 
 ## Requisitos generales
 
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/) como gestor de dependencias y entornos
-- Claves de API de los proveedores de LLM que use cada proyecto (OpenAI y/o
-  Anthropic); cada uno documenta las suyas en su propio `.env.example`
+- Docker y Docker Compose. El ciclo de las aplicaciones (dependencias, compilación, pruebas, lint, ejecución y despliegue)
+  se ejecuta en contenedores. Git, Claude Code, Codex CLI, NVM, Node.js y OpenSpec pueden instalarse nativamente en Ubuntu.
+- Claves de API de los proveedores de LLM que use el proyecto (OpenAI y/o Anthropic), solo en `estimador-cag/.env`
+  (excluido de Git); cada proyecto documenta las suyas en su propio `.env.example`.
 
 ## Cómo trabajar con un proyecto
 
-```bash
-cd <nombre-del-proyecto>       # p. ej. estimador-cag
-uv sync --group dev            # instala dependencias
-cp .env.example .env           # configura variables/API keys
-uv run uvicorn app.main:app --reload   # o el comando de arranque del proyecto
-```
-
-Consulta el `README.md` de cada carpeta para los detalles específicos
-(endpoints, variables de entorno, ejemplos de uso y tests).
+Cada proyecto se desarrolla y se prueba con Docker Compose desde la raíz (ver arriba y `docker-compose.verify.yml`).
+Consulta el `README.md` de cada carpeta para los detalles específicos (endpoints, variables de entorno, ejemplos de uso y
+pruebas).
 
 ## Autor
 

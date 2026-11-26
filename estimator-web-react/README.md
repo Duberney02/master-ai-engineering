@@ -44,7 +44,7 @@ su propio origen y nginx reenvía `/api/` y `/health` a la API, así que no hace
 |---|---|---|---|
 | `API_UPSTREAM` | contenedor (nginx) | `http://estimator-web:3000` | dirección interna del servicio Go (única frontera hacia la IA) |
 | `NGINX_CONNECT_TIMEOUT` / `NGINX_REGULAR_TIMEOUT` / `NGINX_LONG_TIMEOUT` | contenedor (nginx) | `5s` / `35s` / `615s` | plazos hacia Go; se exige conexión ≤ habitual < largo |
-| `ESTIMATOR_WEB_URL` | desarrollo (Vite) | `http://localhost:3000` | destino del proxy de `npm run dev` (el servicio Go) |
+| `ESTIMATOR_WEB_URL` | desarrollo (Vite) | `http://localhost:3000` | destino del proxy de `npm run dev` (el servicio Go). Go no publica puertos en la pila de integración: con Vite en un contenedor de `client-net` usa `http://estimator-web:3000` |
 | `VITE_CONNECT_TIMEOUT` / `VITE_REGULAR_TIMEOUT` / `VITE_LONG_TIMEOUT` | desarrollo (Vite) | `5` / `35` / `615` | plazos del proxy, en segundos |
 
 Go valida el origen de las mutaciones del navegador. Con `npm run dev` el proxy conserva el `Host` (`localhost:5173`);

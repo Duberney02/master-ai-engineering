@@ -111,11 +111,15 @@ Go SHALL exponer explícitamente `POST /api/v1/sessions`, `POST /api/v1/sessions
 - **THEN** Go responde 404 o 405 respectivamente sin llamar a IA
 
 ### Requirement: Seguridad de sesión, origen y administración
-Las sesiones conversacionales de la API pública SHALL referenciarse mediante el identificador en la ruta y SHALL NOT depender de cookies Go. Go SHALL rechazar mutaciones de navegador con origen cruzado o nulo. La interfaz HTML transitoria SHALL conservar hasta su retirada los avisos flash de un solo uso, la cookie firmada con `SECRET_KEY_BASE`, `HttpOnly` y `SameSite=Lax`, la compactación de metadatos y la protección CSRF con rechazo 422 para mutaciones sin token válido. Una cookie con firma inválida SHALL tratarse como sesión vacía. Go SHALL decidir la autorización de cada operación administrativa, incluidas las lecturas, antes de consultar cachés administrativas o acceder a IA o PostgreSQL. La composición normal SHALL devolver 403 saneado por ausencia, denegación o fallo de la decisión. Las sesiones conversacionales SHALL ser independientes de las futuras sesiones de identidad. La integración de identidad, sesiones de autenticación, roles admin y user y aislamiento por usuario queda en homelab-authentication-authorization.
+Las sesiones conversacionales de la API pública SHALL referenciarse mediante el identificador en la ruta y SHALL NOT depender de cookies Go. Go SHALL rechazar mutaciones de navegador con origen cruzado o nulo. Tras retirar la interfaz HTML, Go SHALL NOT emitir cookies ni mantener estado de navegación, avisos flash ni token CSRF de formulario. Si el navegador envía la cookie legada `_estimator_web_session`, Go SHALL expirarla (`Max-Age=0`, `Path=/`, `HttpOnly`) sin interpretar ni validar su contenido, de modo que no existe sesión que firmar ni sesión vacía que tratar. La protección de las mutaciones del navegador SHALL basarse en la validación de origen. Go SHALL decidir la autorización de cada operación administrativa, incluidas las lecturas, antes de consultar cachés administrativas o acceder a IA o PostgreSQL. La composición normal SHALL devolver 403 saneado por ausencia, denegación o fallo de la decisión. Las sesiones conversacionales SHALL ser independientes de las futuras sesiones de identidad. La integración de identidad, sesiones de autenticación, roles admin y user y aislamiento por usuario queda en homelab-authentication-authorization.
 
 #### Scenario: Sesión sin cookie
 - **WHEN** React crea sesión y envía un turno desde el mismo origen
 - **THEN** la respuesta no depende de cookies HTML y un identificador caducado obtiene 404
+
+#### Scenario: Cookie legada
+- **WHEN** un navegador envía la cookie `_estimator_web_session` a cualquier ruta de Go, con o sin firma válida
+- **THEN** Go no la interpreta, responde con su expiración y ninguna respuesta emite cookies nuevas
 
 #### Scenario: Mutación cruzada
 - **WHEN** otro origen envía un formulario de estimación o una mutación administrativa

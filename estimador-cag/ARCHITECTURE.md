@@ -34,7 +34,7 @@ app/
 │   ├── attachments/#   extracción de texto de PDF/DOCX
 │   └── persistence/#   engine SQLAlchemy, modelos, repositorios y migraciones de la ingesta
 ├── domain/         # contrato y conductor
-│   ├── schemas/    #   contratos Pydantic que consumen los clientes (web Go, React)
+│   ├── schemas/    #   contratos Pydantic que consume el backend Go (única puerta de React hacia la IA)
 │   ├── pipeline.py #   conductor de /estimate: guardrails → cag → prompt → llm → validación → cag
 │   ├── session_estimation.py · acb.py   # conductores conversacional y Actor–Crítico–Boss
 │   └── validation.py · audience.py · history.py · evaluation.py   # reglas de negocio y servicios de dominio
@@ -203,8 +203,8 @@ Las tres tablas de chunks tienen HNSW halfvec (migración `0006` para las dos nu
 
 - **Rutas HTTP**: `/api/v1/estimate`, `/api/v1/transcription/*`, `/api/v1/sessions/*`, `/api/v1/estimations`,
   `/api/v1/prompts/*`, `/api/v1/ingestion/*`. (`/embeddings/ingest` cambió de contrato en la Sesión 8 —ahora persiste— tras
-  comprobar que ningún cliente lo usaba.) Los clientes web Go y React
-  dependen de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/search`, `/api/v1/config/models`,
+  comprobar que ningún cliente lo usaba.) El backend Go (única puerta de React)
+  depende de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/search`, `/api/v1/config/models`,
   `/v1/retrieval/*`, `/v1/estimate/*`, `/api/v1/config/retrieval`), nunca cambios de forma de las existentes.
   `POST /search` (Sesión 8) se conserva sin cambios; `POST /embeddings/ingest` solo gana el campo opcional `chunk_type`.
   La Sesión 10 es aditiva: `/v1/retrieval/search` solo gana `search_mode` y `rerank` opcionales (y `RetrievedChunk` campos

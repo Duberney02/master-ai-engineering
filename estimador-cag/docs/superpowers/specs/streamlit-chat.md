@@ -1,3 +1,6 @@
+> **Documento histórico.** El cliente Streamlit se retiró en el cambio `homelab-route-clients-through-go` (React, servido por Nginx,
+> es el único cliente y Go la única puerta hacia la IA). Se conserva solo como registro de diseño; no describe el sistema vigente.
+
 # Spec: Interfaz conversacional con Streamlit (session 3)
 
 Estado: aprobado por el usuario, fase de diseño cerrada. No reabrir discusión de

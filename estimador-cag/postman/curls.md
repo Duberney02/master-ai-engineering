@@ -1,6 +1,6 @@
 # cURL de prueba — Estimador CAG
 
-Servicio en `http://localhost:8000` (`docker compose up --build`). En Postman: **Import → Raw text**, pega un bloque y se crea la petición.
+Servicio en `http://localhost:8000` (Compose de `estimador-cag/` con el perfil de diagnóstico: `docker compose --profile diagnostico up --build`; en la pila de integración la API no publica puertos y solo Go la llama). En Postman: **Import → Raw text**, pega un bloque y se crea la petición.
 Alternativa: importa `estimador-cag.postman_collection.json` (incluye tests automáticos en cada petición).
 
 > Las peticiones 02–16 usan el flujo de transcripción (`/api/v1/transcription/estimate`); 17–23, el contrato estructurado (`/api/v1/estimate`), que responde `{result, prompt_version, cached}`; 21–22 muestran el rechazo de guardrails (400 con `reason` y `message`).

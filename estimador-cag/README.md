@@ -937,23 +937,20 @@ Con Docker (recomendado; ver [Ejecución con Docker](#ejecución-con-docker)):
 
 ```bash
 cp .env.example .env        # completa la API key del proveedor elegido
-docker compose up --build   # API: http://localhost:8000
+docker compose --profile diagnostico up --build   # API: http://127.0.0.1:8000 (solo loopback)
 ```
 
-O sin contenedores:
-
-```bash
-uv run uvicorn app.main:app --reload
-```
-
-La API queda disponible en `http://localhost:8000`.
+Sin el perfil `diagnostico` la API no publica ningún puerto (DA-03/DA-04: solo Go la llama); inspecciónala con
+`docker compose exec estimador-cag ...`. Los comandos `curl http://localhost:8000/...` de este documento suponen ese perfil
+(o se ejecutan dentro del contenedor con `http://127.0.0.1:8000`). En la pila de integración de la raíz el acceso público es
+React/Nginx en `127.0.0.1:3001`, que llama a Go, y Go llama a esta API.
 
 ## Ejecución con Docker
 
 El `.env` **nunca** entra en la imagen (está en `.dockerignore`): las claves se
 inyectan al arrancar el contenedor.
 
-**Stack completo con PostgreSQL (desde la raíz del repositorio).** `docker compose up --build` levanta la API, las webs,
+**Stack completo con PostgreSQL (desde la raíz del repositorio).** `docker compose up --build` levanta la API, Go, React/Nginx,
 Redis Stack y PostgreSQL; el comando de la imagen de la API ejecuta `python -m app.foundation.persistence.migrate`
 (`alembic upgrade head`) antes de `uvicorn` cuando hay `DATABASE_URL`, de modo que las tablas de la ingesta existen
 cuando la API acepta solicitudes. La imagen incluye `data/`, `alembic/` y `scripts/`. Sin `DATABASE_URL` (p. ej. este
@@ -964,17 +961,16 @@ Compose de desarrollo) arranca igualmente y solo la API de ingesta responde 503.
 
 ```bash
 cp .env.example .env        # completa la API key del proveedor elegido
-docker compose up --build   # API: http://localhost:8000
+docker compose --profile diagnostico up --build   # API: http://127.0.0.1:8000 (perfil explícito de diagnóstico)
 docker compose ps           # STATUS pasa a "healthy" cuando /health responde
 docker compose down
 ```
 
-Levanta `estimador-cag` (API), `estimador-cag-chat` (chat HTTP) y **Redis Stack**
-(RediSearch, necesario para la caché semántica) con volumen. Redis no publica su puerto. API y chat montan
+Levanta `estimador-cag` (API, sin puerto publicado salvo con el perfil `diagnostico`) y **Redis Stack**
+(RediSearch, necesario para la caché semántica) con volumen. Redis no publica su puerto. La API monta
 `app/` como volumen de solo lectura, así que los cambios de código se aplican
 sin reconstruir; si cambian las dependencias (`pyproject.toml`/`uv.lock`),
-vuelve a ejecutar `up --build`. El chat espera la API saludable; solo la API
-recibe el `.env` con claves. Las entradas de caché caducan por TTL.
+vuelve a ejecutar `up --build`. Solo la API recibe el `.env` con claves. Las entradas de caché caducan por TTL.
 
 Consulta [resiliencia, caché y contrato SSE](docs/resilience-and-streaming.md)
 para configurar fallback, precios, razonamiento y presupuesto económico.

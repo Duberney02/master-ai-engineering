@@ -14,7 +14,7 @@ salida española, límites de entrada y evaluación de horas; añade metadatos.
 | `CACHE_TTL` | 86400 | Duración máxima en segundos |
 | `CACHE_TIMEOUT` | 0.5 | Timeout Redis en segundos |
 | `MODEL_PRICES` | `{}` | JSON de precios USD por millón de tokens |
-| `ESTIMATOR_API_BASE_URL` | `http://localhost:8000` | URL de la API usada por los scripts de apoyo |
+| `ESTIMATOR_API_BASE_URL` | `http://127.0.0.1:8000` | URL de la API usada por los scripts de apoyo; se ejecutan dentro del contenedor (`docker compose exec estimador-cag python scripts/<script>.py`) porque la API no publica puertos |
 
 Ejemplo de precios **ficticios para pruebas**, sustituir por tarifas contratadas:
 

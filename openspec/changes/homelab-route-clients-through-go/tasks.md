@@ -52,14 +52,14 @@
 
 ## 10. Retirada de HTML de Go
 
-- [ ] 10.1 Solo tras 9, retirar la superficie del inventario HTML, dependencias de presentación y cookie legacy. Verificar rutas y formularios antiguos, ausencia de respuestas HTML Go y funcionamiento de /up.
-- [ ] 10.2 Migrar pruebas de comportamiento y mantener casos de uso, validaciones, adaptadores, corpus y repositorio. Repetir paridad React y verificar conservación de registros, IDs y límites arquitectónicos.
+- [x] 10.1 Solo tras 9, retirar la superficie del inventario HTML, dependencias de presentación y cookie legacy. Verificar rutas y formularios antiguos, ausencia de respuestas HTML Go y funcionamiento de /up.
+- [x] 10.2 Migrar pruebas de comportamiento y mantener casos de uso, validaciones, adaptadores, corpus y repositorio. Repetir paridad React y verificar conservación de registros, IDs y límites arquitectónicos.
 
 ## 11. Retirada completa de Streamlit
 
-- [ ] 11.1 Tras 6, retirar app, cliente, utilidades y pruebas exclusivas, trasladar casos mixtos a fixtures neutros y conservar los recorridos REST/SSE.
-- [ ] 11.2 Retirar la dependencia y regenerar uv.lock en Docker. Verificar que el lock y la imagen carecen de la dependencia del chat y mantienen dependencias compartidas.
-- [ ] 11.3 Retirar la demo HTML de Python y su montaje exclusivo. Verificar ausencia de la página y conservación de las dos rutas SSE.
+- [x] 11.1 Tras 6, retirar app, cliente, utilidades y pruebas exclusivas, trasladar casos mixtos a fixtures neutros y conservar los recorridos REST/SSE.
+- [x] 11.2 Retirar la dependencia y regenerar uv.lock en Docker. Verificar que el lock y la imagen carecen de la dependencia del chat y mantienen dependencias compartidas.
+- [x] 11.3 Retirar la demo HTML de Python y su montaje exclusivo. Verificar ausencia de la página y conservación de las dos rutas SSE.
 
 ## 12. Dockerfiles, Compose y CI
 

@@ -150,7 +150,8 @@ async def hold_after_result(request, call_next):
     if request.url.path == "/api/v1/estimate" and mode == "rest-after":
         # La escritura ya está confirmada: se retiene la respuesta hasta que el cliente se desconecte.
         try:
-            await asyncio.Future()
+            while not await request.is_disconnected():
+                await asyncio.sleep(0.05)
         finally:
             state["response_closed"] = True
     if request.url.path != "/api/v1/estimate/stream" or mode != "after":

@@ -1,0 +1,16 @@
+# Paridad tras 10.2. Se carga después de compose.caracterizacion.yml y compose.bloque3.yml:
+#   -f docker-compose.verify.yml -f <cambio>/compose.caracterizacion.yml -f <cambio>/compose.bloque3.yml -f <cambio>/compose.bloque4-paridad.yml
+# Lee las evidencias nuevas de .block4/evidencias (la evidencia histórica de .block3 no se toca).
+services:
+  parity-check:
+    volumes: !override
+      - type: bind
+        source: ./openspec/changes/homelab-route-clients-through-go
+        target: /fixtures
+        read_only: true
+      - type: bind
+        source: ./.block4/evidencias
+        target: /evidencias
+        read_only: true
+    command: ["node", "/fixtures/verificar-paridad-bloque4.mjs"]
+    network_mode: none

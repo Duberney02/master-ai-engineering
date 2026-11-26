@@ -29,7 +29,7 @@ function base() {
       redis: { networks: redesDe("redis"), volumes: [{ type: "volume", source: "redis_data" }], healthcheck: sonda(["CMD", "redis-cli", "ping"]) },
       postgres: { networks: redesDe("postgres"), volumes: [{ type: "volume", source: "postgres_data" }], healthcheck: sonda(["CMD-SHELL", "pg_isready"]) },
     },
-    networks: Object.fromEntries(Object.entries(REDES).map(([k, v]) => [k, v.internal ? { internal: true } : {}])),
+    networks: Object.fromEntries(Object.entries(REDES).map(([k, v]) => [k, v.internal ? { internal: true } : k === "client-net" ? { driver_opts: { "com.docker.network.bridge.enable_ip_masquerade": "false" } } : {}])),
     volumes: { postgres_data: {}, redis_data: {}, estimator_web_db_data: {} },
   };
 }
@@ -43,6 +43,8 @@ detecta("puerto publicado en IA", (c) => { c.services["estimador-cag"].ports = [
 detecta("puerto publicado en PostgreSQL", (c) => { c.services.postgres.ports = [{ host_ip: "127.0.0.1", published: "5432", target: 5432 }]; }, /postgres: no debe publicar/);
 detecta("servicio Streamlit", (c) => { c.services["estimador-cag-chat"] = { command: ["streamlit", "run"], healthcheck: sonda(["CMD", "x"]) }; }, /servicios:|Streamlit/);
 detecta("React en red de IA", (c) => { c.services["estimator-web-react"].networks["ai-data-net"] = null; }, /ai-data-net: miembros/);
+detecta("client-net con salida a Internet", (c) => { c.networks["client-net"] = {}; }, /client-net: debe declarar enable_ip_masquerade=false/);
+detecta("red de salida de IA sin NAT", (c) => { c.networks["ai-egress-net"] = { driver_opts: { "com.docker.network.bridge.enable_ip_masquerade": "false" } }; }, /sin NAT no hay salida de IA/);
 detecta("red de datos no interna", (c) => { c.networks["ai-data-net"] = {}; }, /ai-data-net: internal/);
 detecta("salida de IA compartida", (c) => { c.services["estimator-web"].networks["ai-egress-net"] = null; }, /ai-egress-net: miembros/);
 detecta("clave de proveedor en Go", (c) => { c.services["estimator-web"].environment.OPENAI_API_KEY = "sk-x"; }, /estimator-web: variables de proveedor/);

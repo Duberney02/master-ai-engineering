@@ -73,6 +73,10 @@ export function validar(config, fuente = null) {
     if (Boolean(redes[red].internal) !== esperado.internal) f(`red ${red}: internal debe ser ${esperado.internal}`);
     if (redes[red].external) f(`red ${red}: no puede ser externa`);
     if (redes[red].enable_ipv6) f(`red ${red}: IPv6 habilitado`);
+    // Solo la red de salida de IA puede hacer NAT hacia Internet; las demás redes no (client-net sin masquerade).
+    const nat = redes[red].driver_opts?.["com.docker.network.bridge.enable_ip_masquerade"];
+    if (red === "ai-egress-net") { if (nat === "false") f("red ai-egress-net: sin NAT no hay salida de IA"); }
+    else if (!esperado.internal && nat !== "false") f(`red ${red}: debe declarar enable_ip_masquerade=false (sin salida a Internet)`);
     const reales = nombres.filter((n) => redesDe(servicios[n]).includes(red)).sort();
     if (JSON.stringify(reales) !== JSON.stringify([...esperado.miembros].sort())) {
       f(`red ${red}: miembros ${reales.join(", ") || "(ninguno)"}; se esperaban ${esperado.miembros.join(", ")}`);

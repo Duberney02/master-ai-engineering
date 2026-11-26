@@ -65,7 +65,8 @@ Imagen aislada:
 
 ```bash
 docker build -t estimator-web-react .
-docker run --rm -p 3001:8080 -e API_UPSTREAM=http://host.docker.internal:3000 estimator-web-react
+# Go no publica puertos: conecta el contenedor a la red donde Go responde como `estimator-web`.
+docker run --rm -p 127.0.0.1:3001:8080 --network <red-con-go> -e API_UPSTREAM=http://estimator-web:3000 estimator-web-react
 ```
 
 ## Pruebas

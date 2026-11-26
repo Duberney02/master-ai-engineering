@@ -10,7 +10,7 @@
 # (docker compose exec <servicio> ...).
 #
 # Redes (DA-03, DA-04, DA-22):
-#   client-net     React/Nginx y Go. Única red de React; es la que permite publicar 127.0.0.1:3001.
+#   client-net     React/Nginx y Go. Única red de React; permite publicar 127.0.0.1:3001 y no hace NAT de salida.
 #   service-net    Go y estimador-cag (interna).
 #   go-data-net    Go y su PostgreSQL del Chunking Lab (interna).
 #   ai-data-net    estimador-cag, Redis Stack y PostgreSQL de IA (interna).
@@ -165,6 +165,9 @@ services:
 
 networks:
   client-net:
+    # Sin NAT de salida: lo publicado en 127.0.0.1:3001 sigue entrando, pero React y Go no salen a Internet.
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
   service-net:
     internal: true
   go-data-net:

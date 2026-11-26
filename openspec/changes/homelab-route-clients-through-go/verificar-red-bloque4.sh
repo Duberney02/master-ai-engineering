@@ -105,7 +105,9 @@ red() {
    {"nombre":"ia-ip","host":"%s","puerto":8000,"esperado":"falla"},
    {"nombre":"host-ollama","host":"%s","puerto":11434,"esperado":"falla"},
    {"nombre":"host-postgres","host":"%s","puerto":5432,"esperado":"falla"},
-   {"nombre":"host-open-webui","host":"%s","puerto":3000,"esperado":"falla"}]' "${cag_ip:-10.255.255.1}" "$ip_host" "$ip_host" "$ip_host")"
+   {"nombre":"host-open-webui","host":"%s","puerto":3000,"esperado":"falla"},
+   {"nombre":"internet-ip-443","host":"1.1.1.1","puerto":443,"esperado":"falla"},
+   {"nombre":"internet-ip-53","host":"8.8.8.8","puerto":53,"esperado":"falla"}]' "${cag_ip:-10.255.255.1}" "$ip_host" "$ip_host" "$ip_host")"
   sonda_dentro sonda-cliente "$objetivos" 5432,11434,3000,8000,6379 | tee "$EVID/sonda-cliente.json"
   registrar "13.2 salida HTTPS de IA hacia el proveedor simulado y credenciales"
   "${C[@]}" --profile sondas up -d --wait proveedor-simulado

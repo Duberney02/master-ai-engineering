@@ -207,7 +207,6 @@ código 1 si algún caso no aprueba (2 si el uso es incorrecto):
 docker compose -f docker-compose.verify.yml run --rm api-eval --list
 docker compose -f docker-compose.verify.yml run --rm -e OPENAI_API_KEY api-eval --mode actor --limit 4     --output /app/evals/reports/actor.json
 docker compose -f docker-compose.verify.yml run --rm -e OPENAI_API_KEY api-eval --mode acb --case saas-01
-docker compose -f docker-compose.verify.yml run --rm api-eval --base-url http://host.docker.internal:8000   # API ya desplegada
 ```
 
 Sin clave real (la del servicio es ficticia) los casos que llegan al proveedor terminan en error y el proceso devuelve 1;

@@ -309,8 +309,8 @@ LIMITS = """- El tope de texto de la API es `MAX_DESCRIPTION_CHARS` = 80 000 car
 - Con `--workers` > 1 la latencia incluye la contención de la API del proveedor."""
 
 REPRODUCE = """```sh
-# desde la raíz del repositorio (Docker). Se ejecuta en proceso: la API no publica puertos. Para medir con un proveedor real,
-# pasa LLM_PROVIDER y la clave con `-e` en la ejecución (el servicio usa claves ficticias por defecto).
+# desde la raíz del repositorio (Docker). Se ejecuta en proceso: la API no publica puertos.
+# Con un proveedor real, pasa LLM_PROVIDER y la clave con `-e` (el servicio usa claves ficticias por defecto).
 docker compose -f docker-compose.verify.yml run --rm api-stress \
     --scenarios growing,pivot,contradiction \
     --attachment-sizes 0,5,20,50,100 --repeats 3 --workers 4 --output evals/stress/results.csv
@@ -318,8 +318,9 @@ docker compose -f docker-compose.verify.yml run --rm --entrypoint python api-str
 ```
 
 Para vaciar la caché antes de otra medición: `docker compose exec redis redis-cli FLUSHALL`.
-Sin `--http` el runner usa la
-aplicación en proceso. Pruebas: `docker compose -f docker-compose.verify.yml run --rm api-test`."""
+El runner usa la aplicación en proceso, porque la API no publica puertos;
+`--http` solo sirve para una API de un proyecto temporal propio.
+Pruebas: `docker compose -f docker-compose.verify.yml run --rm api-test`."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:

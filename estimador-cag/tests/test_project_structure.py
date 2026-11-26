@@ -178,7 +178,10 @@ def test_root_compose_publishes_only_react_on_loopback():
 def test_secondary_compose_publishes_nothing_unless_the_diagnostic_profile_is_chosen():
     import yaml
 
-    compose = yaml.safe_load((REPO_ROOT / "estimador-cag" / "docker-compose.yml").read_text(encoding="utf-8"))
+    path = REPO_ROOT / "estimador-cag" / "docker-compose.yml"
+    if not path.exists():  # p. ej. ejecutando solo estimador-cag/ en un contenedor aislado
+        pytest.skip("Compose secundario no disponible")
+    compose = yaml.safe_load(path.read_text(encoding="utf-8"))
     services = compose["services"]
 
     assert "ports" not in services["estimador-cag"] and "container_name" not in services["estimador-cag"]
@@ -197,8 +200,10 @@ def test_web_app_files_exist():
         "go.sum",
         "cmd/server/main.go",
         "internal/estimatorai/base.go",
-        "internal/web/estimations.go",
-        "internal/web/estimations_test.go",
+        "internal/web/api.go",
+        "internal/web/api_test.go",
     ]:
         assert (web / relative).exists(), relative
+    # El cliente HTML de Go se retiró: no deben quedar plantillas ni estáticos de presentación.
+    assert not (web / "internal/web/templates").exists() and not (web / "internal/web/public").exists()
     assert "USER nonroot" in (web / "Dockerfile").read_text(encoding="utf-8")

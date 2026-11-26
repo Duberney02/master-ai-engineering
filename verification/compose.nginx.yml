@@ -1,0 +1,76 @@
+# Nginx delante de un upstream simulado de Go: SSE sin buffering, cancelación, plazos por ruta, límites y validación de plazos.
+# Independiente del Compose raíz. Desde la raíz del repositorio:
+#   docker compose --env-file /dev/null -p verify-local -f verification/compose.nginx.yml ...
+# Usa la imagen base pública de Nginx sin privilegios con la plantilla y el script de plazos versionados del cliente React, y la
+# imagen de herramientas Node (estimator-web-react:test, de docker-compose.verify.yml) para el upstream y el comprobador.
+x-tool: &tool
+  image: ${VERIFY_NODE_IMAGE:-estimator-web-react:test}
+  pull_policy: never
+  working_dir: /tools
+
+services:
+  nginx-upstream:
+    <<: *tool
+    volumes:
+      - ./verification/nginx-fixture.mjs:/tools/nginx-fixture.mjs:ro
+    command: ["node", "/tools/nginx-fixture.mjs"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks: [nginx-edge]
+
+  nginx: &nginx
+    image: nginxinc/nginx-unprivileged:stable-alpine
+    environment: &timeouts
+      API_UPSTREAM: http://nginx-upstream:9000
+      NGINX_CONNECT_TIMEOUT: 1s
+      NGINX_REGULAR_TIMEOUT: 2s
+      NGINX_LONG_TIMEOUT: 6s
+    volumes:
+      - ./estimator-web-react/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./estimator-web-react/validar-plazos.sh:/docker-entrypoint.d/15-validar-plazos.sh:ro
+    depends_on:
+      nginx-upstream:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "--timeout=3", "http://127.0.0.1:8080/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks: [nginx-edge]
+
+  # Plazos incoherentes (habitual > largo): el contenedor debe negarse a arrancar.
+  nginx-bad:
+    <<: *nginx
+    environment:
+      <<: *timeouts
+      NGINX_REGULAR_TIMEOUT: 5s
+      NGINX_LONG_TIMEOUT: 3s
+    depends_on: !reset {}
+    healthcheck:
+      disable: true
+
+  nginx-check:
+    <<: *tool
+    environment:
+      NGINX_URL: http://nginx:8080
+      UPSTREAM_URL: http://nginx-upstream:9000
+      NGINX_REGULAR_TIMEOUT: 2s
+      NGINX_LONG_TIMEOUT: 6s
+    volumes:
+      - ./verification/nginx-check.mjs:/tools/nginx-check.mjs:ro
+      - ./estimator-web-react/Dockerfile:/fixtures/Dockerfile:ro
+    command: ["node", "/tools/nginx-check.mjs"]
+    depends_on:
+      nginx:
+        condition: service_healthy
+    networks: [nginx-edge]
+
+networks:
+  nginx-edge:
+    internal: true
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated

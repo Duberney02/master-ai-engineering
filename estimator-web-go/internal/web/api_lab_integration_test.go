@@ -16,11 +16,11 @@ import (
 
 // La cancelación del Chunking Lab debe llegar hasta el procesamiento de Python (no basta con cerrar la conexión de
 // Go): el upstream observa el cierre, recibe una única solicitud y Go no persiste ninguna comparación incompleta.
-// Usa Go real, el upstream Python aislado del Bloque 2 (FastAPI real con proveedor retenido) y PostgreSQL efímero.
+// Usa Go real, el upstream Python aislado (FastAPI real con proveedor retenido) y PostgreSQL efímero.
 func TestLabCancellationThroughPython(t *testing.T) {
-	python := os.Getenv("BLOCK2_SSE_FIXTURE_URL")
+	python := os.Getenv("PYTHON_FIXTURE_URL")
 	if python == "" {
-		t.Skip("requiere el upstream Python aislado del Bloque 2")
+		t.Skip("requiere el upstream Python aislado (verification/verify-integration.sh)")
 	}
 	store := pgStore(t)
 	server, err := New(config.Config{APIURL: python, CompareTimeout: 30 * time.Second}, store, nil)

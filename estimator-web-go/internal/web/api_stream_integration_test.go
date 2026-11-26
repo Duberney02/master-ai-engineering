@@ -31,9 +31,9 @@ type integrationState struct {
 }
 
 func TestSSECancellationThroughPython(t *testing.T) {
-	python := os.Getenv("BLOCK2_SSE_FIXTURE_URL")
+	python := os.Getenv("PYTHON_FIXTURE_URL")
 	if python == "" {
-		t.Skip("requiere el upstream Python aislado del Bloque 2")
+		t.Skip("requiere el upstream Python aislado (verification/verify-integration.sh)")
 	}
 	web, err := New(config.Config{APIURL: python}, nil, nil)
 	if err != nil {
@@ -141,9 +141,9 @@ func waitIntegrationState(t *testing.T, client *http.Client, python string, read
 }
 
 func TestRESTCancellationThroughPython(t *testing.T) {
-	python := os.Getenv("BLOCK2_SSE_FIXTURE_URL")
+	python := os.Getenv("PYTHON_FIXTURE_URL")
 	if python == "" {
-		t.Skip("requiere el upstream Python aislado del Bloque 2")
+		t.Skip("requiere el upstream Python aislado (verification/verify-integration.sh)")
 	}
 	server, err := New(config.Config{APIURL: python}, nil, nil)
 	if err != nil {

@@ -1,8 +1,9 @@
 # Evidencia de retirada del cliente HTML de Go (tareas 10.1 y 10.2)
 
 Base: `6322a1d`. Esta nota sustituye, para las referencias que dejan de ser válidas, a las pruebas Go de HTML citadas
-en `openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/caracterizacion.md` y en los documentos de verificación (solo
-lectura). Cada prueba retirada tiene una correspondencia explícita con cobertura vigente en Go (REST/SSE/frontera) o en
+en la referencia del Bloque 1 (`caracterizacion.md`) y en los documentos de verificación de los bloques, hoy consolidados en
+`openspec/changes/archive/2026-11-26-homelab-route-clients-through-go/verification.md`. Los originales se recuperan de Git (commit
+`1ef22c4c72ff72efcd71df7fe1fdff5ef043c14c`, misma carpeta; ver la sección «Recuperación de las evidencias originales»). Cada prueba retirada tiene una correspondencia explícita con cobertura vigente en Go (REST/SSE/frontera) o en
 React (`estimator-web-react/src`). «Go» = `estimator-web-go/internal/…`.
 
 ## Referencias históricas afectadas
@@ -105,5 +106,5 @@ React (`estimator-web-react/src`). «Go» = `estimator-web-go/internal/…`.
   `internal/ai`) siguen en verde sin modificar sus pruebas.
 - Límites arquitectónicos: `internal/archtest` actualizado solo para quitar `session` y su importación desde `web`; sin
   excepciones nuevas.
-- La paridad React de 9.1–9.2 (`verificar-paridad.mjs`, `paridad-bloque3.json`) es de solo lectura y requiere el stack
-  Compose raíz: **no se ha repetido aquí** (ver informe de S2); queda para S1.
+- La paridad React de 9.1–9.2 se comprueba hoy con `verification/verify-parity.sh` (`verification/parity.json` y
+  `verification/parity-check.mjs`, de solo lectura): el resultado figura en `verification.md`.

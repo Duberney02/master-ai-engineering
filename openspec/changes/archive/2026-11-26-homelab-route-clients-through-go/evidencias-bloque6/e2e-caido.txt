@@ -1,6 +1,0 @@
- Container hl-s1-e2e-run-46c699daa294 Creating
- Container hl-s1-e2e-run-46c699daa294 Created
-OK    Python detenido → 502/503/504 saneado desde React→Go
-OK    historial con Python detenido → error saneado, no HTML ni traza
-OK    Nginx sigue sirviendo con Python detenido
-caido: 3/3 correctas

@@ -1,4 +1,4 @@
-"""Upstream de integración para Go, con rutas FastAPI y dependencias simuladas."""
+"""Upstream de integración para Go: rutas FastAPI reales con dependencias simuladas y barreras deterministas (solo pruebas)."""
 
 import asyncio
 import os

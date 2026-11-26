@@ -17,3 +17,6 @@ estimador-cag/evals/reports/
 /.block4/
 /.block4-s2/
 /.block4-s3/
+
+# Estado local de los arneses de verificación (caché, certificados, fixtures y evidencias).
+/.verification/

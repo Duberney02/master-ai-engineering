@@ -89,3 +89,58 @@ async def test_disconnect_closes_inflight_work(mocker, structured):
     assert body == expected
     assert closed.is_set()
     save.assert_not_awaited()
+
+
+async def test_chunking_compare_disconnect_cancels_the_comparison(mocker):
+    """La comparación del Chunking Lab (REST) libera el trabajo en curso si el cliente se desconecta."""
+    from app.dependencies import get_chunker_builder, get_embedder
+    from app.generation.rag.analysis.comparison import ChunkingComparator
+    from app.generation.rag.chunking.registry import build_chunkers
+    from tests._fakes import openai_settings
+    from tests.test_embeddings_pipeline import FakeEmbedder, _payload
+
+    started = asyncio.Event()
+    closed = asyncio.Event()
+
+    async def hung_stats(self, budgets):
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            closed.set()
+
+    fake = FakeEmbedder()
+    mocker.patch.object(ChunkingComparator, "compute_stats", hung_stats)
+    mocker.patch.dict(
+        app.dependency_overrides,
+        {get_embedder: lambda: fake, get_chunker_builder: lambda: lambda names: build_chunkers(names, openai_settings(), fake)},
+    )
+    messages = []
+
+    async def send(message):
+        messages.append(message)
+
+    request_received = False
+
+    async def receive():
+        nonlocal request_received
+        if not request_received:
+            request_received = True
+            return {"type": "http.request", "body": json.dumps(_payload()).encode(), "more_body": False}
+        await started.wait()
+        return {"type": "http.disconnect"}
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/embeddings/compare",
+        "query_string": b"",
+        "headers": [(b"content-type", b"application/json")],
+    }
+    await asyncio.wait_for(app(scope, receive, send), timeout=5)
+
+    assert closed.is_set()
+    assert messages[0]["status"] == 499

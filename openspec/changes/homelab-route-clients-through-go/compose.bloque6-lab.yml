@@ -1,0 +1,30 @@
+# Cancelación del Chunking Lab hasta Python real (14.1). Se carga tras compose.bloque3.yml:
+#   -f docker-compose.verify.yml -f <cambio>/compose.caracterizacion.yml -f <cambio>/compose.bloque3.yml -f <cambio>/compose.bloque6-lab.yml
+# Go real (en proceso, con la decisión administrativa exclusiva de pruebas), el upstream Python aislado (FastAPI real con el
+# proveedor retenido) y PostgreSQL efímero para las comparaciones de Go. Nada de esto existe en la imagen normal.
+services:
+  web-lab-test:
+    image: homelab-block1-307a8b9-go:test
+    pull_policy: never
+    working_dir: /src
+    volumes:
+      - type: bind
+        source: ./estimator-web-go
+        target: /src
+        read_only: true
+        bind:
+          create_host_path: false
+    environment:
+      GOTOOLCHAIN: local
+      GOPROXY: "off"
+      GOSUMDB: "off"
+      BLOCK2_SSE_FIXTURE_URL: http://api-sse-fixture:8000
+      TEST_DATABASE_URL: postgres://estimator:estimator-dev@block1-web-db:5432/estimator_web_test?sslmode=disable
+    depends_on:
+      block1-web-db:
+        condition: service_healthy
+      api-sse-fixture:
+        condition: service_healthy
+    entrypoint: ["go", "test", "-p", "1", "-count=1", "-v"]
+    command: ["./internal/web", "-run", "^TestLabCancellationThroughPython$"]
+    networks: [block1-api, block1-web]

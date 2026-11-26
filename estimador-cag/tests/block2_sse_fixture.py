@@ -14,6 +14,7 @@ from app.domain.history import EstimationHistory
 from app.domain.pipeline import EstimationPipeline
 from app.domain.schemas import EstimationResult
 from app.foundation.llm.wrapper import Completion
+from app.generation.rag.analysis.comparison import ChunkingComparator
 from app.main import app
 from tests._fakes import openai_settings
 
@@ -128,9 +129,30 @@ async def fake_transcription(*args):
         await asyncio.Future()
 
 
+_original_compute_stats = ChunkingComparator.compute_stats
+
+
+async def lab_compute_stats(self, budgets):
+    """Comparación del Chunking Lab: en el escenario `lab` queda retenida como si el proveedor no respondiera."""
+    state["posts"] += 1
+    if mode != "lab":
+        return await _original_compute_stats(self, budgets)
+    async with provider():
+        await asyncio.Future()
+
+
+ChunkingComparator.compute_stats = lab_compute_stats
+
+
 @app.middleware("http")
 async def hold_after_result(request, call_next):
     response = await call_next(request)
+    if request.url.path == "/api/v1/estimate" and mode == "rest-after":
+        # La escritura ya está confirmada: se retiene la respuesta hasta que el cliente se desconecte.
+        try:
+            await asyncio.Future()
+        finally:
+            state["response_closed"] = True
     if request.url.path != "/api/v1/estimate/stream" or mode != "after":
         return response
     original = response.body_iterator

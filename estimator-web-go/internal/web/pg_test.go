@@ -34,50 +34,155 @@ func pgStore(t *testing.T) rag.Store {
 	return store
 }
 
-// Recorrido completo del laboratorio contra PostgreSQL: formulario → comparación → redirección → detalle → historial,
-// sin Rails y con la API de IA simulada.
+// Recorrido completo del laboratorio contra PostgreSQL por la API REST: opciones → comparación (201 y Location) →
+// detalle → historial → ID ausente, con la API de IA simulada. Sustituye al recorrido HTML formulario → redirección →
+// detalle → historial.
 func TestLabEndToEndWithPostgreSQL(t *testing.T) {
 	h := newHarness(t, withStore(pgStore(t)))
 	stubCompare(h, compareBody([]string{"structural", "hierarchical", "contextual_retrieval"}, []string{"oauth"}, 0.14))
 
-	p := h.get("/rag/chunking_comparisons/new")
-	h.wantStatus(p, 200)
-
-	p = h.post("/rag/chunking_comparisons", runValues(map[string][]string{
-		"strategies[]": {"structural", "hierarchical", "contextual_retrieval"}, "queries[]": {"oauth"},
-	}))
-	h.wantStatus(p, 302)
-	if p.location != "/rag/chunking_comparisons/1" {
-		t.Fatalf("redirección: %q", p.location)
+	h.wantREST(h.rest("GET", labAPI+"/options", ""), 200)
+	created := h.rest("POST", labAPI, `{"strategies":["structural","hierarchical","contextual_retrieval"],"queries":["oauth"],"top_k":3}`)
+	h.wantREST(created, 201)
+	if created.header.Get("Location") != labAPI+"/1" || created.json(t)["id"] != "1" {
+		t.Fatalf("alta: Location=%q cuerpo=%s", created.header.Get("Location"), abbreviate(string(created.body)))
 	}
 
-	detail := h.get(p.location)
-	h.wantStatus(detail, 200)
-	if got := detail.count(`<tr id="stats-`); got != 3 {
-		t.Errorf("filas de estadísticas: %d", got)
+	detail := h.rest("GET", created.header.Get("Location"), "")
+	h.wantREST(detail, 200)
+	body := detail.json(t)
+	result := body["result"].(map[string]any)
+	if got := len(result["stats_per_strategy"].([]any)); got != 3 || body["id"] != "1" || body["created_at"] == nil || body["corpus_count"] == nil {
+		t.Errorf("detalle: estadísticas=%d %v", got, body)
 	}
-	if text, _ := detail.textOf("cost-contextual_retrieval"); !strings.Contains(text, "0,140000 USD") {
-		t.Errorf("coste: %q", text)
+	if len(h.api.requests("POST", comparePath)) != 1 {
+		t.Errorf("el detalle no debe recalcular: %d llamadas", len(h.api.requests("POST", comparePath)))
 	}
-	h.wantContains(detail, "Ejecutada el", "aria-label=\"Similitud 71%\"")
 
-	history := h.get("/rag/chunking_comparisons")
-	h.wantStatus(history, 200)
-	h.wantContains(history, `<a href="/rag/chunking_comparisons/1">Ver</a>`, "Estructural, Jerárquico, Contextual retrieval", "0,140000 USD")
+	history := h.rest("GET", labAPI, "")
+	h.wantREST(history, 200)
+	items := history.json(t)["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["id"] != "1" || !strings.Contains(strings.Join(toStrings(items[0].(map[string]any)["strategies"]), ","), "structural,hierarchical,contextual_retrieval") {
+		t.Errorf("historial: %s", abbreviate(string(history.body)))
+	}
 
-	h.wantStatus(h.get("/rag/chunking_comparisons/2"), 404)
+	h.wantREST(h.rest("GET", labAPI+"/2", ""), 404)
 }
 
 func TestLabHistoryPersistsAcrossServerInstances(t *testing.T) {
 	store := pgStore(t)
 	first := newHarness(t, withStore(store))
 	stubCompare(first, compareBody([]string{"structural"}, nil, 0))
-	first.wantStatus(first.post("/rag/chunking_comparisons", runValues(map[string][]string{"strategies[]": {"structural"}})), 302)
+	first.wantREST(first.rest("POST", labAPI, `{"strategies":["structural"]}`), 201)
 
 	second := newHarness(t, withStore(store))
-	history := second.get("/rag/chunking_comparisons")
+	history := second.rest("GET", labAPI, "")
 
-	second.wantStatus(history, 200)
-	second.wantContains(history, `<a href="/rag/chunking_comparisons/1">Ver</a>`)
-	second.wantAbsent(history, `id="lab-history-empty"`)
+	second.wantREST(history, 200)
+	body := history.json(t)
+	if items := body["items"].([]any); len(items) != 1 || items[0].(map[string]any)["id"] != "1" || body["warning"] != nil {
+		t.Errorf("historial tras reinicio: %s", abbreviate(string(history.body)))
+	}
+}
+
+// DA-27: los IDs de comparación superiores a 2^53 − 1 conservan sus dígitos en el alta, `Location`, el listado y el
+// detalle, y PostgreSQL mantiene el tipo y el valor. Un segundo servidor sobre la misma base representa el reinicio.
+func TestLabLargeIDsKeepExactDigitsThroughGoAndPostgreSQL(t *testing.T) {
+	store := pgStore(t)
+	pool, err := pgxpool.New(context.Background(), os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	const previous, next = "9007199254740993", "9007199254741001" // 2^53 + 1 y el siguiente valor de la secuencia
+	payload, _ := jsonMarshal(compareBody([]string{"structural", "hierarchical"}, []string{"oauth"}, 0))
+	if _, err := pool.Exec(context.Background(), `
+		INSERT INTO chunking_comparisons (id, strategies, queries, top_k, corpus_label, corpus_count, response_payload, duration_ms, created_at, updated_at)
+		VALUES (9007199254740993, '["structural","hierarchical"]', '["oauth"]', 4, 'budgets_previos', 18, $1::jsonb, 3200, '2026-10-05 10:00:00', '2026-10-05 10:00:00')`,
+		string(payload)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(context.Background(), `SELECT setval('chunking_comparisons_id_seq', 9007199254741000)`); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newHarness(t, withStore(store))
+	stubCompare(h, compareBody([]string{"structural"}, nil, 0))
+	created := h.rest("POST", labAPI, `{"strategies":["structural"]}`)
+	h.wantREST(created, 201)
+	if !strings.Contains(string(created.body), `"id":"`+next+`"`) || created.header.Get("Location") != labAPI+"/"+next {
+		t.Fatalf("alta: Location=%q cuerpo=%s", created.header.Get("Location"), abbreviate(string(created.body)))
+	}
+
+	restarted := newHarness(t, withStore(store)) // otro servidor, la misma base
+	list := restarted.rest("GET", labAPI, "")
+	restarted.wantREST(list, 200)
+	if !strings.Contains(string(list.body), `"id":"`+previous+`"`) || !strings.Contains(string(list.body), `"id":"`+next+`"`) {
+		t.Errorf("listado: %s", abbreviate(string(list.body)))
+	}
+	ids := []string{}
+	for _, item := range list.json(t)["items"].([]any) {
+		ids = append(ids, item.(map[string]any)["id"].(string))
+	}
+	if strings.Join(ids, ",") != next+","+previous {
+		t.Errorf("orden del listado: %v", ids)
+	}
+	detail := restarted.rest("GET", created.header.Get("Location"), "")
+	restarted.wantREST(detail, 200)
+	if !strings.Contains(string(detail.body), `"id":"`+next+`"`) {
+		t.Errorf("detalle nuevo: %s", abbreviate(string(detail.body)))
+	}
+	old := restarted.rest("GET", labAPI+"/"+previous, "")
+	restarted.wantREST(old, 200)
+	body := old.json(t)
+	if body["id"] != previous || body["corpus_label"] != "budgets_previos" || body["corpus_count"] != float64(18) || body["duration_ms"] != float64(3200) ||
+		body["top_k"] != float64(4) || body["created_at"] != "2026-10-05T10:00:00Z" {
+		t.Errorf("registro previo: %v", body)
+	}
+	if got := len(body["result"].(map[string]any)["stats_per_strategy"].([]any)); got != 2 || len(restarted.api.calls) != 0 {
+		t.Errorf("el detalle no debe recalcular: estadísticas=%d llamadas a IA=%d", got, len(restarted.api.calls))
+	}
+
+	var dataType, row string
+	if err := pool.QueryRow(context.Background(), `SELECT data_type FROM information_schema.columns WHERE table_name='chunking_comparisons' AND column_name='id'`).Scan(&dataType); err != nil || dataType != "bigint" {
+		t.Errorf("tipo de la columna: %q %v", dataType, err)
+	}
+	if err := pool.QueryRow(context.Background(), `SELECT string_agg(id::text, ',' ORDER BY id) FROM chunking_comparisons`).Scan(&row); err != nil || row != previous+","+next {
+		t.Errorf("valores en PostgreSQL: %q %v", row, err)
+	}
+}
+
+// Persistencia atómica en PostgreSQL: la cancelación durante el cálculo, un contexto cancelado y una ejecución inválida
+// no dejan filas parciales; una ejecución guardada es una única fila completa.
+func TestLabAtomicPersistenceInPostgreSQL(t *testing.T) {
+	store := pgStore(t)
+	count := func() int {
+		rows, err := store.Recent(context.Background(), 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(rows)
+	}
+	if posts := cancelDuringCompare(t, store); posts != 1 || count() != 0 {
+		t.Fatalf("cancelación durante el cálculo: POST=%d filas=%d", posts, count())
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	payload, _ := jsonMarshal(compareBody([]string{"structural"}, nil, 0))
+	row := rag.Comparison{Strategies: []string{"structural"}, TopK: 3, CorpusLabel: "x", CorpusCount: 1, ResponsePayload: payload}
+	if err := store.Create(canceled, &row); err == nil || count() != 0 {
+		t.Fatalf("contexto cancelado: error=%v filas=%d", err, count())
+	}
+	for _, invalid := range []rag.Comparison{{TopK: 3}, {Strategies: []string{"structural"}, TopK: 11}, {Strategies: []string{"structural"}, TopK: 0}} {
+		if err := store.Create(context.Background(), &invalid); err == nil || count() != 0 {
+			t.Fatalf("ejecución inválida %+v: error=%v filas=%d", invalid, err, count())
+		}
+	}
+	h := newHarness(t, withStore(store))
+	stubCompare(h, compareBody([]string{"structural"}, nil, 0))
+	h.wantREST(h.rest("POST", labAPI, `{"strategies":["structural"]}`), 201)
+	rows, err := store.Recent(context.Background(), 50)
+	if err != nil || len(rows) != 1 || rows[0].CreatedAt.IsZero() || len(rows[0].ResponsePayload) == 0 || rows[0].DurationMS == nil {
+		t.Fatalf("una ejecución guardada es una fila completa: %v %+v", err, rows)
+	}
 }

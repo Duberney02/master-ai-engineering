@@ -5,14 +5,15 @@ etapa como un endpoint independiente y SIN ESTADO: el cliente pasa la salida de 
 siguiente. Cada endpoint reutiliza los métodos del orquestador (`GroundedEstimator`); no reimplementa lógica.
 
 `generate` no replica los reintentos correctivos del pipeline completo: devuelve las señales de fundamentación (ids
-inventados y coherencia) para que la interfaz las muestre. Mismo esquema de errores que los routers hermanos: 401,
+inventados, coherencia e informe de citas por línea) para que la interfaz las muestre. `verify` (Sesión 11) aplica el
+gate de alucinaciones a una estimación ya generada. Mismo esquema de errores que los routers hermanos: 401,
 422, 429 y 502 genérico; cada etapa registra su nombre y duración con el `X-Request-ID`.
 """
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.api.rate_limiting import STAGES_LIMIT, limiter
+from app.api.rate_limiting import STAGES_LIMIT, VERIFY_LIMIT, limiter
 from app.api.retrieval import RETRIEVAL_RESPONSES, run_retrieval
 from app.api.security import require_estimate_key
 from app.dependencies import get_grounded_estimator
@@ -29,6 +30,8 @@ from app.generation.rag.schemas import (
     RetrievalResult,
     StructureRequest,
     StructureResult,
+    VerifyReport,
+    VerifyRequest,
 )
 
 logger = structlog.get_logger(__name__)
@@ -75,7 +78,9 @@ async def assemble(
     """Etapa 3: truncado al presupuesto de tokens (chunks completos) y bloque `<source>`."""
     try:
         with log_stage("augmentation", chunks_count=len(payload.chunks)):
-            return estimator.assemble(payload.chunks, payload.max_context_tokens)
+            return estimator.assemble(
+                payload.chunks, payload.max_context_tokens, toggles=await estimator.retrieval_toggles()
+            )
     except Exception as exc:
         raise HTTPException(status_code=502, detail="No se pudo ensamblar el contexto.") from exc
 
@@ -92,7 +97,25 @@ async def generate(
     except Exception as exc:
         raise HTTPException(status_code=502, detail="No se pudo generar la estimación.") from exc
     fabricated, coherent = estimator.review(estimate, payload.kept_chunks)
-    return GenerateResult(estimate=estimate, fabricated_source_ids=fabricated, coherent=coherent)
+    return GenerateResult(
+        estimate=estimate,
+        fabricated_source_ids=fabricated,
+        coherent=coherent,
+        citation_report=estimator.citation_report(estimate, payload.kept_chunks),
+    )
+
+
+@router.post("/verify", response_model=VerifyReport, responses=_PIPELINE_ERRORS)
+@limiter.limit(VERIFY_LIMIT)
+async def verify(
+    request: Request, payload: VerifyRequest, estimator: GroundedEstimator = Depends(get_grounded_estimator)
+) -> VerifyReport:
+    """Sesión 11: gate de alucinaciones (ancla numérica + juez). Con `use_judge=false`, solo el ancla y sin LLM."""
+    try:
+        with log_stage("verify", chunks_count=len(payload.kept_chunks), use_judge=payload.use_judge):
+            return await estimator.verify(payload.estimate, payload.kept_chunks, use_judge=payload.use_judge)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="No se pudo verificar la estimación.") from exc
 
 
 @router.post("/structure", response_model=StructureResult, responses=_PIPELINE_ERRORS)

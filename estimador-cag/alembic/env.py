@@ -32,9 +32,17 @@ config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
-# Índices HNSW de la migración 0003: son sobre una expresión (`embedding::halfvec(1536)`) con operator class, que
-# `alembic check` no sabe comparar con el modelo; viven solo en la migración y se excluyen de la comparación.
-MIGRATION_ONLY_INDEXES = frozenset({"chunks_embedding_halfvec_idx", "chunks_embedding_idx"})
+# Índices HNSW de las migraciones 0003 (`chunks`) y 0006 (las colecciones nuevas): son sobre una expresión
+# (`embedding::halfvec(1536)`) con operator class, que `alembic check` no sabe comparar con el modelo; viven solo en la
+# migración y se excluyen de la comparación.
+MIGRATION_ONLY_INDEXES = frozenset(
+    {
+        "chunks_embedding_halfvec_idx",
+        "chunks_embedding_idx",
+        "transcript_chunks_embedding_halfvec_idx",
+        "technical_doc_chunks_embedding_halfvec_idx",
+    }
+)
 
 
 def include_object(obj, name, type_, reflected, compare_to) -> bool:

@@ -1,7 +1,7 @@
 # estimator/web-client-contexts Specification
 
 ## Purpose
-Organizar el cliente Rails por contextos con una capa HTTP única, errores tipados, contratos que reflejen los schemas del servicio y navegación por contexto.
+Organizar el backend Go por contextos independientes con una capa HTTP única, errores tipados y saneados y navegación por contexto en React.
 
 ## Requirements
 
@@ -29,7 +29,7 @@ La capa HTTP SHALL traducir todo fallo a un error tipado con un mensaje en espa�
 
 #### Scenario: Detalle de la API
 - **WHEN** un cliente de configuración o embeddings recibe un 400, 422 o 503 con `detail` de texto
-- **THEN** el error lleva ese detalle como mensaje.
+- **THEN** se traduce a un mensaje seguro de catálogo o un detalle específicamente permitido y se descarta cualquier contenido no confiable.
 
 ### Requirement: Contratos por contexto
 Cada contexto SHALL tener tipos de contrato que reflejen los schemas del servicio (estadísticas, chunks recuperados, resultados por consulta, respuesta de la comparación, configuración de modelo y catálogo). Los atributos desconocidos que añada el servicio SHALL ignorarse. Los contextos SHALL NOT importarse entre sí.
@@ -39,15 +39,15 @@ Cada contexto SHALL tener tipos de contrato que reflejen los schemas del servici
 - **THEN** el contrato se construye sin error.
 
 ### Requirement: Navegación por contexto
-La raíz `/` SHALL mostrar un panel de inicio con una tarjeta por contexto (estimaciones, Chunking Lab, Ajustes) sin consultar la API ni la base de datos. La barra de navegación SHALL aparecer en todas las pantallas y marcar la sección activa con `aria-current="page"`. El formulario de estimación SHALL estar en `/estimations/new`.
+React SHALL ofrecer navegación accesible entre nueva estimación, historial y las capacidades administrativas según autorización aplicada por Go. SHALL conservar inicio y enlaces a nueva estimación, historial, RAG con acceso al Lab y Ajustes, con las convenciones visuales actuales de React. El panel inicial SHALL presentar los contextos sin depender de consultas de IA o PostgreSQL para renderizarse. SHALL identificar la vista activa con `aria-current="page"` y mantener la navegación disponible si falla el indicador del modelo.
 
 #### Scenario: Sección activa
-- **WHEN** se abre el Chunking Lab
-- **THEN** solo el enlace «Chunking Lab» está marcado como activo.
+- **WHEN** un operador autorizado abre Chunking Lab
+- **THEN** la navegación React identifica su sección activa
 
 #### Scenario: Layout sin servicio
-- **WHEN** el servicio no responde
-- **THEN** cualquier página se renderiza igualmente, sin el indicador del modelo primario.
+- **WHEN** el servicio de IA no responde
+- **THEN** se conservan la navegación y la vista sin el indicador del modelo
 
 ### Requirement: Entorno de pruebas en contenedor
 Las pruebas y el lint del servicio web SHALL ejecutarse en Docker con una base de datos efímera (`web-test`, `web-lint`) y nunca llamar a la API real.
@@ -55,3 +55,10 @@ Las pruebas y el lint del servicio web SHALL ejecutarse en Docker con una base d
 #### Scenario: Ejecución
 - **WHEN** se ejecuta `docker compose -f docker-compose.verify.yml run --rm web-test`
 - **THEN** se prepara la base de datos y se ejecutan las pruebas con la API simulada, y todo acceso de red no simulado falla.
+
+### Requirement: Estados de navegación administrativa
+React SHALL representar la denegación administrativa sin mostrar datos de Ajustes o Lab y SHALL conservar el acceso a las demás vistas.
+
+#### Scenario: Acceso directo sin permiso
+- **WHEN** se abre mediante enlace directo una vista administrativa en integración
+- **THEN** React presenta un estado de acceso restringido sin datos administrativos y permite regresar a estimaciones

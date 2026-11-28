@@ -26,6 +26,7 @@ from app.generation.conversation.sessions import SessionStore
 from app.generation.rag.chunking.base import Chunker
 from app.generation.rag.chunking.registry import build_chunkers
 from app.generation.rag.chunking.structural import JSONStructuralChunker
+from app.generation.rag.corpus_expansion import CorpusExpansionService
 from app.generation.rag.embedding.embedder import OpenAIEmbedder
 from app.generation.rag.estimator import GroundedEstimator
 from app.generation.rag.idempotency import IdempotencyStore
@@ -264,7 +265,18 @@ def get_task_hours_estimator(
     runtime_retrieval: RuntimeRetrievalConfig = Depends(get_runtime_retrieval_config),
 ) -> TaskHoursEstimator:
     """Horas por tarea (Sesión 10): recuperador sobre `historical_task` y parámetros de runtime."""
-    return TaskHoursEstimator(get_settings(), retriever, runtime_retrieval=runtime_retrieval)
+    return TaskHoursEstimator(
+        get_settings(), retriever, runtime_retrieval=runtime_retrieval, generate=generate_from_messages
+    )
+
+
+def get_corpus_expansion_service(
+    session_factory: Callable[[], AsyncSession] = Depends(get_rag_session_factory),
+    chunker: JSONStructuralChunker = Depends(get_chunker),
+    embedder: OpenAIEmbedder | None = Depends(get_rag_embedder),
+) -> CorpusExpansionService:
+    """Expansión incremental del corpus (Sesión 11): sesiones propias, porque la tarea sobrevive a la solicitud."""
+    return CorpusExpansionService(session_factory, chunker, embedder, ef_search=get_settings().hnsw_ef_search)
 
 
 def get_runtime_config() -> RuntimeModelConfig:

@@ -40,7 +40,7 @@ import httpx
 DOCUMENT_TYPE = "historical_task_breakdown"
 CHUNK_TYPE = "historical_task"
 SOURCE_PREFIX = "data/task_corpus.json#"
-DEFAULT_API = os.getenv("ESTIMATOR_API_BASE_URL", "http://localhost:8000")
+DEFAULT_API = os.getenv("ESTIMATOR_API_BASE_URL", "http://127.0.0.1:8000")
 DEFAULT_SEED = 90
 DEFAULT_COUNT = 60
 # Cada solicitud embebe las tareas de un proyecto: tarda unos segundos.

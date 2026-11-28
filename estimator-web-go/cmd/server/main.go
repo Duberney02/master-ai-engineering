@@ -1,4 +1,4 @@
-// Comando estimator-web: servicio web del estimador. Cliente HTTP de la API de IA (FastAPI); PostgreSQL solo para el
+// Comando estimator-web: backend Go del estimador. Pasarela REST y SSE hacia la API de IA (FastAPI); PostgreSQL solo para el
 // historial del Chunking Lab.
 //
 //	estimator-web               arranca el servidor
@@ -57,10 +57,6 @@ func run(cfg config.Config, logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if cfg.EphemeralSecret {
-		logger.Warn("SECRET_KEY_BASE no está definido: se usa un secreto efímero y las conversaciones se reinician al reiniciar el servicio")
-	}
-
 	store := openStore(ctx, cfg, logger)
 	server, err := web.New(cfg, store, logger)
 	if err != nil {
@@ -71,6 +67,7 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		Addr:              net.JoinHostPort("", cfg.Port),
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    32 << 10,
 		// Sin WriteTimeout: una estimación o una comparación de pago pueden tardar minutos antes de responder.
 		IdleTimeout: 120 * time.Second,
 		BaseContext: func(net.Listener) context.Context { return context.WithoutCancel(ctx) },
@@ -78,7 +75,7 @@ func run(cfg config.Config, logger *slog.Logger) error {
 
 	failed := make(chan error, 1)
 	go func() {
-		logger.Info("escuchando", "addr", httpServer.Addr, "api", cfg.APIURL, "history", store != nil)
+		logger.Info("escuchando", "addr", httpServer.Addr, "history", store != nil)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			failed <- err
 		}
@@ -99,7 +96,7 @@ func run(cfg config.Config, logger *slog.Logger) error {
 }
 
 // openStore abre el historial del Chunking Lab. Sin DATABASE_URL, o si la base no responde, el servicio arranca igual
-// y el laboratorio muestra el aviso de historial no disponible.
+// y la API del laboratorio responde con el aviso de historial no disponible.
 func openStore(ctx context.Context, cfg config.Config, logger *slog.Logger) rag.Store {
 	if cfg.DatabaseURL == "" {
 		logger.Warn("DATABASE_URL no está definido: el Chunking Lab no podrá guardar sus ejecuciones")

@@ -1,89 +1,37 @@
 name: estimador-cag CI
 
-# Valida la aplicación y las especificaciones que gobiernan sus cambios.
+# Valida la aplicación y las especificaciones que gobiernan sus cambios. Todas las suites se ejecutan en Docker con
+# credenciales ficticias (DA-09, DA-14) y los servicios se comprueban con sondas internas, sin publicar FastAPI.
 on:
   push:
     branches: [master]
-    paths: ["estimador-cag/**", "estimator-web-go/**", "estimator-web-react/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
+    paths: ["estimador-cag/**", "estimator-web-go/**", "estimator-web-react/**", "docker-compose.yml", "docker-compose.verify.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
   pull_request:
-    paths: ["estimador-cag/**", "estimator-web-go/**", "estimator-web-react/**", "docker-compose.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
+    paths: ["estimador-cag/**", "estimator-web-go/**", "estimator-web-react/**", "docker-compose.yml", "docker-compose.verify.yml", ".env.example", "openspec/**", ".agents/**", ".github/workflows/estimador-cag-ci.yml"]
+
+env:
+  VERIFY: docker compose -f docker-compose.verify.yml
 
 jobs:
   specs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-      - run: npm install -g @fission-ai/openspec@1.13.2
-      - run: openspec validate --all --strict
+      - run: $VERIFY run --rm openspec validate --all --strict
         env:
           OPENSPEC_TELEMETRY: "0"
   test:
+    # Lint y pruebas de la API de IA en la etapa `test` del Dockerfile. api-test levanta su propio PostgreSQL con
+    # pgvector (api-db) para las pruebas de integración y no llama a proveedores reales (SDK simulados).
     runs-on: ubuntu-latest
-    # PostgreSQL real para la prueba de integración del historial (tests/test_history_postgres.py).
-    services:
-      postgres:
-        image: pgvector/pgvector:pg17
-        env:
-          POSTGRES_USER: estimator
-          POSTGRES_PASSWORD: estimator
-          POSTGRES_DB: estimator
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U estimator -d estimator"
-          --health-interval 5s --health-timeout 3s --health-retries 10
-    env:
-      TEST_DATABASE_URL: postgresql+asyncpg://estimator:estimator@localhost:5432/estimator
-    defaults:
-      run:
-        working-directory: estimador-cag
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: uv sync --locked --group dev
-
-      - name: Download NLTK Punkt data (sentence chunking)
-        # En Docker los datos se descargan al construir la imagen; aquí, una vez antes de las pruebas.
-        run: uv run python -m nltk.downloader punkt_tab
-
-      - name: Lint (Ruff)
-        run: uv run ruff check .
-
-      - name: Run tests
-        # Suite completa (sin llamadas reales a OpenAI/Anthropic: los SDK están simulados):
-        # - test_project_structure.py -> estructura de carpetas/módulos y archivos de Docker
-        # - test_main.py               -> smoke test: /health, /docs, /openapi.json
-        # - tests/prompts/              -> plantillas Jinja2 v1/v2, loader y log del render
-        # - test_project_estimations.py -> contrato estructurado, ?prompt_version, mensajes separados
-        # - test_streamlit_app.py      -> formulario tipado y cliente HTTP
-        # - test_router.py             -> opciones del endpoint de transcripción, metadatos y evaluación
-        # - test_generation_flow.py    -> preprocesamiento (limpieza y dos fases), uso por fase
-        # - test_examples.py / test_prompt_options.py -> catálogo, selección y formatos CAG
-        # - test_evaluation.py         -> evaluación estructural y discrepancias numéricas
-        # - test_api_errors.py / test_llm_service.py / test_config.py -> errores y configuración
-        # - test_long_transcriptions.py -> validadores, rechazos, guardrails y caché semántica con 80 000 caracteres
-        # - test_history.py / test_history_postgres.py -> historial (SQLite en memoria y PostgreSQL real)
-        # - test_sessions.py / test_attachments.py / test_llm_messages.py -> ventana de turnos, metadatos, PDF/Word y mensajes multi-turno
-        # - test_sessions_api.py       -> sesiones de extremo a extremo con httpx.AsyncClient (metadatos, adjuntos, MAX_TURNS)
-        # - test_memory_api.py / test_compression.py / test_anchors.py / test_context.py -> resumen acumulativo y anclas
-        # - test_audience.py / test_session_state_api.py -> audiencia (tier) y GET /sessions/{id}
-        # - test_critic_*.py / test_boss.py / test_acb*.py -> Actor-Critic-Boss y estimate-acb
-        # - tests/evals/               -> dataset de referencia, métricas y runner
-        # - test_cache_fakeredis.py    -> caché de completions con FakeRedis (ida y vuelta, serialización, TTL)
-        # - test_architecture.py / test_catalog_loader.py / test_parsers_*.py / test_cleaning_budgets.py / test_validation_policy.py
-        #   / test_pii_*.py / test_ingestion_core.py / test_ingestion_endpoint.py -> ingesta de la sesión 6 (modelo español de spaCy real)
-        # - test_ingestion_persistence.py / test_ingestion_postgres.py -> migraciones Alembic y repositorios (SQLite y PostgreSQL real)
-        run: uv run pytest -v
+      - uses: actions/checkout@v4
+      - run: $VERIFY build api-test
+      - run: $VERIFY run --rm api-lint
+      - run: $VERIFY run --rm api-test -v
+      - name: Limpiar el proyecto de pruebas
+        if: always()
+        run: $VERIFY down -v --remove-orphans
 
   docker:
     # Verifica que la imagen se construye, arranca como usuario sin privilegios
@@ -126,56 +74,31 @@ jobs:
           exit 1
 
   web:
-    # Pruebas Go de estimator-web-go (la API de IA está simulada: nunca llaman a la real), gofmt y go vet. PostgreSQL real
-    # para el historial del Chunking Lab.
+    # Pruebas Go de estimator-web-go (la API de IA está simulada: nunca llaman a la real), gofmt y go vet, con
+    # PostgreSQL efímero para el historial del Chunking Lab.
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: estimator
-          POSTGRES_PASSWORD: estimator-dev
-          POSTGRES_DB: estimator_web_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U estimator -d estimator_web_test"
-          --health-interval 5s --health-timeout 3s --health-retries 10
-    env:
-      TEST_DATABASE_URL: postgres://estimator:estimator-dev@localhost:5432/estimator_web_test?sslmode=disable
-    defaults:
-      run:
-        working-directory: estimator-web-go
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: estimator-web-go/go.mod
-          cache-dependency-path: estimator-web-go/go.sum
-      - name: gofmt
-        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
-      - run: go vet ./...
-      - run: go test -p 1 ./...
+      - run: $VERIFY run --rm web-lint
+      - run: $VERIFY run --rm web-test
+      - name: Limpiar el proyecto de pruebas
+        if: always()
+        run: $VERIFY down -v --remove-orphans
 
   web-react:
-    # Pruebas Vitest y compilación (tsc + vite) de estimator-web-react (sin red ni claves reales).
+    # Vitest y compilación (tsc + vite) del cliente React en contenedor y sin red.
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: estimator-web-react
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: estimator-web-react/package-lock.json
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
+      - run: $VERIFY run --rm react-test
+      - run: $VERIFY run --rm react-build
+      - name: Limpiar el proyecto de pruebas
+        if: always()
+        run: $VERIFY down -v --remove-orphans
 
   stack:
     # Compose raíz: construye las imágenes, espera a que los servicios estén healthy
-    # y comprueba que la API y las webs responden y que el historial está operativo.
+    # y comprueba con sondas internas y por el origen React que el historial está operativo.
     runs-on: ubuntu-latest
     needs: [test, web, web-react]
     steps:
@@ -195,13 +118,11 @@ jobs:
         run: docker compose up -d --build --wait --wait-timeout 240
 
       - name: Smoke checks
+        # Sondas internas (exec dentro de cada contenedor) y el único origen público, React/Nginx. No dependen de
+        # puertos publicados de FastAPI ni de Go.
         run: |
-          curl -fsS http://localhost:8000/health
-          curl -fsS http://localhost:3000/up
-          test "$(curl -fsS http://localhost:8000/api/v1/estimations)" = "[]"
-          curl -fsS http://localhost:3000/estimations | grep -q 'Historial'
-          curl -fsS http://localhost:3000/rag/chunking_comparisons | grep -q 'Chunking Lab'
-          curl -fsS http://localhost:3000/ai_settings | grep -q 'Ajustes del servicio IA'
+          docker compose exec -T estimador-cag python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+          docker compose exec -T estimator-web /estimator-web healthcheck
           curl -fsS http://localhost:3001/healthz
           test "$(curl -fsS http://localhost:3001/api/v1/estimations)" = "[]"
           curl -fsS http://localhost:3001/estimations | grep -q '<div id="root">'

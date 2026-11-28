@@ -1,14 +1,13 @@
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 
 from app.api import config as runtime_config_api
 from app.api import (
+    corpus_index,
     estimate,
     estimate_stages,
     estimate_tasks,
@@ -92,11 +91,12 @@ app.include_router(estimate.router)
 app.include_router(estimate_stages.router)
 # Sesión 10: horas por tarea desde el corpus histórico.
 app.include_router(estimate_tasks.router)
+# Sesión 11: expansión incremental del corpus y estadísticas del índice.
+app.include_router(corpus_index.router)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 # `X-Request-ID` en todas las respuestas y en los logs de la petición.
 app.middleware("http")(request_id_middleware)
-app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
 @app.exception_handler(GuardrailViolation)

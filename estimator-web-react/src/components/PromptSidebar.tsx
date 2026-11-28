@@ -9,7 +9,7 @@ interface Props {
   promptVersion?: string;
 }
 
-// Barra lateral equivalente a la de Streamlit: metadatos del proyecto, contexto del prompt, ejemplos
+// Barra lateral del prompt: metadatos del proyecto, contexto del prompt, ejemplos
 // few-shot y última llamada.
 export function PromptSidebar({ preview, loading = false, metrics = null, promptVersion }: Props) {
   const conversation = useConversation();

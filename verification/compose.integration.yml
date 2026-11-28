@@ -1,0 +1,86 @@
+# Integración Go ↔ Python real y paridad funcional. Se carga SOBRE docker-compose.verify.yml, desde la raíz del repositorio:
+#   docker compose --env-file /dev/null -p verify-local -f docker-compose.verify.yml -f verification/compose.integration.yml ...
+# Usa Go real (con la decisión administrativa exclusiva de pruebas, que solo existe en el código de pruebas), el upstream
+# Python aislado (FastAPI real con barreras deterministas) y PostgreSQL efímero, todo en una red interna sin salida.
+# Requiere .verification/cache/cl100k_base.tiktoken (verification/prepare.sh) y las imágenes de pruebas ya construidas.
+networks:
+  integration:
+    internal: true
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+
+services:
+  api-db:
+    tmpfs: [/var/lib/postgresql/data]
+    networks: [integration]
+  web-db:
+    tmpfs: [/var/lib/postgresql/data]
+    networks: [integration]
+
+  # Upstream Python con barreras: FastAPI real con proveedor, escritura y respuesta retenibles.
+  integration-fixture:
+    image: ${VERIFY_API_IMAGE:-estimador-cag:test}
+    pull_policy: never
+    working_dir: /app
+    volumes:
+      - type: bind
+        source: ./estimador-cag
+        target: /app
+        read_only: true
+      - type: bind
+        source: ./.verification/cache/cl100k_base.tiktoken
+        target: /opt/tiktoken-cache/9b5ad71b2ce5302211f9c61530b329a4922fc6a4
+        read_only: true
+    environment:
+      LLM_PROVIDER: openai
+      OPENAI_API_KEY: sk-test-dummy
+      TIKTOKEN_CACHE_DIR: /opt/tiktoken-cache
+      PYTHONDONTWRITEBYTECODE: "1"
+      TEST_DATABASE_URL: postgresql+asyncpg://estimator:estimator-dev@api-db:5432/estimator_test
+    entrypoint: ["python", "-m", "uvicorn", "tests.integration_fixture:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      api-db:
+        condition: service_healthy
+    networks: [integration]
+
+  # Cancelación REST, SSE y del Chunking Lab desde Go hasta Python real.
+  go-integration-test:
+    image: ${VERIFY_GO_IMAGE:-estimator-web-go:test}
+    pull_policy: never
+    working_dir: /src
+    volumes:
+      - type: bind
+        source: ./estimator-web-go
+        target: /src
+        read_only: true
+    environment:
+      GOTOOLCHAIN: local
+      GOPROXY: "off"
+      GOSUMDB: "off"
+      PYTHON_FIXTURE_URL: http://integration-fixture:8000
+      TEST_DATABASE_URL: postgres://estimator:estimator-dev@web-db:5432/estimator_web_test?sslmode=disable
+    depends_on:
+      web-db:
+        condition: service_healthy
+      integration-fixture:
+        condition: service_healthy
+    entrypoint: ["go", "test", "-p", "1", "-count=1", "-v"]
+    command: ["./internal/web", "-run", "^Test(SSE|REST|Lab)CancellationThroughPython$"]
+    networks: [integration]
+
+  # Matriz de paridad: comprueba que cada prueba nombrada existe y pasó en los resultados reales (sin red).
+  parity-check:
+    image: ${VERIFY_NODE_IMAGE:-estimator-web-react:test}
+    pull_policy: never
+    working_dir: /tools
+    volumes:
+      - ./verification:/tools:ro
+      - ${PARITY_EVIDENCE_DIR:-./.verification/evidence}:/evidence:ro
+    command: ["node", "/tools/parity-check.mjs"]
+    network_mode: none

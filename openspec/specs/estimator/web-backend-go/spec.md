@@ -1,107 +1,66 @@
 # estimator/web-backend-go Specification
 
 ## Purpose
-Definir el servicio web en Go que sustituye al cliente Rails: debe ser funcionalmente equivalente, hablar solo con la API de IA por HTTP y poder desarrollarse, probarse y ejecutarse únicamente con Docker.
+Definir el backend HTTP de aplicación en Go: API REST y SSE pública con rutas explícitas, frontera de autorización denegada por defecto, historial del Chunking Lab y desarrollo, pruebas y ejecución únicamente con Docker. No sirve HTML.
 
 ## Requirements
 
-### Requirement: Equivalencia de rutas y respuestas
-El servicio SHALL exponer las mismas rutas y métodos que el cliente Rails: `GET /` (inicio), `GET /up` (salud), `GET /estimations/new`, `GET /estimations`, `POST /estimations`, `GET /estimations/{id}`, `POST /conversation`, `GET /rag/chunking_comparisons`, `GET /rag/chunking_comparisons/new`, `POST /rag/chunking_comparisons`, `GET /rag/chunking_comparisons/{id}`, `GET /ai_settings` y `PATCH|PUT /ai_settings`. Las pantallas SHALL ser HTML renderizado en servidor con los mismos identificadores de elementos, textos en español y estados HTTP que el servicio Rails. Una ruta o recurso inexistente SHALL responder 404.
-
-#### Scenario: Rutas heredadas
-- **WHEN** un navegador abre cualquiera de las rutas anteriores
-- **THEN** recibe la misma pantalla que con Rails, con los mismos enlaces entre pantallas.
-
-#### Scenario: Sonda de salud
-- **WHEN** se hace `GET /up`
-- **THEN** responde 200 sin consultar la API de IA ni la base de datos.
-
-#### Scenario: Recurso inexistente
-- **WHEN** se abre `/rag/chunking_comparisons/0` o una ruta desconocida
-- **THEN** responde 404.
-
-#### Scenario: Formulario con método PATCH
-- **WHEN** el formulario de Ajustes se envía con `_method=patch` por POST
-- **THEN** se trata como `PATCH /ai_settings`.
-
-### Requirement: Sesión de conversación y CSRF
-El servicio SHALL conservar el `session_id` de la API y los metadatos compactados del proyecto en una cookie de sesión firmada con `SECRET_KEY_BASE`, `HttpOnly` y `SameSite=Lax`, y SHALL compactar los metadatos (nombre 80 caracteres, 10 tecnologías de 40, alcance 300) para no superar el límite de la cookie. Los avisos `flash` SHALL sobrevivir a una redirección y mostrarse una vez. Toda petición `POST`, `PATCH`, `PUT` o `DELETE` SHALL exigir un token CSRF válido (campo `authenticity_token` o cabecera `X-CSRF-Token`) y SHALL responder 422 si falta o no coincide; los formularios y la etiqueta `csrf-token` SHALL incluirlo. Una cookie manipulada SHALL tratarse como sesión vacía.
-
-#### Scenario: Conversación persistente
-- **WHEN** el usuario abre el formulario varias veces
-- **THEN** se crea una sola sesión en la API y se reutiliza.
-
-#### Scenario: Metadatos enormes
-- **WHEN** la API devuelve metadatos muy largos
-- **THEN** la cookie guarda la versión truncada y la página se sigue renderizando.
-
-#### Scenario: Petición sin token
-- **WHEN** llega un `POST` sin token CSRF válido
-- **THEN** responde 422 y no llama a la API de IA.
-
-#### Scenario: Cookie manipulada
-- **WHEN** la cookie de sesión tiene una firma inválida
-- **THEN** se ignora y la conversación empieza de cero.
-
-### Requirement: Formulario de estimación y mapeo de errores
-El servicio SHALL validar el formulario de estimación antes de llamar a la API con las mismas reglas y mensajes que Rails (descripción de 20 a 80 000 caracteres o vacía con adjuntos; `.txt` UTF-8 de hasta 400 000 bytes que sustituye a la descripción; hasta 5 adjuntos `.pdf`/`.docx` de hasta 10 MB) y SHALL enviar la estimación a `POST /api/v1/sessions/{id}/estimate` como `multipart/form-data` con `transcript`, `project_type`, `detail_level`, `output_format`, `prompt_version` y un campo `attachments` por archivo. SHALL traducir los errores de la API: sesión caducada abre otra conversación y avisa (200); cualquier otro fallo de la API en el envío se muestra como error del formulario con 422; en la pantalla de resultado, 404 si la estimación no existe y 502 en el resto.
-
-#### Scenario: Envío válido
-- **WHEN** el usuario envía una descripción válida y la API devuelve `estimation_id`
-- **THEN** el servicio redirige a `/estimations/{id}`.
-
-#### Scenario: Sin historial
-- **WHEN** la API no devuelve `estimation_id`
-- **THEN** se renderiza el resultado directamente con las métricas en la barra lateral.
-
-#### Scenario: Entrada rechazada localmente
-- **WHEN** la descripción es corta o el archivo no es válido
-- **THEN** responde 422 con el error en el formulario, conserva lo escrito y no llama a la API.
-
-#### Scenario: Sesión caducada
-- **WHEN** la API responde 404 a la estimación de una sesión
-- **THEN** se crea otra sesión, se muestra «La conversación anterior expiró en el servidor…» y el formulario conserva lo escrito.
-
-#### Scenario: Error sin filtraciones
-- **WHEN** la API responde 5xx con una traza o una clave, o no se puede conectar
-- **THEN** el HTML contiene solo el mensaje genérico en español, sin traza, clave ni URL interna.
-
 ### Requirement: Chunking Lab con historial persistido
-El servicio SHALL ejecutar la comparación llamando a `POST /embeddings/compare` con el corpus de presupuestos embebido, las estrategias válidas elegidas (únicas, en el orden recibido, ignorando nombres desconocidos), las consultas (marcadas más las propias, sin vacías ni repetidas) y `top_k` limitado a 1–10, con el tiempo de espera ampliado `ESTIMATOR_COMPARE_TIMEOUT` solo en esa llamada. SHALL guardar cada ejecución en la tabla `chunking_comparisons` existente (sin cambios de esquema) y redirigir a su detalle; si el guardado falla SHALL mostrar igualmente el resultado con un aviso. SHALL listar las últimas 20 ejecuciones, la más reciente primero, y SHALL seguir mostrando la pantalla si la base de datos no está disponible.
+Go SHALL coordinar el Chunking Lab por contratos explícitos, conservar el corpus de presupuestos embebido, estrategias válidas únicas y ordenadas, consultas sin vacíos ni duplicados y `top_k` entre 1 y 10, con 3 si se omite (DA-28). Go SHALL aplicar `ESTIMATOR_COMPARE_TIMEOUT` solo a esa llamada y guardar cada ejecución en la tabla existente `chunking_comparisons` sin cambiar el esquema, tipo, precisión o valor de los IDs (DA-27) y listar las últimas 20 en orden descendente. Si el guardado falla SHALL devolver el resultado con aviso y si falla el listado SHALL indicar indisponibilidad. SHALL preservar el mapeo de errores del Lab de su capacidad específica.
 
 #### Scenario: Ejecución guardada
-- **WHEN** se envían estrategias válidas y la API responde
-- **THEN** se inserta una fila con estrategias, consultas, `top_k`, corpus, carga completa y duración, y se redirige a su detalle.
+- **WHEN** una comparación válida finaliza con PostgreSQL disponible
+- **THEN** se guarda el resultado completo y Go devuelve el identificador
 
 #### Scenario: Sin estrategias
-- **WHEN** no se marca ninguna estrategia
-- **THEN** responde 422 con «Selecciona al menos una estrategia.» sin llamar a la API.
+- **WHEN** no se envía ninguna estrategia válida
+- **THEN** se responde 422 sin invocar la API interna
 
 #### Scenario: Errores del servicio
-- **WHEN** la API responde 400, 503, 5xx, agota el tiempo o no responde
-- **THEN** el servicio responde respectivamente 422, 503, 502, 504 y 503 con mensajes saneados.
+- **WHEN** la comparación recibe un rechazo, indisponibilidad, fallo interno o timeout
+- **THEN** se aplica el mapeo del Lab con un mensaje saneado
 
 #### Scenario: Base de datos caída
-- **WHEN** PostgreSQL no está disponible
-- **THEN** el historial muestra «El historial no está disponible en este momento.» y una ejecución recién calculada se muestra sin guardarse.
+- **WHEN** se consulta el listado con PostgreSQL indisponible
+- **THEN** se informa de la indisponibilidad
 
 ### Requirement: Ajustes de modelos y barra de navegación
-El servicio SHALL leer y actualizar los modelos con `GET`/`PUT /api/v1/config/models`, enviar solo los siete knobs conocidos (los vacíos como `null`), limitar a los chunkers a los modelos de su proveedor y no llamar a la API si no hay cambios. SHALL mostrar en la barra el modelo primario vigente consultando la API con un tiempo de espera de `ESTIMATOR_BADGE_TIMEOUT` y cacheando el resultado, incluido el fallo, 15 segundos; guardar Ajustes SHALL invalidar esa caché; un servicio caído SHALL omitir el indicador sin impedir el renderizado.
+Go SHALL ofrecer operaciones explícitas de lectura y escritura de ajustes a operadores autorizados, reutilizando `GET` y `PUT /api/v1/config/models` internos. SHALL preservar los siete knobs, aplicar null al restablecer, limitar chunkers a su proveedor y omitir escrituras sin campos reconocidos. SHALL ofrecer un indicador de modelo primario cacheado durante 15 s incluso ante fallo, con plazo corto configurable mediante `ESTIMATOR_BADGE_TIMEOUT` (2 s por defecto) e invalidación al guardar.
 
-#### Scenario: Cambio guardado
-- **WHEN** el usuario guarda un modelo
-- **THEN** se envía el `PUT`, se redirige a Ajustes con «Modelos actualizados…» y la barra muestra ya el nuevo modelo.
+#### Scenario: Restablecimiento
+- **WHEN** un operador restablece un override permitido
+- **THEN** el servicio interno recibe null y se invalida el indicador
 
 #### Scenario: Servicio caído
-- **WHEN** la API no responde en la barra
-- **THEN** la página se renderiza sin indicador y el fallo se cachea.
+- **WHEN** IA no responde a la consulta breve
+- **THEN** React sigue operativo sin indicador y el fallo se cachea durante la ventana
+
+#### Scenario: Cambio guardado
+- **WHEN** un operador guarda cambios válidos
+- **THEN** Go actualiza en Python y React muestra el resultado y el indicador vigente
 
 ### Requirement: Frontera con la API de IA
-El servicio SHALL comunicarse con el servicio de IA solo por HTTP hacia `ESTIMATOR_API_URL`, con los mismos tiempos de espera que Rails (`ESTIMATOR_OPEN_TIMEOUT` 5 s, `ESTIMATOR_READ_TIMEOUT` 300 s, `ESTIMATOR_COMPARE_TIMEOUT` 600 s, `ESTIMATOR_BADGE_TIMEOUT` 2 s), SHALL NOT recibir claves de proveedores y SHALL NOT modificar los contratos de la API Python. Ningún otro cliente del repositorio SHALL depender de un servicio Rails.
+Go SHALL ser el único consumidor de aplicación de la API de IA y SHALL usar clientes HTTP por contexto hacia `ESTIMATOR_API_URL` y conservar los contratos de la API de IA. SHALL NOT actuar como proxy genérico, recibir claves de proveedor ni duplicar lógica de IA. SHALL propagar a Python la cancelación recibida desde React mediante Nginx o Vite. Python SHALL detener el trabajo cancelable y liberar recursos. Ninguna capa SHALL reintentar automáticamente una solicitud cancelada ni un POST. Los resultados parciales SHALL NOT persistirse. Una escritura confirmada antes de la cancelación puede permanecer en PostgreSQL. Los presupuestos configurables de conexión, cabeceras, operación total e inactividad SHALL distinguirse y coordinarse con Vite, Nginx, React y Python.
+
+#### Scenario: Cancelación antes de persistir
+- **WHEN** React cancela por Nginx o Vite mientras Python está detenido por un fake antes de iniciar la escritura
+- **THEN** Python y su fake observan la cancelación, no se crea una fila y se observa un único POST
+
+#### Scenario: Cancelación después de confirmar una escritura
+- **WHEN** el flujo de prueba confirma la escritura completa en PostgreSQL y retiene la respuesta hasta que React cancela
+- **THEN** Python observa la cancelación, el historial conserva exactamente esa fila confirmada y se observa un único POST
+
+#### Scenario: Generación lenta válida
+- **WHEN** la respuesta tarda más que una operación habitual pero cabe en el plazo de generación
+- **THEN** los intermediarios y el cliente permiten completarla
+
+#### Scenario: Timeout
+- **WHEN** se supera el presupuesto antes de confirmar cabeceras
+- **THEN** Go devuelve 504 saneado sin duplicar la operación
 
 #### Scenario: Sin Rails
-- **WHEN** se levanta el Compose raíz
-- **THEN** ningún servicio ni configuración ejecuta Rails y las pantallas del flujo funcionan contra la API Python.
+- **WHEN** se verifica el Compose raíz y su flujo de aplicación
+- **THEN** React funciona con Go y el servicio interno de IA sin dependencia de Rails
 
 ### Requirement: Desarrollo y pruebas en Docker
 El servicio SHALL compilarse, probarse y ejecutarse solo con Docker: `web-test` (`go test` con PostgreSQL efímero) y `web-lint` (`gofmt` y `go vet`) en `docker-compose.verify.yml`, y una imagen de producción mínima, sin privilegios y con healthcheck sobre `/up`. Las pruebas SHALL NOT llamar a la API real ni usar claves reales.
@@ -112,4 +71,83 @@ El servicio SHALL compilarse, probarse y ejecutarse solo con Docker: `web-test` 
 
 #### Scenario: Stack completo
 - **WHEN** se ejecuta `docker compose up --build`
-- **THEN** `estimator-web` llega a `healthy` y responde en el puerto 3000.
+- **THEN** `estimator-web` llega a `healthy` y responde a la sonda local sin publicar su puerto en integración.
+
+### Requirement: Contratos JSON de Ajustes y Chunking Lab
+Go SHALL exponer GET y PUT `/api/v1/ai/settings`, GET `/api/v1/ai/primary-model`, GET `/api/v1/rag/chunking-comparisons/options`, GET y POST `/api/v1/rag/chunking-comparisons` y GET `/api/v1/rag/chunking-comparisons/{id}`. Los contratos SHALL ser explícitos y devolver JSON. Go SHALL intermediar configuración y cálculo hacia IA y resolver por sí mismo las opciones y el almacenamiento del Lab. Configuración, catálogo y Lab SHALL quedar reservados a admin. La proyección general del indicador SHALL limitarse al nombre primario efectivo o null.
+
+#### Scenario: Contratos explícitos
+- **WHEN** se ejercitan las siete operaciones en Docker con fakes y autorización de prueba
+- **THEN** se observan los esquemas y estados de la matriz HTTP y ninguna lectura de historial o detalle del Lab llama a IA
+
+#### Scenario: Intento de acceso administrativo
+- **WHEN** se llama directamente a cualquier operación administrativa en la composición normal, incluso con UUID conversacional, cookie HTML o cabecera de rol
+- **THEN** Go devuelve 403 saneado sin llamada a IA ni al repositorio y sin entregar datos
+
+#### Scenario: Imagen normal
+- **WHEN** se inspecciona y ejerce la imagen normal con variables de entorno y solicitudes manipuladas
+- **THEN** no existe modo de activar una autorización de pruebas, aceptar credenciales predeterminadas ni suplantar identidad o rol mediante cabeceras
+
+### Requirement: Retirada del servidor HTML de aplicación
+El despliegue consolidado SHALL servir la experiencia web únicamente desde React. La retirada de vistas, plantillas, formularios y sesión HTML Go SHALL quedar condicionada a evidencia de paridad funcional de estimaciones, conversación, historial, vista previa, Ajustes y Chunking Lab demostrada con fakes exclusivos de pruebas y a evidencia de que la composición normal deniega todas las operaciones administrativas. La retirada SHALL preservar las funciones compartidas y los datos.
+
+#### Scenario: Corte de cliente
+- **WHEN** se activa la arquitectura consolidada
+- **THEN** React presenta las capacidades verificadas y Go devuelve contratos HTTP sin servir páginas de aplicación independientes
+
+### Requirement: Contratos públicos de aplicación y salud
+Go SHALL exponer explícitamente `POST /api/v1/sessions`, `POST /api/v1/sessions/{session_id}/estimate`, `GET /api/v1/prompts/estimation`, `GET /api/v1/estimations`, `GET /api/v1/estimations/{estimation_id}`, `POST /api/v1/estimate`, `POST /api/v1/estimate/stream`, `POST /api/v1/transcription/estimate/stream` y `GET /health`. SHALL preservar métodos, parámetros, tipos de contenido, códigos funcionales y formas de éxito, incluidos campos opcionales y nulos. SHALL mantener `/up` como sonda local e independiente. `/health` SHALL devolver el JSON saludable compatible con la sonda interna cuando Go pueda alcanzarla y 503 saneado cuando esté indisponible o sea inválida, sin invocar proveedores ni verificar todos los almacenes. `GET /up` SHALL responder 200 sin consultar IA ni PostgreSQL.
+
+#### Scenario: Compatibilidad JSON y multipart
+- **WHEN** se envían las mismas solicitudes válidas a ambas fronteras en pruebas
+- **THEN** se conservan el 201 con UUID, las respuestas de estimación y sesión con campos opcionales, los defaults y las respuestas de historial y de vista previa
+
+#### Scenario: Salud
+- **WHEN** se detiene el upstream mientras Go sigue operativo
+- **THEN** por Nginx se recibe 503 saneado en /health y la sonda local /up sigue respondiendo 200
+
+#### Scenario: Superficie controlada
+- **WHEN** se solicita una ruta de IA ajena al catálogo público o un método incorrecto
+- **THEN** Go responde 404 o 405 respectivamente sin llamar a IA
+
+### Requirement: Seguridad de sesión, origen y administración
+Las sesiones conversacionales de la API pública SHALL referenciarse mediante el identificador en la ruta y SHALL NOT depender de cookies Go. Go SHALL rechazar mutaciones de navegador con origen cruzado o nulo. Tras retirar la interfaz HTML, Go SHALL NOT emitir cookies ni mantener estado de navegación, avisos flash ni token CSRF de formulario. Si el navegador envía la cookie legada `_estimator_web_session`, Go SHALL expirarla (`Max-Age=0`, `Path=/`, `HttpOnly`) sin interpretar ni validar su contenido, de modo que no existe sesión que firmar ni sesión vacía que tratar. La protección de las mutaciones del navegador SHALL basarse en la validación de origen. Go SHALL decidir la autorización de cada operación administrativa, incluidas las lecturas, antes de consultar cachés administrativas o acceder a IA o PostgreSQL. La composición normal SHALL devolver 403 saneado por ausencia, denegación o fallo de la decisión. Las sesiones conversacionales SHALL ser independientes de las futuras sesiones de identidad. La integración de identidad, sesiones de autenticación, roles admin y user y aislamiento por usuario queda en homelab-authentication-authorization.
+
+#### Scenario: Sesión sin cookie
+- **WHEN** React crea sesión y envía un turno desde el mismo origen
+- **THEN** la respuesta no depende de cookies HTML y un identificador caducado obtiene 404
+
+#### Scenario: Cookie legada
+- **WHEN** un navegador envía la cookie `_estimator_web_session` a cualquier ruta de Go, con o sin firma válida
+- **THEN** Go no la interpreta, responde con su expiración y ninguna respuesta emite cookies nuevas
+
+#### Scenario: Mutación cruzada
+- **WHEN** otro origen envía un formulario de estimación o una mutación administrativa
+- **THEN** se rechaza antes de llamar a IA
+
+### Requirement: Validación de transporte y errores de estimación
+Go SHALL controlar tamaño total, tipo y sintaxis del cuerpo y límites de transporte de multipart incluyendo un máximo de cinco adjuntos de hasta 10 MiB. SHALL conservar partes repetidas y opciones compatibles. Python conserva la extracción y las validaciones de negocio. Go SHALL preservar 400 de guardrails con `reason` y `message` saneados, 404 de sesión, 413, 415 y 422 compatibles con React. Los errores públicos SHALL NOT revelar trazas, URL internas, secretos, entradas del usuario ni cuerpos crudos upstream.
+
+#### Scenario: Adjuntos válidos
+- **WHEN** se envía una estimación con varios PDF/DOCX dentro del límite o solo adjuntos con texto suficiente
+- **THEN** Python recibe todos los adjuntos y procesa la entrada
+
+#### Scenario: Tamaño excesivo
+- **WHEN** el cuerpo multipart desborda el límite incluidos cuerpos sin Content-Length
+- **THEN** la frontera devuelve 413 y no invoca la generación
+
+#### Scenario: Rechazo seguro
+- **WHEN** IA rechaza un guardrail o un documento ilegible
+- **THEN** la respuesta conserva 400 con reason/message o 422 con un detail saneado
+
+#### Scenario: Sin historial
+- **WHEN** la persistencia de IA está desactivada
+- **THEN** se devuelve el resultado con estimation_id nulo
+
+#### Scenario: Sesión caducada
+- **WHEN** Python devuelve 404 de sesión
+- **THEN** Go conserva el 404 y React crea otra sesión y avisa sin reenviar el turno
+
+#### Scenario: Error sin filtraciones
+- **WHEN** la respuesta upstream trae una traza con un secreto ficticio
+- **THEN** Go devuelve un error saneado sin reproducir la entrada ni la respuesta cruda

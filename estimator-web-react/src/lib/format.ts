@@ -52,6 +52,11 @@ function formatNumber(
   return `${sign}${groupThousands(integer, delimiter)}${decimals ? `,${decimals}` : ""}`;
 }
 
+/** Precisión fija con coma decimal y sin recortar ceros (`79,0`), como `number_with_precision` de la web HTML. */
+export function formatFixed(value: number, precision: number): string {
+  return formatNumber(Number(value), precision);
+}
+
 export function formatDecimal(value: number, precision = 1): string {
   return formatNumber(Number(value), precision, { stripZeros: true });
 }

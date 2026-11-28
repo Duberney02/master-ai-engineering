@@ -1,6 +1,9 @@
-.claude
+.claude/settings.local.json
 Claude outputs/
 .superpowers
 .env
 
 estimador-cag/evals/reports/
+
+# Estado local de los arneses de verificación (caché, certificados, fixtures y evidencias).
+/.verification/

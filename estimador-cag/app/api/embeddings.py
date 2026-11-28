@@ -3,9 +3,10 @@
 from collections.abc import Callable
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from app.api.disconnect import complete_while_connected
 from app.config import Settings, get_settings
 from app.dependencies import get_chunker_builder, get_document_store, get_embedder
 from app.generation.rag.analysis.comparison import ChunkingComparator, CompareRequest, CompareResponse
@@ -55,6 +56,7 @@ async def ingest(
 )
 async def compare(
     request: CompareRequest,
+    connection: Request,
     embedder: OpenAIEmbedder = Depends(get_embedder),
     build_chunkers: Callable[[list[str]], list[Chunker]] = Depends(get_chunker_builder),
     settings: Settings = Depends(get_settings),
@@ -84,9 +86,17 @@ async def compare(
         queries_count=len(request.queries),
     )
     comparator = ChunkingComparator(chunkers, embedder)
-    try:
+
+    async def compute():
         stats = await comparator.compute_stats(request.budgets)
         queries = await comparator.run_queries(request.budgets, request.queries, request.top_k)
+        return stats, queries
+
+    try:
+        # Si el cliente (Go) se desconecta, se cancela el trabajo en curso y se liberan embeddings y LLM del proveedor.
+        stats, queries = await complete_while_connected(connection, compute())
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("embeddings_compare_failed", reason="comparison_error", error_type=type(exc).__name__)
         raise HTTPException(status_code=500, detail="No se pudo ejecutar la comparación de chunking.") from exc

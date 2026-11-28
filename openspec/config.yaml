@@ -4,10 +4,15 @@ context: |
   Language: Spanish
   All artifacts must be written in Spanish.
   Keep OpenSpec structural headings and SHALL/MUST keywords in English.
-  Monorepo: aplicación en estimador-cag/ (Python 3.11+, FastAPI, uv).
-  Preservar SDK asíncronos, contratos aditivos, errores saneados y salida en español.
-  Pruebas desde estimador-cag/: uv run pytest -q. Nunca requieren claves reales.
-  Usar OpenSpec para el trabajo nuevo. No invocar superpowers.
+  Escribir también la documentación en español.
+  Monorepo del estimador de proyectos: estimador-cag/ (IA, Python 3.11, FastAPI y uv), estimator-web-go/ (backend HTTP de aplicación en Go, sin HTML), estimator-web-react/ (cliente web único, React y TypeScript servido por Nginx), examples/ (ejemplos), openspec/ (especificaciones y cambios). Consultar AGENTS.md para las reglas detalladas.
+  Estado actual (DA-01 a DA-28 aprobadas; ver AGENTS.md): React, servido por Nginx, llama solo a Go; solo Go llama a estimador-cag. Streamlit y el HTML de Go están retirados. Compose define seis servicios (React/Nginx, Go, IA, PostgreSQL de Go, PostgreSQL con pgvector para IA y Redis Stack) en las redes client-net, service-net, go-data-net, ai-data-net y ai-egress-net, y solo publica 127.0.0.1:3001. Es un entorno privado de desarrollo, accesible solo por el operador mediante túnel SSH y sin uso multiusuario hasta completar homelab-authentication-authorization; Go deniega por defecto las operaciones administrativas.
+  Objetivo de integración: Windows solo accede por VS Code Remote SSH y navegador. Código, herramientas, aplicaciones e infraestructura residen en Ubuntu en el homelab.
+  React llama exclusivamente a Go, sin acceso directo a estimador-cag, PostgreSQL, Redis u Ollama. Entre los componentes de aplicación, solo Go llama a estimador-cag. Toda la lógica de IA y sus credenciales se concentrarán en estimador-cag. Nunca versionar secretos.
+  Abstraer los proveedores de generación Ollama, Anthropic y OpenAI. Configurar proveedor y modelo de generación independientemente de los de embeddings (Ollama u OpenAI). Mantener separados los espacios vectoriales aun con igual dimensión y planificar identificación, dimensión, índices, persistencia, reindexación, caché semántica y migración al cambiar de modelo.
+  Reutilizar PostgreSQL, pgvector y Ollama del homelab con bases y usuarios separados por responsabilidad. Mantener Redis Stack con RediSearch.
+  Especificar y planificar cambios funcionales y arquitectónicos con OpenSpec antes de implementar. Usar OpenSpec 1.13.2 nativo para planificación o el servicio Compose existente para validación reproducible y CI/CD. Las herramientas de desarrollo pueden ejecutarse nativamente en Ubuntu. Usar Docker Compose para desarrollar, gestionar dependencias, compilar, probar, aplicar lint, verificar, ejecutar y desplegar aplicaciones.
+  Mantener Settings en minúsculas y variables de entorno en mayúsculas, SDK asíncronos, contratos aditivos, errores saneados, salida y comentarios en español, routers finos y fábricas en app/dependencies.py. Respetar tests/test_layer_dependencies.py. Usar datos simulados y fakes, sin claves reales en pruebas. No invocar superpowers.
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.

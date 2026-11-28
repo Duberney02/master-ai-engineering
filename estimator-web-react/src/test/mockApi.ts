@@ -64,6 +64,7 @@ export function mockApi(...handlers: Handler[]) {
       sessions.push(sessionId);
       return json({ session_id: sessionId }, 201);
     }
+    if (url.pathname === "/api/v1/ai/primary-model") return json({ model: null });
     if (url.pathname === "/api/v1/prompts/estimation") {
       return json({
         system_prompt: `Prompt ${url.searchParams.get("detail_level")}`,

@@ -9,6 +9,7 @@ Semántica de fallos:
 - La escritura propaga el fallo (`RuntimeConfigUnavailable`): un cambio que no se aplicó debe verse (HTTP 503).
 
 La Sesión 10 añade `RuntimeRetrievalConfig` (al final del módulo): los parámetros de recuperación, en un hash aparte.
+La Sesión 11 suma a ese hash los *toggles* de calidad de la generación (gate, aumentación, síntesis).
 
 El modelo de embeddings queda fuera a propósito: cambiarlo invalidaría todos los vectores guardados.
 
@@ -195,6 +196,14 @@ RETRIEVAL_KNOBS: dict[str, RetrievalKnob] = {
     "temporal_decay_enabled": RetrievalKnob("temporal_decay_enabled", "bool"),
     "task_hours_top_k": RetrievalKnob("task_hours_top_k", "int"),
     "task_hours_distance_threshold": RetrievalKnob("task_hours_distance_threshold", "float"),
+    # Sesión 11: calidad de la generación.
+    "hallucination_gate_enabled": RetrievalKnob("hallucination_gate_enabled", "bool"),
+    "hallucination_numeric_tolerance": RetrievalKnob("hallucination_numeric_tolerance", "float"),
+    "augmentation_enabled": RetrievalKnob("augmentation_enabled", "bool"),
+    "augmentation_compress": RetrievalKnob("augmentation_compress", "bool"),
+    "augmentation_reorder": RetrievalKnob("augmentation_reorder", "bool"),
+    "synthesis_enabled": RetrievalKnob("synthesis_enabled", "bool"),
+    "synthesis_contradiction_threshold": RetrievalKnob("synthesis_contradiction_threshold", "float"),
 }
 
 
@@ -227,6 +236,13 @@ class RetrievalToggles:
     temporal_decay_enabled: bool
     task_hours_top_k: int
     task_hours_distance_threshold: float
+    hallucination_gate_enabled: bool
+    hallucination_numeric_tolerance: float
+    augmentation_enabled: bool
+    augmentation_compress: bool
+    augmentation_reorder: bool
+    synthesis_enabled: bool
+    synthesis_contradiction_threshold: float
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "RetrievalToggles":

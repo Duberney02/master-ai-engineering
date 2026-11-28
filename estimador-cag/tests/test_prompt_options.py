@@ -1,5 +1,7 @@
+from app.domain.schemas import EstimationRequest
 from app.foundation.llm.service import EXTRACTION_SYSTEM_PROMPT, build_system_prompt
 from app.foundation.prompts.examples import ESTIMATION_EXAMPLES, ESTIMATION_EXAMPLES_CATALOG
+from app.foundation.prompts.loader import few_shot_examples, render_estimation_prompt
 
 
 def test_default_prompt_includes_exactly_two_examples_in_markdown():
@@ -76,3 +78,27 @@ def test_all_five_examples_can_be_injected():
     prompt = build_system_prompt(num_examples=5)
     for ex in ESTIMATION_EXAMPLES_CATALOG:
         assert ex.title in prompt
+
+
+def _request() -> EstimationRequest:
+    return EstimationRequest(
+        description="Herramienta interna para planificar las vacaciones del equipo de soporte.",
+        project_type="web_saas",
+        detail_level="summary",
+        output_format="narrative",
+    )
+
+
+def test_few_shot_examples_are_extracted_from_the_rendered_prompt():
+    system, _ = render_estimation_prompt(_request(), version="v1")
+
+    examples = few_shot_examples(system)
+
+    assert [title for title, _ in examples] == [
+        "App de reservas para una cadena de gimnasios",
+        "Portal SaaS de facturación para despachos contables",
+        "Pipeline diario de ventas hacia un data warehouse",
+    ]
+    assert examples[0][1].startswith("Aplicación iOS y Android")
+    v3_titles = [t for t, _ in few_shot_examples(render_estimation_prompt(_request())[0])]
+    assert v3_titles == ["Portal de reservas para un gimnasio", "Plataforma de IA para todo el hospital"]

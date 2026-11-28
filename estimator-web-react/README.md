@@ -42,25 +42,31 @@ su propio origen y nginx reenvía `/api/` y `/health` a la API, así que no hace
 
 | Variable | Dónde | Por defecto | Uso |
 |---|---|---|---|
-| `API_UPSTREAM` | contenedor (nginx) | `http://estimador-cag:8000` | dirección interna de la API |
-| `ESTIMATOR_API_URL` | desarrollo (Vite) | `http://localhost:8000` | destino del proxy de `npm run dev` |
+| `API_UPSTREAM` | contenedor (nginx) | `http://estimator-web:3000` | dirección interna del servicio Go (única frontera hacia la IA) |
+| `NGINX_CONNECT_TIMEOUT` / `NGINX_REGULAR_TIMEOUT` / `NGINX_LONG_TIMEOUT` | contenedor (nginx) | `5s` / `35s` / `615s` | plazos hacia Go; se exige conexión ≤ habitual < largo |
+| `ESTIMATOR_WEB_URL` | desarrollo (Vite) | `http://localhost:3000` | destino del proxy de `npm run dev` (el servicio Go). Go no publica puertos en la pila de integración: con Vite en un contenedor de `client-net` usa `http://estimator-web:3000` |
+| `VITE_CONNECT_TIMEOUT` / `VITE_REGULAR_TIMEOUT` / `VITE_LONG_TIMEOUT` | desarrollo (Vite) | `5` / `35` / `615` | plazos del proxy, en segundos |
+
+Go valida el origen de las mutaciones del navegador. Con `npm run dev` el proxy conserva el `Host` (`localhost:5173`);
+tras nginx, define `ESTIMATOR_PUBLIC_ORIGIN` en el servicio Go con el origen que ve el navegador.
 
 ## Ejecución
 
 Con todo el stack, desde la raíz del repositorio: `docker compose up --build` → <http://localhost:3001>.
 
-Desarrollo local con una API ya en marcha (Node 20.19 o posterior):
+Desarrollo local con el servicio Go ya en marcha (Node 20.19 o posterior):
 
 ```bash
 npm ci
-npm run dev        # http://localhost:5173, con proxy de /api hacia ESTIMATOR_API_URL
+npm run dev        # http://localhost:5173, con proxy de /api hacia ESTIMATOR_WEB_URL (Go)
 ```
 
 Imagen aislada:
 
 ```bash
 docker build -t estimator-web-react .
-docker run --rm -p 3001:8080 -e API_UPSTREAM=http://host.docker.internal:8000 estimator-web-react
+# Go no publica puertos: conecta el contenedor a la red donde Go responde como `estimator-web`.
+docker run --rm -p 127.0.0.1:3001:8080 --network <red-con-go> -e API_UPSTREAM=http://estimator-web:3000 estimator-web-react
 ```
 
 ## Pruebas

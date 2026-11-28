@@ -34,7 +34,7 @@ app/
 │   ├── attachments/#   extracción de texto de PDF/DOCX
 │   └── persistence/#   engine SQLAlchemy, modelos, repositorios y migraciones de la ingesta
 ├── domain/         # contrato y conductor
-│   ├── schemas/    #   contratos Pydantic que consumen los clientes (web Go, React, Streamlit)
+│   ├── schemas/    #   contratos Pydantic que consume el backend Go (única puerta de React hacia la IA)
 │   ├── pipeline.py #   conductor de /estimate: guardrails → cag → prompt → llm → validación → cag
 │   ├── session_estimation.py · acb.py   # conductores conversacional y Actor–Crítico–Boss
 │   └── validation.py · audience.py · history.py · evaluation.py   # reglas de negocio y servicios de dominio
@@ -49,7 +49,6 @@ app/
 │   └── conversation/ # sesiones en memoria, anclas, compresión y resumen
 ├── ingestion/      # pipeline batch offline (catálogo, loaders, parsers, limpieza, PII, orquestador)
 ├── api/            # routers finos: transporte, sin lógica de negocio
-└── streamlit_client.py · streamlit_support.py   # cliente Streamlit: solo habla HTTP; fuera de las capas
 ```
 
 Fuera de `app/`: `evals/` (evaluación y stress test, hablan HTTP), `scripts/` (CLIs) y `tests/`.
@@ -149,9 +148,32 @@ POST /v1/estimate/tasks/hours                        (api/estimate_tasks.py → 
 ```
 
 Tres tablas de chunks, una por colección (`chunks` = `budget`, `transcript_chunks`, `technical_doc_chunks`), con las mismas
-columnas estructurales y una `content_tsv` generada (migraciones `0004` y `0005`). Las nuevas aún no tienen índice HNSW
-(Sesión 11). `GET/PUT /api/v1/config/retrieval` lee y escribe los parámetros de recuperación en un hash de Redis aparte
-del de los modelos.
+columnas estructurales y una `content_tsv` generada (migraciones `0004` y `0005`). `GET/PUT /api/v1/config/retrieval` lee y
+escribe los parámetros de recuperación en un hash de Redis aparte del de los modelos.
+
+La Sesión 11 añade calidad de la generación dentro de `generation/rag/` (`quality/` son funciones puras con el generador
+inyectado; el cableado sigue en `dependencies.py`):
+
+```
+GroundedEstimator._run  (y stages/*)
+  3. context_assembler.py            truncado por tokens …
+     quality/augmentation.py         … y DESPUÉS compresión extractiva + reordenación de bordes (toggle: augmentation_enabled)
+  4. generate_structured → Estimate  cada tarea: grounded + sources (chunk_id, document_id, evidence)       schemas.TaskItem
+  5. validation.py                   ids inventados (globales o por línea) → 1 reintento → `low`; build_citation_report
+  6. quality/hallucination.py        ancla numérica (puro) + UN juez LLM por estimación; degraded → confianza `low`
+                                     (toggle: hallucination_gate_enabled; un juez caído degrada a solo ancla)
+
+POST /v1/estimate/stages/verify      (GroundedEstimator.verify → run_gate; 15/min; use_judge=false → sin LLM)
+POST /v1/estimate/tasks/hours        … → quality/synthesis.py   dispersión > umbral → hours_range (min/max de los vecinos)
+                                                                   + motivo redactado por el LLM o de plantilla
+
+POST /embeddings/index/runs          (api/corpus_index.py → BackgroundTask → rag/corpus_expansion.py::CorpusExpansionService)
+GET  /embeddings/index/{jobs/{id},stats}   job en la tabla de la ingesta (ingestion_jobs); stats por colección
+```
+
+Las tres tablas de chunks tienen HNSW halfvec (migración `0006` para las dos nuevas; la de `chunks` es la `0003`).
+`alembic check` no sabe comparar índices de expresión: los cuatro viven solo en las migraciones y se excluyen en
+`alembic/env.py::MIGRATION_ONLY_INDEXES`.
 
 ## 6. ¿Dónde va mi código nuevo?
 
@@ -163,6 +185,8 @@ del de los modelos.
 | Vector store (Sesión 8) o retriever | `generation/rag/store/` (`DocumentStore`) y `generation/rag/retriever.py` (`ChunkRetriever`) |
 | Etapa del pipeline RAG de estimación (Sesión 9) | `generation/rag/` (método de `GroundedEstimator`) + plantilla en `foundation/prompts/rag/` |
 | Etapa de recuperación avanzada (fusión, rerank, routing, transformación, decay) (Sesión 10) | `generation/rag/retrieval/` (pura o con colaboradores inyectados) y su cableado en `dependencies.py` |
+| Comprobación o mejora de la calidad de la generación (Sesión 11) | `generation/rag/quality/` (funciones puras; el LLM se inyecta) y su cableado en `GroundedEstimator`/`task_hours.py` |
+| Ampliación del corpus en segundo plano | `generation/rag/corpus_expansion.py` + router fino en `api/corpus_index.py`; jobs en `ingestion_jobs` |
 | Colección nueva del multi-índice | tabla en `foundation/persistence/models.py` + migración + entrada en `generation/rag/retrieval/collections.py` (lo demás es agnóstico) |
 | Parámetro de recuperación configurable en runtime | `RETRIEVAL_KNOBS` en `foundation/llm/runtime_config.py`, el campo en `Settings` y `api/config.py` |
 | Seguridad, rate limiting o middleware HTTP | `api/` (`security.py`, `rate_limiting.py`, `request_id.py`) |
@@ -179,12 +203,15 @@ del de los modelos.
 
 - **Rutas HTTP**: `/api/v1/estimate`, `/api/v1/transcription/*`, `/api/v1/sessions/*`, `/api/v1/estimations`,
   `/api/v1/prompts/*`, `/api/v1/ingestion/*`. (`/embeddings/ingest` cambió de contrato en la Sesión 8 —ahora persiste— tras
-  comprobar que ningún cliente lo usaba.) Los clientes web Go, React y Streamlit
-  dependen de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/search`, `/api/v1/config/models`,
+  comprobar que ningún cliente lo usaba.) El backend Go (única puerta de React)
+  depende de ellas. Los cambios son **aditivos**: rutas nuevas (`/embeddings/compare`, `/search`, `/api/v1/config/models`,
   `/v1/retrieval/*`, `/v1/estimate/*`, `/api/v1/config/retrieval`), nunca cambios de forma de las existentes.
   `POST /search` (Sesión 8) se conserva sin cambios; `POST /embeddings/ingest` solo gana el campo opcional `chunk_type`.
   La Sesión 10 es aditiva: `/v1/retrieval/search` solo gana `search_mode` y `rerank` opcionales (y `RetrievedChunk` campos
   con valor por defecto), y la tabla `chunks` **conserva su nombre** (es la colección `budget`).
+  La Sesión 11 es aditiva: rutas nuevas (`/v1/estimate/stages/verify`, `/embeddings/index/*`), campos nuevos con valor por
+  defecto (`citation_report`, `hours_range`) y, en la tarea de la estimación fundamentada, `grounded` y `sources` por línea
+  (`engineer_days` puede ser `null` en una línea sin respaldo; sin consumidores externos previos de ese campo).
 - **`EstimationResult`** (`domain/schemas/`): el orden de campos importa para la salida estructurada y sus
   validadores disparan el re-prompt.
 - **Errores saneados**: ninguna respuesta incluye trazas, claves ni URLs internas; el detalle va al log.
@@ -195,8 +222,8 @@ del de los modelos.
 
 - `generation/rag/store/` y `generation/rag/retriever.py`: persisten y buscan con índice HNSW halfvec; la Sesión 9
   añade filtros por metadatos (JSONB) y umbral de distancia, y la Sesión 10 la búsqueda híbrida (RRF), el *reranking* y
-  el multi-índice. Pendiente (Sesión 11): síntesis de rangos ante vecinos contradictorios e índice HNSW en las tablas
-  `transcript_chunks` y `technical_doc_chunks`.
+  el multi-índice. La Sesión 11 añade el índice HNSW en las tablas `transcript_chunks` y `technical_doc_chunks`, la síntesis
+  de rangos ante vecinos contradictorios y la expansión incremental del corpus.
 
 ### Índice vectorial: regla de alineación expresión/operator class
 

@@ -51,6 +51,7 @@ const (
 type Error struct {
 	Kind    Kind
 	Message string
+	Reason  string
 	// Status es el estado HTTP de la API (0 si no hubo respuesta).
 	Status int
 }

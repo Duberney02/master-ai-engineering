@@ -1,6 +1,11 @@
-# Plantilla de nginx: el entrypoint de la imagen sustituye ${API_UPSTREAM} al arrancar.
-# El navegador solo habla con este origen: /api/ y /health se reenvían a la API (sin CORS
-# ni exponer la dirección interna de la API).
+# Plantilla de nginx: el entrypoint de la imagen sustituye las variables de entorno al arrancar.
+# El navegador solo habla con este origen: /api/ y /health se reenvían a Go (DA-03), que es la única
+# frontera hacia la IA. Sin CORS ni exponer direcciones internas.
+#
+# Plazos (segundos), coordinados con Go: Go corta a los 30 s (operaciones habituales) o 600 s (largas,
+# incluidas las dos rutas SSE) y envía un error saneado; nginx espera algo más (35 s / 615 s) para que
+# ese error llegue, y React se rinde después (40 s / 630 s). Un 502/504 de nginx solo aparece si Go
+# no responde.
 
 server {
     listen 8080;
@@ -11,6 +16,9 @@ server {
     # El JSON de una transcripción de 80 000 caracteres ocupa como mucho ~330 KB, pero las
     # estimaciones de sesión admiten hasta 5 adjuntos de 10 MB (multipart): 5 x 10 MB + texto.
     client_max_body_size 55m;
+    # Cabeceras y subida del cliente: acotadas aparte de los plazos de respuesta.
+    client_header_timeout 10s;
+    client_body_timeout 30s;
     server_tokens off;
 
     add_header X-Content-Type-Options "nosniff" always;
@@ -23,21 +31,61 @@ server {
         return 200 "ok\n";
     }
 
-    # Las estimaciones largas pueden tardar un par de minutos (igual que ESTIMATOR_READ_TIMEOUT).
+    # SSE (estimación estructurada y transcripción): sin buffering ni compresión, un evento llega al navegador
+    # en cuanto Go lo escribe. El timeout de lectura supera la inactividad de Go (600 s). Los add_header se
+    # repiten porque un `add_header` en un location sustituye a los heredados del server.
+    location ~ ^/api/v1/(estimate/stream|transcription/estimate/stream)$ {
+        proxy_pass ${API_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout ${NGINX_CONNECT_TIMEOUT};
+        proxy_send_timeout ${NGINX_LONG_TIMEOUT};
+        proxy_read_timeout ${NGINX_LONG_TIMEOUT};
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        proxy_ignore_client_abort off;
+        add_header X-Accel-Buffering "no" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "same-origin" always;
+    }
+
+    # Operaciones largas: estimaciones (con y sin sesión) y comparaciones del Chunking Lab.
+    location ~ ^/api/v1/(estimate|sessions/[^/]+/estimate|rag/chunking-comparisons)$ {
+        proxy_pass ${API_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout ${NGINX_CONNECT_TIMEOUT};
+        proxy_send_timeout ${NGINX_LONG_TIMEOUT};
+        proxy_read_timeout ${NGINX_LONG_TIMEOUT};
+        proxy_buffering off;
+    }
+
+    # Resto de la API: plazo habitual.
     location /api/ {
         proxy_pass ${API_UPSTREAM};
         proxy_http_version 1.1;
-        proxy_connect_timeout 5s;
-        proxy_send_timeout 300s;
-        proxy_read_timeout 300s;
-        proxy_buffering off;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Connection "";
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout ${NGINX_CONNECT_TIMEOUT};
+        proxy_send_timeout ${NGINX_REGULAR_TIMEOUT};
+        proxy_read_timeout ${NGINX_REGULAR_TIMEOUT};
+        proxy_buffering off;
     }
 
     location = /health {
         proxy_pass ${API_UPSTREAM};
-        proxy_connect_timeout 5s;
+        proxy_set_header Host $proxy_host;
+        proxy_connect_timeout ${NGINX_CONNECT_TIMEOUT};
         proxy_read_timeout 10s;
     }
 
@@ -47,7 +95,7 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
-    # Rutas de la SPA (/estimations, /estimations/7...): siempre index.html, sin caché.
+    # Rutas de la SPA (/estimations, /settings, /rag/chunking-comparisons/7...): siempre index.html, sin caché.
     location / {
         try_files $uri /index.html;
         add_header Cache-Control "no-cache";

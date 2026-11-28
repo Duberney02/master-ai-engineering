@@ -9,7 +9,7 @@ Uso (siempre dentro de Docker, con el stack levantado)::
 
     docker compose exec estimador-cag python scripts/preflight_s06.py
 
-La URL de la API se toma de ``ESTIMATOR_API_BASE_URL`` (por defecto ``http://localhost:8000``).
+La URL de la API se toma de ``ESTIMATOR_API_BASE_URL`` (por defecto ``http://127.0.0.1:8000``).
 """
 from __future__ import annotations
 
@@ -123,7 +123,7 @@ def check_catalog() -> str:
 
 
 def check_health_endpoint() -> str:
-    base = os.environ.get("ESTIMATOR_API_BASE_URL", "http://localhost:8000").rstrip("/")
+    base = os.environ.get("ESTIMATOR_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
     try:
         with urllib.request.urlopen(f"{base}/health", timeout=3) as r:
             return f"{base}/health -> {r.status}"

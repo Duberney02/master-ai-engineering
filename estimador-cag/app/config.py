@@ -139,6 +139,21 @@ class Settings(BaseSettings):
     # umbral la tarea no recibe horas (`has_match=false`).
     task_hours_top_k: int = Field(default=5, ge=1, le=30)
     task_hours_distance_threshold: float = Field(default=0.45, ge=0, le=2)
+    # Calidad de la generación (Sesión 11). Todo apagado por defecto: cuesta latencia (juez) o altera el contexto
+    # (aumentación); actívalo con evidencia (`/api/v1/config/retrieval` lo conmuta sin reiniciar).
+    # Gate de alucinaciones: ancla numérica + juez LLM. Tolerancia RELATIVA sobre el ancla (0,5 = hasta un 50 % más).
+    hallucination_gate_enabled: bool = False
+    hallucination_judge_model: str | None = Field(default=None, min_length=1, max_length=100)
+    hallucination_numeric_tolerance: float = Field(default=0.5, ge=0, le=10, allow_inf_nan=False)
+    # Aumentación del contexto: la compresión extractiva y la reordenación de bordes solo actúan con el interruptor
+    # general encendido (sin LLM, no hay modelo que configurar).
+    augmentation_enabled: bool = False
+    augmentation_compress: bool = True
+    augmentation_reorder: bool = True
+    # Síntesis de rangos: dispersión (coeficiente de variación) a partir de la cual se añade `hours_range`.
+    synthesis_enabled: bool = False
+    synthesis_contradiction_threshold: float = Field(default=0.35, ge=0, le=5, allow_inf_nan=False)
+    synthesis_model: str | None = Field(default=None, min_length=1, max_length=100)
 
     @field_validator("app_env", mode="before")
     @classmethod

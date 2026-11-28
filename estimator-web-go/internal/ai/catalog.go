@@ -62,6 +62,9 @@ type ModelConfig struct {
 	Effective  string
 	Default    string
 	Overridden bool
+	// HasEffective y HasDefault distinguen un valor ausente (null) de una cadena vacía; la API JSON de Go conserva el null.
+	HasEffective bool
+	HasDefault   bool
 }
 
 func (c ModelConfig) entry() (Entry, bool) {
@@ -122,8 +125,11 @@ func FromDoc(doc jsondoc.Doc) Catalog {
 			continue
 		}
 		raw := models.Doc(key)
+		_, hasEffective := raw.Get("effective").(string)
+		_, hasDefault := raw.Get("default").(string)
 		catalog.ModelConfigs = append(catalog.ModelConfigs, ModelConfig{
 			Key: key, Effective: raw.S("effective"), Default: raw.S("default"), Overridden: raw.Truthy("overridden"),
+			HasEffective: hasEffective, HasDefault: hasDefault,
 		})
 	}
 	return catalog
@@ -168,4 +174,59 @@ func (c Catalog) OptionsFor(config ModelConfig) []string {
 		options = append(options, model)
 	}
 	return options
+}
+
+// ModelValue es la proyección JSON de un knob: los valores ausentes viajan como null.
+type ModelValue struct {
+	Effective  *string `json:"effective"`
+	Default    *string `json:"default"`
+	Overridden bool    `json:"overridden"`
+}
+
+// Field son los metadatos de presentación de un knob: etiqueta, descripción y modelos seleccionables.
+type Field struct {
+	Key         string   `json:"key"`
+	Label       string   `json:"label"`
+	Description string   `json:"description"`
+	Options     []string `json:"options"`
+}
+
+// Settings es la proyección JSON de Ajustes (`ModelSettings`): el catálogo ya filtrado por las claves configuradas,
+// los siete knobs y el modelo de embeddings, de solo lectura.
+type Settings struct {
+	Models             map[string]ModelValue `json:"models"`
+	AvailableModels    []string              `json:"available_models"`
+	EmbeddingModel     string                `json:"embedding_model"`
+	EmbeddingModelNote string                `json:"embedding_model_note"`
+	Fields             []Field               `json:"fields"`
+}
+
+func optional(present bool, value string) *string {
+	if !present {
+		return nil
+	}
+	return &value
+}
+
+// Settings proyecta el catálogo al contrato JSON de Go. Solo incluye los knobs que devolvió el servicio.
+func (c Catalog) Settings() Settings {
+	settings := Settings{
+		Models:             map[string]ModelValue{},
+		AvailableModels:    append([]string{}, c.AvailableModels...),
+		EmbeddingModel:     c.EmbeddingModel,
+		EmbeddingModelNote: c.EmbeddingModelNote,
+		Fields:             []Field{},
+	}
+	for _, config := range c.ModelConfigs {
+		settings.Models[config.Key] = ModelValue{
+			Effective:  optional(config.HasEffective, config.Effective),
+			Default:    optional(config.HasDefault, config.Default),
+			Overridden: config.Overridden,
+		}
+		settings.Fields = append(settings.Fields, Field{
+			Key: config.Key, Label: config.Label(), Description: config.Description(),
+			Options: append([]string{}, c.OptionsFor(config)...),
+		})
+	}
+	return settings
 }

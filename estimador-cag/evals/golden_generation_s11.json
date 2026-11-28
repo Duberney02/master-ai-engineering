@@ -1,0 +1,42 @@
+{
+  "description": "Golden set de generación de la Sesión 11. Transcripciones de reuniones (el mismo input que recibe POST /v1/estimate/from-transcript) con una respuesta de referencia (`ground_truth`) escrita por un experto a partir de los presupuestos históricos de data/budgets_sample.json. RAGAS compara la estimación generada y los chunks recuperados contra esa referencia: faithfulness (¿lo afirmado sale del contexto?), answer relevancy (¿responde a la petición?), context precision (¿los chunks útiles van primero?) y context recall (¿el contexto cubre la referencia?). `relevant_budget_ids` solo documenta qué presupuestos respaldan la referencia. Criterio de la referencia: cifras y alcance de los presupuestos más parecidos, sin extrapolar a funcionalidad que ninguno cubre.",
+  "corpus": "data/budgets_sample.json",
+  "queries": [
+    {
+      "id": "G1",
+      "transcript": "Cliente: somos un banco mediano y queremos una aplicación móvil de banca con autenticación OAuth 2.0, cumplimiento de PSD2 con autenticación reforzada, un libro mayor de transacciones y avisos push y por email. Hablamos también de la fecha de la fiesta de empresa, pero lo importante es la API de banca móvil y su seguridad.",
+      "ground_truth": "Una API de banca móvil con OAuth 2.0 y PSD2 ronda las 480 horas (60 jornadas): backend de autenticación OAuth 2.0 unas 120 h, conectores de banca abierta PSD2 unas 160 h, servicio de libro mayor de transacciones unas 140 h y notificaciones push y por email unas 60 h. El precedente más cercano es BUD-2024-001; PSD2 y el libro mayor son los componentes de más riesgo.",
+      "relevant_budget_ids": ["BUD-2024-001", "BUD-2024-003"]
+    },
+    {
+      "id": "G2",
+      "transcript": "Cliente: tenemos una tienda online y queremos pasar a una arquitectura headless: catálogo de productos con variantes, carrito y checkout con pagos, recomendaciones personalizadas y una PWA para el escaparate. Mencionamos de pasada el nuevo logotipo, que no entra en el alcance del proyecto.",
+      "ground_truth": "Un escaparate e-commerce headless con recomendaciones se estima en unas 460 horas (57,5 jornadas): API de catálogo de producto unas 150 h, servicio de carrito y checkout unas 140 h, recomendaciones personalizadas unas 110 h y PWA de escaparate unas 60 h. El precedente es BUD-2024-005; el checkout concentra la complejidad alta.",
+      "relevant_budget_ids": ["BUD-2024-005"]
+    },
+    {
+      "id": "G3",
+      "transcript": "Cliente: necesitamos una plataforma de telemedicina y citas para pacientes que se integre con el sistema hospitalario por HL7 y FHIR, con agenda de citas, videoconsultas y un módulo de consentimiento y auditoría de accesos. Hablamos también de cambiar de proveedor de cafetería, sin relación con el proyecto.",
+      "ground_truth": "Una plataforma de citas y telemedicina con integración HL7/FHIR ronda las 560 horas (70 jornadas): capa de integración FHIR unas 190 h, agenda de citas unas 150 h, sesiones de videoconsulta unas 160 h y módulo de consentimiento y auditoría unas 60 h. El precedente es BUD-2024-009; la integración FHIR y el vídeo son los componentes de complejidad alta.",
+      "relevant_budget_ids": ["BUD-2024-009"]
+    },
+    {
+      "id": "G4",
+      "transcript": "Cliente: queremos monitorizar la telemetría de sensores de una fábrica, con ingesta de datos de miles de sensores, modelos de mantenimiento predictivo y la integración con un cuadro de mando SCADA. Entre otras cosas comentamos el partido de anoche, que no importa para el presupuesto.",
+      "ground_truth": "Un sistema de telemetría de fábrica y mantenimiento predictivo se estima en unas 500 horas (62,5 jornadas): ingesta de telemetría de sensores unas 170 h, modelos de mantenimiento predictivo unas 200 h e integración con el cuadro de mando SCADA unas 130 h. El precedente es BUD-2024-013; los modelos predictivos son el mayor riesgo de estimación.",
+      "relevant_budget_ids": ["BUD-2024-013"]
+    },
+    {
+      "id": "G5",
+      "transcript": "Cliente: queremos un marketplace con varios vendedores: alta de vendedores con verificación de identidad, gestión de pedidos repartidos entre vendedores, pagos periódicos a cada vendedor y un flujo de disputas y reembolsos. De fondo hablamos del calendario de vacaciones, que no afecta al proyecto.",
+      "ground_truth": "Un marketplace multivendedor con pagos a vendedores y disputas ronda las 540 horas (67,5 jornadas): alta de vendedores con KYC unas 130 h, gestión de pedidos divididos unas 170 h, motor de pagos a vendedores unas 140 h y gestión de disputas y reembolsos unas 100 h. El precedente es BUD-2024-006; el reparto de pedidos y los pagos son los componentes de complejidad alta.",
+      "relevant_budget_ids": ["BUD-2024-006"]
+    },
+    {
+      "id": "G6",
+      "transcript": "Cliente: queremos una pasarela de pagos en tiempo real para comercios, con detección de fraude en línea, conciliación de liquidaciones y un panel para los comercios. Comentamos además el menú del almuerzo de equipo, que es irrelevante para la estimación del proyecto de pagos.",
+      "ground_truth": "Una pasarela de pagos en tiempo real con antifraude y conciliación se estima en unas 600 horas (75 jornadas): núcleo de la pasarela unas 220 h, detección de fraude en tiempo real unas 200 h, conciliación de liquidaciones unas 120 h y panel de comercios unas 60 h. El precedente es BUD-2024-003; el núcleo y el antifraude concentran la complejidad alta.",
+      "relevant_budget_ids": ["BUD-2024-003"]
+    }
+  ]
+}

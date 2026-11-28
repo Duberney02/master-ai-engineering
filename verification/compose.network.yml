@@ -1,0 +1,51 @@
+# Complemento de PRUEBAS del Compose raíz para validar la topología, el aislamiento de red y la persistencia.
+# Se carga siempre desde la raíz del repositorio, con un proyecto propio:
+#   docker compose --env-file /dev/null -p verify-local -f docker-compose.yml -f verification/compose.network.yml ...
+# No cambia la topología (redes, puertos, volúmenes): sustituye las credenciales por valores ficticios, da tags propios a las
+# imágenes y añade, bajo perfiles explícitos, el proveedor HTTPS simulado y las sondas situadas en client-net y en la
+# posición de Go. Requiere haber ejecutado verification/prepare.sh (genera .verification/).
+x-tool: &tool
+  image: ${VERIFY_NODE_IMAGE:-estimator-web-react:test}
+  pull_policy: never
+  init: true
+  working_dir: /tools
+  volumes:
+    - ./verification:/tools:ro
+
+services:
+  estimador-cag:
+    image: estimador-cag:verification
+    env_file: !override
+      - ./.verification/estimador-cag.env
+  estimator-web:
+    image: estimator-web:verification
+  estimator-web-react:
+    image: estimator-web-react:verification
+
+  # Destino HTTPS simulado en la red de salida de IA. Alias estable para probar DNS y TLS desde estimador-cag.
+  https-provider-fake:
+    <<: *tool
+    profiles: ["probes"]
+    command: ["node", "https-provider-fake.mjs"]
+    environment:
+      CERT_DIR: /certs
+    volumes:
+      - ./verification:/tools:ro
+      - ./.verification/certs:/certs:ro
+    networks:
+      ai-egress-net:
+        aliases: [https-provider-fake.test]
+
+  # Sonda en la misma posición que React/Nginx (solo client-net). Se usa con `run --rm`, nunca en el arranque normal.
+  probe-client:
+    <<: *tool
+    profiles: ["probes"]
+    entrypoint: ["node", "probe-network.mjs"]
+    networks: [client-net]
+
+  # Sonda en la posición de red de Go (client-net, service-net y go-data-net); la imagen de Go no tiene shell ni nc.
+  probe-go:
+    <<: *tool
+    profiles: ["probes"]
+    entrypoint: ["node", "probe-network.mjs"]
+    networks: [client-net, service-net, go-data-net]

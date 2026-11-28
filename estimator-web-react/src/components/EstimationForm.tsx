@@ -13,6 +13,8 @@ interface Props {
   elapsedSeconds: number;
   onChange: (values: FormValues) => void;
   onSubmit: () => void;
+  /** Cancela la estimación en curso (aborta la solicitud con AbortSignal). */
+  onCancel?: () => void;
   onUploadError: (message: string) => void;
 }
 
@@ -28,7 +30,7 @@ function LoadingIndicator({ active, seconds }: { active: boolean; seconds: numbe
   );
 }
 
-export function EstimationForm({ values, errors, submitting, elapsedSeconds, onChange, onSubmit, onUploadError }: Props) {
+export function EstimationForm({ values, errors, submitting, elapsedSeconds, onChange, onSubmit, onCancel, onUploadError }: Props) {
   const ids = useId();
   const fileInput = useRef<HTMLInputElement>(null);
   const set = (field: keyof FormValues) => (event: ChangeEvent<HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -107,6 +109,9 @@ export function EstimationForm({ values, errors, submitting, elapsedSeconds, onC
           </div>
 
           <button type="submit" id="submit-button" disabled={submitting}>Estimar</button>
+          {submitting && onCancel && (
+            <button type="button" className="secondary" id="cancel-button" onClick={onCancel}>Cancelar</button>
+          )}
           <LoadingIndicator active={submitting} seconds={elapsedSeconds} />
         </div>
       </form>

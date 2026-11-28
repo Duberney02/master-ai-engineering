@@ -12,6 +12,9 @@ Una tarea cuyo vecino más cercano supera el umbral de distancia NO recibe horas
 para que la persona aporte el número, mejor que una conjetura de baja confianza. El consenso es una función PURA
 (`weighted_consensus`), trivial de probar; el recuperador solo devuelve los chunks.
 
+Sesión 11: con la síntesis habilitada, una tarea cuyos vecinos se contradicen (dispersión sobre el umbral) añade un
+`hours_range` con un motivo (`quality/synthesis.py`) sin cambiar su cifra puntual.
+
 Reutiliza `ChunkRetriever` (híbrido y reranking incluidos, según runtime y `Settings`) y no importa ningún otro hermano
 de `generation/` (ver `ARCHITECTURE.md`).
 """
@@ -24,6 +27,8 @@ import structlog
 
 from app.config import Settings
 from app.foundation.llm.runtime_config import RetrievalToggles, RuntimeRetrievalConfig
+from app.foundation.llm.structured import Generator
+from app.generation.rag.quality.synthesis import synthesize_range
 from app.generation.rag.retriever import ChunkRetriever, RetrievalFilters
 from app.generation.rag.schemas import (
     RetrievedChunk,
@@ -121,11 +126,18 @@ class TaskHoursEstimator:
     """Horas por tarea con el recuperador y los parámetros de runtime (`task_hours_*`, modo de búsqueda y rerank)."""
 
     def __init__(
-        self, settings: Settings, retriever: ChunkRetriever, *, runtime_retrieval: RuntimeRetrievalConfig | None = None
+        self,
+        settings: Settings,
+        retriever: ChunkRetriever,
+        *,
+        runtime_retrieval: RuntimeRetrievalConfig | None = None,
+        generate: Generator | None = None,
     ) -> None:
         self.settings = settings
         self._retriever = retriever
         self._runtime_retrieval = runtime_retrieval
+        # Solo lo usa la síntesis de rangos (redacta el motivo); sin él, el motivo es de plantilla.
+        self._generate = generate
 
     async def _toggles(self) -> RetrievalToggles:
         if self._runtime_retrieval is None:
@@ -187,6 +199,18 @@ class TaskHoursEstimator:
         estimates = await asyncio.gather(
             *(one(module.name, task.name, task.description) for module in modules for task in module.tasks)
         )
+        if toggles.synthesis_enabled:
+
+            async def synthesize(estimate: TaskHoursEstimate) -> TaskHoursEstimate:
+                async with semaphore:
+                    return await synthesize_range(
+                        estimate,
+                        threshold=toggles.synthesis_contradiction_threshold,
+                        generate=self._generate,
+                        model=self.settings.synthesis_model,
+                    )
+
+            estimates = await asyncio.gather(*(synthesize(estimate) for estimate in estimates))
         matched = sum(1 for estimate in estimates if estimate.has_match)
         logger.info(
             "task_hours_done",
@@ -197,5 +221,6 @@ class TaskHoursEstimator:
             distance_threshold=threshold,
             search_mode=toggles.search_mode,
             rerank=toggles.rerank,
+            ranged=sum(1 for estimate in estimates if estimate.hours_range is not None),
         )
         return TaskHoursResult(tasks=list(estimates))

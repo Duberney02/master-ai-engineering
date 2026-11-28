@@ -3,7 +3,9 @@
 #   cp .env.example .env      # y completa la API key del proveedor elegido
 #   docker compose up --build
 #
-# Levanta API (8000), chat HTTP (8501) y Redis Stack (RediSearch) sin puerto publicado.
+# Levanta la API (sin puerto publicado) y Redis Stack (RediSearch). Inspección y pruebas desde el contenedor:
+#   docker compose exec estimador-cag python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read())"
+# Un puerto de diagnóstico local requiere el perfil explícito `diagnostico` (enlazado a 127.0.0.1).
 # El código montado como volumen de solo lectura y --reload
 # hacen que los cambios en el host se reflejen sin reconstruir la imagen.
 # Para producción usa la imagen del Dockerfile tal cual (sin volumen ni --reload).
@@ -14,9 +16,6 @@ services:
       context: .
       target: runtime
     image: estimador-cag:dev
-    container_name: estimador-cag
-    ports:
-      - "8000:8000"
     # Las claves y ajustes viven en .env (ignorado por git y por la imagen).
     env_file:
       - .env
@@ -45,32 +44,13 @@ services:
       start_period: 15s
       retries: 3
 
-  estimador-cag-chat:
-    build:
-      context: .
-      target: runtime
-    image: estimador-cag:dev
-    container_name: estimador-cag-chat
+  # Perfil explícito de diagnóstico: expone la API solo en el loopback del host. No forma parte del arranque normal.
+  estimador-cag-diagnostico:
+    extends:
+      service: estimador-cag
+    profiles: ["diagnostico"]
     ports:
-      - "8501:8501"
-    # El chat consume HTTP y no recibe las claves de .env.
-    environment:
-      WATCHFILES_FORCE_POLLING: "true"
-      ESTIMATOR_API_BASE_URL: http://estimador-cag:8000
-    depends_on:
-      estimador-cag:
-        condition: service_healthy
-    volumes:
-      - ./app:/app/app:ro
-      - ./streamlit_app.py:/app/streamlit_app.py:ro
-    command: ["streamlit", "run", "streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
-    init: true
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
-      interval: 30s
-      timeout: 5s
-      start_period: 15s
-      retries: 3
+      - "127.0.0.1:8000:8000"
 
   redis:
     # Redis Stack: Redis + RediSearch, necesario para la caché semántica (búsqueda vectorial).

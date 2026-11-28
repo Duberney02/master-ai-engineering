@@ -22,9 +22,6 @@ func TestDefaultsMatchRails(t *testing.T) {
 		cfg.CompareTimeout != 600*time.Second || cfg.BadgeTimeout != 2*time.Second {
 		t.Errorf("tiempos de espera por defecto inesperados: %+v", cfg)
 	}
-	if !cfg.EphemeralSecret || len(cfg.SecretKeyBase) < 32 {
-		t.Errorf("sin SECRET_KEY_BASE debe generarse un secreto efímero")
-	}
 }
 
 func TestOverridesAndFractionalSeconds(t *testing.T) {
@@ -32,7 +29,7 @@ func TestOverridesAndFractionalSeconds(t *testing.T) {
 		"ESTIMATOR_API_URL":         "http://api:8000/",
 		"ESTIMATOR_BADGE_TIMEOUT":   "0.5",
 		"ESTIMATOR_COMPARE_TIMEOUT": "42",
-		"SECRET_KEY_BASE":           "abc",
+		"SECRET_KEY_BASE":           "abc", // variable retirada: se ignora sin error
 		"DATABASE_URL":              "postgres://x",
 	}))
 	if err != nil {
@@ -44,8 +41,8 @@ func TestOverridesAndFractionalSeconds(t *testing.T) {
 	if cfg.BadgeTimeout != 500*time.Millisecond || cfg.CompareTimeout != 42*time.Second {
 		t.Errorf("tiempos: %+v", cfg)
 	}
-	if cfg.EphemeralSecret || cfg.SecretKeyBase != "abc" || cfg.DatabaseURL != "postgres://x" {
-		t.Errorf("secreto o base de datos: %+v", cfg)
+	if cfg.DatabaseURL != "postgres://x" {
+		t.Errorf("base de datos: %+v", cfg)
 	}
 }
 

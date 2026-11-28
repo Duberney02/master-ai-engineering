@@ -207,7 +207,6 @@ código 1 si algún caso no aprueba (2 si el uso es incorrecto):
 docker compose -f docker-compose.verify.yml run --rm api-eval --list
 docker compose -f docker-compose.verify.yml run --rm -e OPENAI_API_KEY api-eval --mode actor --limit 4     --output /app/evals/reports/actor.json
 docker compose -f docker-compose.verify.yml run --rm -e OPENAI_API_KEY api-eval --mode acb --case saas-01
-docker compose -f docker-compose.verify.yml run --rm api-eval --base-url http://host.docker.internal:8000   # API ya desplegada
 ```
 
 Sin clave real (la del servicio es ficticia) los casos que llegan al proveedor terminan en error y el proceso devuelve 1;
@@ -560,7 +559,8 @@ curl -s -X POST http://localhost:8000/v1/estimate/stages/reformulate \
 
 `retrieve` recibe el `search_text` de `reformulate` como `query_text`; `assemble` recibe `{"chunks": [...]}` y devuelve
 `context_block`, `kept_chunks`, `dropped_count` y `token_count`; `generate` recibe `{"context_block", "query",
-"kept_chunks"}` y devuelve la estimación, `fabricated_source_ids` y `coherent` (sin reintentos automáticos).
+"kept_chunks"}` y devuelve la estimación, `fabricated_source_ids`, `coherent` y, desde la Sesión 11, `citation_report`
+(sin reintentos automáticos).
 
 ### Recuperación avanzada y horas por tarea (sesión 10)
 
@@ -624,7 +624,10 @@ final; lo blando, al cierre»): transformación de consulta → *routing* → fi
 #### Configuración de recuperación en runtime
 
 `GET /api/v1/config/retrieval` devuelve, por parámetro (`search_mode`, `rerank`, `routing_enabled`,
-`query_transform_enabled`, `temporal_decay_enabled`, `task_hours_top_k`, `task_hours_distance_threshold`), su valor
+`query_transform_enabled`, `temporal_decay_enabled`, `task_hours_top_k`, `task_hours_distance_threshold` y, desde la
+Sesión 11, los *toggles* de calidad: `hallucination_gate_enabled`, `hallucination_numeric_tolerance`,
+`augmentation_enabled`, `augmentation_compress`, `augmentation_reorder`, `synthesis_enabled`,
+`synthesis_contradiction_threshold`), su valor
 `effective`, su `default` y si está `overridden`, más el `reranker_model`. `PUT` es parcial y todo o nada: una clave
 ausente no cambia, `null` restablece el valor por defecto, un valor desconocido o fuera de rango es `422` y un Redis
 caído es `503`. Los overrides viven en un hash de Redis **aparte** del de los modelos y valen desde la siguiente
@@ -692,6 +695,129 @@ curl -s -X POST http://localhost:8000/v1/estimate/tasks/hours \
 `tests/test_docs_examples_s10.py` ejecuta estos mismos `curl` contra la aplicación (con recuperador, LLM y Redis falsos)
 para que la documentación no se desincronice de los contratos.
 
+### Calidad de la generación (sesión 11)
+
+Una cita a un chunk real no garantiza que la cifra esté respaldada, un promedio de vecinos que se contradicen oculta la
+incertidumbre y el corpus no puede crecer sin volver a ingestar. La Sesión 11 lo ataca con seis piezas, todas en
+`app/generation/rag/` (ver `ARCHITECTURE.md`, §5). **Los *toggles* de calidad están apagados por defecto** (cuestan
+latencia o alteran el contexto): se encienden con `.env` o en caliente con `PUT /api/v1/config/retrieval`.
+
+| Pieza | Qué hace | Cómo se activa |
+|---|---|---|
+| Citas por línea | Cada tarea lleva `grounded` y `sources` (`chunk_id`, `document_id`, `evidence` literal) | siempre |
+| Gate de alucinaciones | Ancla numérica + juez LLM (una llamada por estimación); una línea `degraded` rebaja la confianza a `low` | `HALLUCINATION_GATE_ENABLED` |
+| Aumentación del contexto | Compresión extractiva y reordenación de bordes, sin LLM | `AUGMENTATION_ENABLED` (+ `_COMPRESS`, `_REORDER`) |
+| Rango de horas | `hours_range` cuando los vecinos de una tarea se contradicen | `SYNTHESIS_ENABLED` |
+| Expansión del corpus | `POST /embeddings/index/runs` amplía el corpus en segundo plano; HNSW en las tres colecciones | siempre |
+| Evaluación | RAGAS sobre un *golden set*, línea base y *gate* de regresión | scripts (no `pytest`) |
+
+#### Citas por línea y gate de alucinaciones
+
+- **Contrato**: cada tarea de la estimación lleva `grounded` y `sources`. Con `grounded=true` cita al menos una fuente y
+  trae `engineer_days`; con `grounded=false` («el contexto no respalda esta tarea») no lleva fuentes y `engineer_days` es
+  `null`. Una violación hace que `generate_structured` pida la corrección. Cada `<source>` del contexto expone `id` y
+  `document_id`. **Cambio de contrato (aditivo)**: la tarea gana `grounded` y `sources`, y `engineer_days` puede ser `null`;
+  la lista global `sources` de la estimación no cambia.
+- **Informe de citas**: `POST /v1/estimate/stages/generate` devuelve además `citation_report` (por línea `grounded`,
+  `dangling` —cita un chunk que el modelo no vio— o `insufficient`, con totales y las listas `verified_citations` y
+  `dangling_citations`). El pipeline completo reintenta una vez ante citas colgantes (por línea o globales) y, si persisten,
+  baja la confianza a `low`; la etapa `generate` solo informa.
+- **Ancla numérica**: horas históricas de los chunks citados (metadato `estimated_hours` o la cifra «Estimated hours: N»)
+  sumadas y pasadas a jornadas de 8 horas. La regla es **asimétrica**: solo penaliza sobreestimar (una línea puede ser una
+  fracción del componente histórico). `HALLUCINATION_NUMERIC_TOLERANCE` (0,5) es **relativa**: hasta un 50 % más que el
+  ancla. 20 jornadas con fuentes que respaldan 5 → `degraded`; 3 jornadas con fuentes que respaldan 10 → `grounded`.
+- **Juez**: una sola llamada por estimación (no por línea) con la evidencia literal de cada línea fundamentada;
+  `HALLUCINATION_JUDGE_MODEL` (sin valor, `GENERATION_MODEL` y luego el modelo primario). Si el juez falla, el pipeline
+  completo degrada el gate a solo ancla; la etapa `verify` responde `502` genérico.
+- `POST /v1/estimate/stages/verify` (`ESTIMATE_API_KEY`, **15/min**) recibe `{"estimate", "kept_chunks", "use_judge"}` y
+  devuelve el informe por línea (`grounded`, `degraded`, `insufficient`) con totales; con `use_judge=false` aplica solo el
+  ancla y no llama al LLM.
+
+#### Aumentación del contexto
+
+Con `AUGMENTATION_ENABLED`, tras el truncado por tokens y antes del ensamblado: la **compresión** deja de cada chunk solo las
+líneas con cifras o identificadores (conserva `id` y metadatos; un chunk sin ninguna se deja intacto) y la **reordenación de
+bordes** pone los chunks más relevantes al principio y al final del contexto (contra *lost-in-the-middle*). Cada paso se
+conmuta aparte (`AUGMENTATION_COMPRESS`, `AUGMENTATION_REORDER`). Lo aplican el pipeline completo y `stages/assemble`.
+
+#### Rango de horas ante vecinos contradictorios
+
+Con `SYNTHESIS_ENABLED`, una tarea de `POST /v1/estimate/tasks/hours` cuya `dispersion` (coeficiente de variación de las
+horas vecinas) supera `SYNTHESIS_CONTRADICTION_THRESHOLD` (0,35) añade `hours_range` (`low`, `high`, `reason`) **sin cambiar**
+`estimated_hours`. El rango es determinista (mínimo y máximo de los vecinos); el LLM solo redacta el motivo
+(`SYNTHESIS_MODEL`) y, si falla, se usa un motivo de plantilla. `scripts/build_contradictions_s11.py --ingest` siembra
+precedentes de 40 h y 90 h para verlo; es idempotente.
+
+#### Expansión incremental del corpus
+
+- `POST /embeddings/index/runs` (sin clave, como el resto de `/embeddings`) recibe `{"budgets": [...]}` (hasta 50),
+  `document_type` y `chunk_type`; registra un job y responde `202` con `job_id`, `documents_total` y `status`. La ingesta
+  sigue en segundo plano con el mismo modelo de embeddings, **omite** los presupuestos ya ingestados (por `source_path` o
+  `budget_id`) y actualiza el progreso. Un fallo marca el job `failed` con un mensaje genérico (el detalle va al log). Sin
+  embedder, `500` genérico.
+- `GET /embeddings/index/jobs/{job_id}`: `status`, `documents_processed`, `error_message`, `started_at`, `finished_at`;
+  `404` si no existe.
+- `GET /embeddings/index/stats`: por colección (`budget`, `transcript`, `technical_doc`) documentos, chunks y si hay índice
+  HNSW, más `total_chunks`.
+- La migración `0006` crea el HNSW halfvec (`m=16`, `ef_construction=128`) en `transcript_chunks` y `technical_doc_chunks`,
+  con la misma expresión que `chunks`; los chunks nuevos se indexan sin reconstruir nada. No se re-embebe el corpus.
+
+#### Evaluación de la generación (RAGAS)
+
+```bash
+# Demo OFFLINE de citas por línea y gate (sin claves): imprime ACCEPTANCE: PASS
+docker compose -f docker-compose.verify.yml run --rm --entrypoint python api-test scripts/demo_verify_citations_s11.py
+
+# Recolectar muestras del golden set (necesita el stack, los corpus y claves reales), puntuar y versionar la línea base
+docker compose -f docker-compose.verify.yml run --rm --entrypoint python api-test scripts/eval_ragas_s11.py --collect-only
+docker compose -f docker-compose.verify.yml run --rm --entrypoint python api-test scripts/eval_ragas_s11.py --write-baseline
+
+# Gate de regresión (exit != 0 si una métrica cae > 0,05 o hay una cita colgante) y monitor sin referencia (exit 0)
+docker compose -f docker-compose.verify.yml run --rm --entrypoint python api-test scripts/eval_generation_s11.py --gate
+docker compose -f docker-compose.verify.yml run --rm --entrypoint python api-test scripts/eval_generation_s11.py --monitor
+```
+
+`evals/golden_generation_s11.json` tiene transcripciones con una respuesta de referencia experta (`ground_truth`) anclada
+en los presupuestos de `data/budgets_sample.json`. RAGAS puntúa faithfulness, answer relevancy, context precision y context
+recall; el modo monitor solo calcula las dos primeras (no necesitan referencia). La recolección (`eval_ragas_s11.py`) y la
+puntuación (`score_ragas_s11.py`, el único módulo que importa `ragas`) están separadas: `ragas` y `datasets` viven en el
+grupo `dev` (con `langchain-community<0.4`, que `ragas 0.3` exige) y **nunca** se usan desde `pytest`. Las pruebas cubren la
+lógica del gate (umbrales, código de salida) con métricas falsas. `evals/ragas_baseline_s11.json` lo genera cada
+equipo con **sus** claves: sin él, `--gate` termina con código `2` explicando cómo crearlo.
+
+Con el stack raíz levantado y las claves en `estimador-cag/.env`:
+
+```bash
+# Activar el gate, la aumentación y los rangos en caliente (parcial; null restablece)
+curl -s -X PUT http://localhost:8000/api/v1/config/retrieval \
+  -H "Content-Type: application/json" -d '{"hallucination_gate_enabled": true, "augmentation_enabled": true, "synthesis_enabled": true}'
+
+# Etapa generate: estimación + ids inventados + informe de citas por línea
+curl -s -X POST http://localhost:8000/v1/estimate/stages/generate \
+  -H "X-API-Key: $ESTIMATE_API_KEY" -H "Content-Type: application/json" \
+  -d '{"context_block": "<source id=\"1\" document_id=\"101\">KYC onboarding. Estimated hours: 40</source>", "query": {"function": "B2B payments marketplace with KYC onboarding", "technologies": ["stripe"], "sector": "finance", "scale": "large", "country": "DE", "regulations": ["PSD2"], "constraints": []}, "kept_chunks": [{"id": 1, "document_id": 101, "content": "KYC onboarding. Estimated hours: 40", "chunk_type": "historical_task", "distance": 0.2, "estimated_hours": 40}]}'
+
+# Gate de alucinaciones sobre una estimación ya generada (sin juez: solo el ancla numérica)
+curl -s -X POST http://localhost:8000/v1/estimate/stages/verify \
+  -H "X-API-Key: $ESTIMATE_API_KEY" -H "Content-Type: application/json" \
+  -d '{"estimate": {"total_engineer_days": 20, "duration_weeks": 4, "modules": [{"name": "Compliance", "tasks": [{"name": "KYC onboarding", "engineer_days": 20, "grounded": true, "sources": [{"chunk_id": 1, "document_id": 101, "evidence": "KYC onboarding. Estimated hours: 40"}]}]}], "sources": [{"source_id": 1, "relevance": "primary", "used_for": "horas de KYC"}], "assumptions": [], "confidence": "high", "reasoning": "Derivado de las fuentes."}, "kept_chunks": [{"id": 1, "document_id": 101, "content": "KYC onboarding. Estimated hours: 40", "chunk_type": "historical_task", "distance": 0.2, "estimated_hours": 40}], "use_judge": false}'
+
+# Horas por tarea: con precedentes de 40 h y 90 h la tarea trae hours_range además de estimated_hours
+curl -s -X POST http://localhost:8000/v1/estimate/tasks/hours \
+  -H "X-API-Key: $ESTIMATE_API_KEY" -H "Content-Type: application/json" \
+  -d '{"modules": [{"name": "Compliance", "tasks": [{"name": "KYC onboarding", "description": "Identity verification flow"}]}]}'
+
+# Ampliar el corpus en segundo plano, seguir el job y ver el tamaño del índice por colección
+curl -s -X POST http://localhost:8000/embeddings/index/runs \
+  -H "Content-Type: application/json" \
+  -d '{"budgets": [{"budget_id": "BUD-2025-100", "client_metadata": {"name": "Acme", "sector": "finance", "country": "ES"}, "project_summary": "Instant payments hub", "main_technology": "go", "year": 2025, "total_estimated_hours": 120, "components": [{"component_id": "PAY-001", "name": "Instant payments gateway", "description": "SEPA instant credit transfers with retries.", "estimated_hours": 120, "complexity": "high"}]}]}'
+curl -s http://localhost:8000/embeddings/index/jobs/<job_id>
+curl -s http://localhost:8000/embeddings/index/stats
+```
+
+`tests/test_docs_examples_s11.py` ejecuta estos mismos `curl` contra la aplicación (con LLM, recuperador, Redis y, para la
+expansión, PostgreSQL efímero) para que la documentación no se desincronice de los contratos.
+
 ### Comparación de estrategias de chunking (sesión 7)
 
 Además del chunking estructural (un chunk por componente), el servicio compara **ocho estrategias** detrás de la
@@ -741,7 +867,7 @@ estimador-cag/
 │   │   ├── attachments/    — extracción local de PDF y Word
 │   │   └── persistence/    — SQLAlchemy asíncrono, modelos, repositorios y migrate.py
 │   ├── domain/             — contrato y conductores
-│   │   ├── schemas/        — contratos Pydantic (compartidos con la web Go, React y Streamlit)
+│   │   ├── schemas/        — contratos Pydantic (compartidos con la web Go y React)
 │   │   ├── pipeline.py · session_estimation.py · acb.py — conductores (estimar, sesión, Actor–Critic–Boss)
 │   │   └── validation.py · audience.py · history.py · evaluation.py
 │   ├── generation/
@@ -811,64 +937,20 @@ Con Docker (recomendado; ver [Ejecución con Docker](#ejecución-con-docker)):
 
 ```bash
 cp .env.example .env        # completa la API key del proveedor elegido
-docker compose up --build   # API: http://localhost:8000  ·  Chat: http://localhost:8501
+docker compose --profile diagnostico up --build   # API: http://127.0.0.1:8000 (solo loopback)
 ```
 
-O sin contenedores:
-
-```bash
-uv run uvicorn app.main:app --reload
-```
-
-La API queda disponible en `http://localhost:8000`.
-
-## Interfaz web (Streamlit)
-
-Chat para probar la estimación estructurada sin curl/Postman/Swagger, con memoria
-conversacional: mensaje o transcripción, archivo `.txt`, varios adjuntos PDF o Word,
-tipo de proyecto, nivel de detalle, formato de salida y versión del prompt.
-
-```bash
-uv run streamlit run streamlit_app.py
-```
-
-Se abre en `http://localhost:8501`. Arranca también la API en otra terminal.
-Al cargar la página crea una sesión (`POST /api/v1/sessions`) y conserva su
-`session_id` en `st.session_state`; cada envío valida las opciones con el mismo
-`EstimationRequest` que usa la API (lo importa de `app.domain.schemas`) y va como
-`multipart/form-data` a `POST /api/v1/sessions/{id}/estimate`. Con adjuntos el
-mensaje puede ser corto: la API valida la longitud del conjunto. No necesita claves LLM.
-Configura `ESTIMATOR_API_BASE_URL` (por defecto `http://localhost:8000`) en
-el entorno, `.env` o `st.secrets`; el entorno tiene prioridad. Las claves de
-proveedores se configuran únicamente en el backend.
-
-El `st.sidebar` muestra, de solo lectura:
-
-- los **metadatos del proyecto** de la conversación (nombre, equipo supuesto,
-  tecnologías y alcance acordado) y el botón **«Nueva conversación»**, que crea otra
-  sesión y reinicia el historial, los metadatos y las métricas;
-- el system prompt renderizado con las plantillas de la última solicitud y los
-  metadatos ya conocidos (el que recibirá el modelo en el siguiente turno; vacío
-  antes de la primera);
-- los ejemplos few-shot que incluye ese prompt;
-- las métricas de la última llamada: modelo, versión del prompt, tokens de
-  entrada y salida, latencia, coste y si la respuesta vino de caché.
-
-El prompt se renderiza con las plantillas de esta versión del cliente. Si la API
-remota tiene otras plantillas, el panel no las refleja. Si la API pierde la sesión
-(reinicio o caducidad), el chat abre otra conversación y lo avisa. El historial
-visible no es lo que ve el modelo: la API mantiene su propia ventana de turnos.
-
-Los errores de validación (por ejemplo, una descripción de menos de 20
-caracteres) se muestran sin llamar a la API. Los errores de red, HTTP o del
-stream se muestran como mensajes genéricos y nunca se guardan como estimaciones.
+Sin el perfil `diagnostico` la API no publica ningún puerto (DA-03/DA-04: solo Go la llama); inspecciónala con
+`docker compose exec estimador-cag ...`. Los comandos `curl http://localhost:8000/...` de este documento suponen ese perfil
+(o se ejecutan dentro del contenedor con `http://127.0.0.1:8000`). En la pila de integración de la raíz el acceso público es
+React/Nginx en `127.0.0.1:3001`, que llama a Go, y Go llama a esta API.
 
 ## Ejecución con Docker
 
 El `.env` **nunca** entra en la imagen (está en `.dockerignore`): las claves se
 inyectan al arrancar el contenedor.
 
-**Stack completo con PostgreSQL (desde la raíz del repositorio).** `docker compose up --build` levanta la API, las webs,
+**Stack completo con PostgreSQL (desde la raíz del repositorio).** `docker compose up --build` levanta la API, Go, React/Nginx,
 Redis Stack y PostgreSQL; el comando de la imagen de la API ejecuta `python -m app.foundation.persistence.migrate`
 (`alembic upgrade head`) antes de `uvicorn` cuando hay `DATABASE_URL`, de modo que las tablas de la ingesta existen
 cuando la API acepta solicitudes. La imagen incluye `data/`, `alembic/` y `scripts/`. Sin `DATABASE_URL` (p. ej. este
@@ -879,17 +961,16 @@ Compose de desarrollo) arranca igualmente y solo la API de ingesta responde 503.
 
 ```bash
 cp .env.example .env        # completa la API key del proveedor elegido
-docker compose up --build   # API: http://localhost:8000  ·  Chat: http://localhost:8501
-docker compose ps           # STATUS pasa a "healthy" cuando /health y /_stcore/health responden
+docker compose --profile diagnostico up --build   # API: http://127.0.0.1:8000 (perfil explícito de diagnóstico)
+docker compose ps           # STATUS pasa a "healthy" cuando /health responde
 docker compose down
 ```
 
-Levanta `estimador-cag` (API), `estimador-cag-chat` (chat HTTP) y **Redis Stack**
-(RediSearch, necesario para la caché semántica) con volumen. Redis no publica su puerto. API y chat montan
+Levanta `estimador-cag` (API, sin puerto publicado salvo con el perfil `diagnostico`) y **Redis Stack**
+(RediSearch, necesario para la caché semántica) con volumen. Redis no publica su puerto. La API monta
 `app/` como volumen de solo lectura, así que los cambios de código se aplican
 sin reconstruir; si cambian las dependencias (`pyproject.toml`/`uv.lock`),
-vuelve a ejecutar `up --build`. El chat espera la API saludable; solo la API
-recibe el `.env` con claves. Las entradas de caché caducan por TTL.
+vuelve a ejecutar `up --build`. Solo la API recibe el `.env` con claves. Las entradas de caché caducan por TTL.
 
 Consulta [resiliencia, caché y contrato SSE](docs/resilience-and-streaming.md)
 para configurar fallback, precios, razonamiento y presupuesto económico.
@@ -1162,7 +1243,8 @@ uv run pytest -v
 La suite no llama a los proveedores reales (los SDK se simulan). Desde la raíz del repositorio, `api-test` levanta su propio
 PostgreSQL con pgvector (`api-db`, efímero) y define `TEST_DATABASE_URL`, de modo que se ejecutan también las pruebas contra un
 PostgreSQL real: `tests/test_history_postgres.py`, `tests/test_ingestion_postgres.py` (migraciones Alembic, concurrencia,
-ingesta) y `tests/test_vector_store.py` (esquema pgvector, `/embeddings/ingest`, `/search`). Sin `TEST_DATABASE_URL` esas pruebas
+ingesta), `tests/test_vector_store.py` (esquema pgvector, `/embeddings/ingest`, `/search`), `tests/test_multi_index_migrations.py`
+(HNSW multi-índice con `EXPLAIN`) y `tests/test_corpus_expansion.py` (`/embeddings/index/*`). Sin `TEST_DATABASE_URL` esas pruebas
 se omiten; el resto usa SQLite en memoria. Las de pgvector vacían `documents` y `chunks`, por lo que exigen una base cuyo
 nombre termine en `test`.
 

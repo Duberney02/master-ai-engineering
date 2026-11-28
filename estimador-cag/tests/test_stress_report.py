@@ -47,7 +47,7 @@ def test_report_has_every_section_and_comes_from_the_csv(llm, tmp_path):
         assert section in text
     assert "| pivot | 0 | 2/2 |" in text and "| contradiction | 5 | 2/2 |" in text
     assert "N=1" in text and "N=3" in text and "turno 3" in text
-    assert "api-stress" in text and "--http http://host.docker.internal:8000" in text
+    assert "api-stress" in text and "--http http" not in text and "host.docker.internal" not in text
     assert "Pendiente" in text  # sin analysis.md el reporte lo indica en vez de inventar prosa
 
 

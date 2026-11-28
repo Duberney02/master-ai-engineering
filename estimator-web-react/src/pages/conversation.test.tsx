@@ -141,6 +141,9 @@ describe("Conversación con memoria", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
     expect(api.estimateCalls()).toHaveLength(0);
+    // El borrador queda intacto y el formulario sigue disponible.
+    expect(screen.getByLabelText("Descripción del proyecto o transcripción")).toHaveValue(DESCRIPTION);
+    expect(screen.getByRole("button", { name: "Estimar" })).toBeEnabled();
   });
 
   test("si la API perdió la sesión abre otra, avisa y conserva lo escrito", async () => {
@@ -170,6 +173,60 @@ describe("Conversación con memoria", () => {
     await screen.findByRole("heading", { name: "Estimación" });
     expect(api.estimateCalls()[1].url.pathname).toBe(`/api/v1/sessions/${api.sessions[1]}/estimate`);
     expect(screen.queryByText(/La conversación anterior expiró/)).not.toBeInTheDocument();
+  });
+
+  test("tras el 404 de sesión no se reenvía la estimación por sí solo", async () => {
+    const api = mockApi((url, init) => (isSessionEstimate(url, init) ? json({ detail: "Session not found or expired" }, 404) : undefined));
+    renderApp();
+    describe_(DESCRIPTION);
+    await submit();
+    await screen.findByText(/La conversación anterior expiró/);
+    await waitFor(() => expect(api.sessions).toHaveLength(2));
+    // Pasado un tiempo prudente, sigue habiendo un único POST de estimación y el borrador intacto.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(api.estimateCalls()).toHaveLength(1);
+    expect(screen.getByLabelText("Descripción del proyecto o transcripción")).toHaveValue(DESCRIPTION);
+  });
+
+  test("cancelar aborta la solicitud, rehabilita el formulario, no muestra resultado parcial ni reenvía", async () => {
+    const aborted = vi.fn();
+    const api = mockApi((url, init) =>
+      isSessionEstimate(url, init)
+        ? new Promise<Response>((_resolve, reject) =>
+            init.signal?.addEventListener("abort", () => { aborted(); reject(new DOMException("abort", "AbortError")); }),
+          )
+        : undefined,
+    );
+    renderApp();
+    describe_(DESCRIPTION);
+    await user().selectOptions(screen.getByLabelText("Nivel de detalle"), "detailed");
+    await submit();
+    expect(screen.getByRole("button", { name: "Estimar" })).toBeDisabled();
+    await user().click(await screen.findByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Estimar" })).toBeEnabled());
+    expect(aborted).toHaveBeenCalledTimes(1);
+    expect(api.estimateCalls()).toHaveLength(1);
+    expect(api.estimateCalls()[0].init.signal?.aborted).toBe(true);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Estimación/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Descripción del proyecto o transcripción")).toHaveValue(DESCRIPTION);
+    expect(screen.getByLabelText("Nivel de detalle")).toHaveValue("detailed");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(api.estimateCalls()).toHaveLength(1); // ningún reenvío automático
+  });
+
+  test("salir de la pantalla durante la estimación aborta la solicitud", async () => {
+    const api = mockApi((url, init) =>
+      isSessionEstimate(url, init) ? new Promise<Response>((_resolve, reject) => init.signal?.addEventListener("abort", () => reject(new DOMException("abort", "AbortError")))) : undefined,
+    );
+    renderApp();
+    describe_(DESCRIPTION);
+    await submit();
+    await waitFor(() => expect(api.estimateCalls()).toHaveLength(1));
+    await user().click(screen.getByRole("link", { name: "Historial" }));
+    await waitFor(() => expect(api.estimateCalls()[0].init.signal?.aborted).toBe(true));
   });
 
   test("si la creación de la sesión falló al cargar, el envío la reintenta", async () => {

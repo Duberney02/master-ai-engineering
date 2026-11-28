@@ -22,8 +22,10 @@ Sesión 10: recuperación híbrida y multi-índice.
   con la de la migración y con la de la consulta léxica (`plainto_tsquery`), o el índice GIN no se usa.
 * `transcript_chunks` y `technical_doc_chunks` (migración `0005`): mismas columnas estructurales que `chunks` pero con
   su propio esquema de metadatos (transcripciones: participantes y fecha de reunión; documentación: versión).
-  `chunks` conserva su nombre: es la colección `budget` y su contrato con `POST /search` no cambia. Las tablas
-  nuevas no tienen índice HNSW (lo añade la Sesión 11): a escala de curso basta el *scan* secuencial.
+  `chunks` conserva su nombre: es la colección `budget` y su contrato con `POST /search` no cambia.
+
+Sesión 11: las tablas nuevas reciben su índice HNSW halfvec (migración `0006`), con la misma expresión que `chunks`;
+como el de `chunks`, vive solo en la migración (ver `MIGRATION_ONLY_INDEXES` en `alembic/env.py`).
 
 Usa una base declarativa propia (no la del historial) para que Alembic solo gestione estas tablas.
 """
@@ -158,6 +160,6 @@ def halfvec_embedding(model: type[_ChunkColumns] = Chunk):
     """`embedding::halfvec(1536)`: la expresión EXACTA del índice HNSW halfvec.
 
     Si el `ORDER BY` de una búsqueda no usa esta expresión con el operador `<=>`, Postgres ignora el índice sin avisar.
-    Solo `chunks` tiene ese índice; con las tablas de las demás colecciones la misma expresión hace *scan* secuencial.
+    Las tres colecciones tienen ese índice (`chunks` desde la migración `0003`, las demás desde la `0006`).
     """
     return cast(model.embedding, HALFVEC(EMBEDDING_DIMENSIONS))

@@ -1,7 +1,7 @@
 """Runner de evaluación: ejecuta el dataset de referencia contra la API y emite un reporte JSON.
 
     python -m evals.runner --mode actor                       # en proceso (TestClient), proveedor de .env
-    python -m evals.runner --mode acb --base-url http://localhost:8000 --output informe.json
+    python -m evals.runner --mode acb --base-url http://127.0.0.1:8000 --output informe.json
 
 Cada caso usa una sesión nueva (`POST /api/v1/sessions`) y un único `estimate` o `estimate-acb`. El
 código de salida es 0 si todos los casos aprueban, 1 si alguno falla o da error y 2 si el uso es incorrecto.
@@ -254,7 +254,7 @@ def _print_progress(case: CaseReport) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m evals.runner", description=__doc__.split("\n\n")[0])
     parser.add_argument("--mode", choices=MODES, default="actor", help="actor: /estimate · acb: /estimate-acb")
-    parser.add_argument("--base-url", help="URL de la API (p. ej. http://localhost:8000); sin ella, en proceso.")
+    parser.add_argument("--base-url", help="URL de la API (p. ej. http://127.0.0.1:8000); sin ella, en proceso.")
     parser.add_argument("--dataset", type=Path, help="Ruta de un dataset (por defecto reference_v1.json).")
     parser.add_argument("--limit", type=int, help="Evalúa solo los primeros N casos (tras filtrar).")
     parser.add_argument("--case", action="append", default=[], metavar="ID", help="Solo este caso (repetible).")
